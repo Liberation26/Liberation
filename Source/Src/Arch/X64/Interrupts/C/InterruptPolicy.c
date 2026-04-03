@@ -32,6 +32,7 @@ extern void LosInterruptStub28(void);
 extern void LosInterruptStub29(void);
 extern void LosInterruptStub30(void);
 extern void LosInterruptStub31(void);
+extern void LosInterruptStub32(void);
 
 static void SetIdtEntry(UINTN Index, void *Handler)
 {
@@ -74,4 +75,9 @@ void LosX64PopulateExceptionEntries(void)
     {
         SetIdtEntry(Index, Stubs[Index]);
     }
+}
+
+void LosX64PopulateRuntimeEntries(void)
+{
+    SetIdtEntry(LOS_X64_PIC_TIMER_VECTOR, (void *)LosInterruptStub32);
 }
