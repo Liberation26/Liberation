@@ -223,6 +223,20 @@ void LosKernelHaltForever(void)
     }
 }
 
+void LosKernelEnableInterrupts(void)
+{
+    __asm__ __volatile__("sti" : : : "memory");
+}
+
+void LosKernelIdleLoop(void)
+{
+    LosKernelTraceOk("Kernel idle loop entered. CPU will sleep until interrupts arrive.");
+    for (;;)
+    {
+        __asm__ __volatile__("hlt" : : : "memory");
+    }
+}
+
 static UINT64 BuildGdtEntry(UINT32 Base, UINT32 Limit, UINT8 Access, UINT8 Granularity)
 {
     UINT64 Entry;
@@ -303,6 +317,9 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosX64InstallInterrupts();
     LosKernelTraceOk("Vector-specific exception IDT installed.");
 
+    LosX64InitializeTimer();
+    LosKernelTraceOk("Programmable interval timer started at 100 Hz.");
+
     LosKernelTraceOk("ExitBootServices complete. Kernel owns firmware memory map.");
     LosKernelSerialWriteText("[Kernel] The EFI monitor was handoff-only and does not remain a live UEFI application.\n");
     LosKernelSerialWriteText("[Kernel] Boot source: ");
@@ -349,6 +366,9 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelTraceOk("QueryMemoryRegions, ReserveFrames, and ClaimFrames are ready for the future userland memory manager.");
     LosKernelTraceOk("MapPages and UnmapPages are ready for explicit address-space work.");
     LosKernelTraceOk("Memory manager remains a userland service.");
-
-    LosKernelHaltForever();
+    LosKernelTraceUnsigned("Timer tick count before enabling interrupts: ", LosX64GetTimerTickCount());
+    LosKernelScreenUpdateTimer(LosX64GetTimerTickCount(), 100ULL, 0U);
+    LosKernelEnableInterrupts();
+    LosKernelTraceOk("Interrupts enabled. Waiting for timer IRQ heartbeat while remaining in the idle path.");
+    LosKernelIdleLoop();
 }

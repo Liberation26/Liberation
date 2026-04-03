@@ -1,7 +1,7 @@
 #include "KernelMain.h"
 #include "VirtualMemory.h"
 
-#define LOS_KERNEL_SCREEN_VIRTUAL_BASE 0xFFFFFF003F000000ULL
+#define LOS_KERNEL_SCREEN_VIRTUAL_BASE 0xFFFF900000000000ULL
 #define LOS_KERNEL_SCREEN_CELL_WIDTH 8U
 #define LOS_KERNEL_SCREEN_CELL_HEIGHT 8U
 #define LOS_KERNEL_PAGE_WRITABLE 0x002ULL
@@ -25,6 +25,31 @@ typedef struct
 } LOS_KERNEL_SCREEN_STATE;
 
 static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
+
+static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
+{
+    return ((UINT64)PixelsPerScanLine * (UINT64)Height * 4ULL);
+}
+
+static UINT64 GetUsableFrameBufferBytes(UINT64 ReportedBytes, UINT32 PixelsPerScanLine, UINT32 Height)
+{
+    UINT64 RequiredBytes;
+
+    RequiredBytes = GetRequiredFrameBufferBytes(PixelsPerScanLine, Height);
+    if (ReportedBytes == 0ULL)
+    {
+        return RequiredBytes;
+    }
+
+    return ReportedBytes < RequiredBytes ? ReportedBytes : RequiredBytes;
+}
+
+static void TraceScreenInitValue(const char *Prefix, UINT64 Value)
+{
+    LosKernelSerialWriteText(Prefix);
+    LosKernelSerialWriteHex64(Value);
+    LosKernelSerialWriteText("\n");
+}
 
 static char ToUpperAscii(char Character)
 {
@@ -94,6 +119,7 @@ static void ClearScreen(void)
 {
     UINT64 PixelCount;
     UINT64 Index;
+    UINT64 MaximumPixelsFromBytes;
 
     if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.FrameBuffer == 0)
     {
@@ -101,6 +127,12 @@ static void ClearScreen(void)
     }
 
     PixelCount = (UINT64)LosKernelScreenState.PixelsPerScanLine * (UINT64)LosKernelScreenState.Height;
+    MaximumPixelsFromBytes = LosKernelScreenState.FrameBufferSize / 4ULL;
+    if (MaximumPixelsFromBytes != 0ULL && PixelCount > MaximumPixelsFromBytes)
+    {
+        PixelCount = MaximumPixelsFromBytes;
+    }
+
     for (Index = 0ULL; Index < PixelCount; ++Index)
     {
         LosKernelScreenState.FrameBuffer[Index] = 0x00000000U;
@@ -211,6 +243,52 @@ static void PutCharacter(char Character)
     PutCharacterColored(Character, GetTextColor());
 }
 
+static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color)
+{
+    UINT32 StartX;
+    UINT32 StartY;
+    UINT32 X;
+    UINT32 Y;
+
+    if (LosKernelScreenState.Ready == 0U)
+    {
+        return;
+    }
+    if (Column >= LosKernelScreenState.MaxColumns || Row >= LosKernelScreenState.MaxRows)
+    {
+        return;
+    }
+
+    StartX = Column * LOS_KERNEL_SCREEN_CELL_WIDTH;
+    StartY = Row * LOS_KERNEL_SCREEN_CELL_HEIGHT;
+    for (Y = 0U; Y < LOS_KERNEL_SCREEN_CELL_HEIGHT; ++Y)
+    {
+        for (X = 0U; X < LOS_KERNEL_SCREEN_CELL_WIDTH; ++X)
+        {
+            PutPixel(StartX + X, StartY + Y, Color);
+        }
+    }
+}
+
+static void DrawCharacterAt(UINT32 Column, UINT32 Row, char Character, UINT32 Color)
+{
+    UINT32 SavedColumn;
+    UINT32 SavedRow;
+
+    if (LosKernelScreenState.Ready == 0U)
+    {
+        return;
+    }
+
+    SavedColumn = LosKernelScreenState.CursorColumn;
+    SavedRow = LosKernelScreenState.CursorRow;
+    LosKernelScreenState.CursorColumn = Column;
+    LosKernelScreenState.CursorRow = Row;
+    PutCharacterColored(Character, Color);
+    LosKernelScreenState.CursorColumn = SavedColumn;
+    LosKernelScreenState.CursorRow = SavedRow;
+}
+
 static void PutTextColored(const char *Text, UINT32 Color)
 {
     UINTN Index;
@@ -231,6 +309,113 @@ static void PutText(const char *Text)
     PutTextColored(Text, GetTextColor());
 }
 
+static void DrawTextAt(UINT32 Column, UINT32 Row, const char *Text, UINT32 Color)
+{
+    UINT32 SavedColumn;
+    UINT32 SavedRow;
+    UINTN Index;
+
+    if (LosKernelScreenState.Ready == 0U || Text == 0)
+    {
+        return;
+    }
+
+    SavedColumn = LosKernelScreenState.CursorColumn;
+    SavedRow = LosKernelScreenState.CursorRow;
+    LosKernelScreenState.CursorColumn = Column;
+    LosKernelScreenState.CursorRow = Row;
+
+    for (Index = 0U; Text[Index] != '\0'; ++Index)
+    {
+        PutCharacterColored(Text[Index], Color);
+    }
+
+    LosKernelScreenState.CursorColumn = SavedColumn;
+    LosKernelScreenState.CursorRow = SavedRow;
+}
+
+static void DrawUnsignedAt(UINT32 Column, UINT32 Row, UINT64 Value, UINT32 Digits, UINT32 Color)
+{
+    char Buffer[21];
+    UINT32 Index;
+
+    if (Digits >= sizeof(Buffer))
+    {
+        Digits = (UINT32)(sizeof(Buffer) - 1U);
+    }
+
+    for (Index = 0U; Index < Digits; ++Index)
+    {
+        Buffer[Digits - 1U - Index] = (char)('0' + (Value % 10ULL));
+        Value /= 10ULL;
+    }
+
+    Buffer[Digits] = '\0';
+    DrawTextAt(Column, Row, Buffer, Color);
+}
+
+static void DrawInitializationProbe(void)
+{
+    UINT32 X;
+    UINT32 Y;
+    UINT32 LimitX;
+    UINT32 LimitY;
+
+    if (LosKernelScreenState.Ready == 0U)
+    {
+        return;
+    }
+
+    LimitX = LosKernelScreenState.Width < 16U ? LosKernelScreenState.Width : 16U;
+    LimitY = LosKernelScreenState.Height < 16U ? LosKernelScreenState.Height : 16U;
+
+    for (Y = 0U; Y < LimitY; ++Y)
+    {
+        for (X = 0U; X < LimitX; ++X)
+        {
+            PutPixel(X, Y, ComposePixelColor(0x00U, 0x80U, 0xFFU));
+        }
+    }
+}
+
+void LosKernelScreenUpdateSpinner(UINT64 TickCount)
+{
+    static const char LosSpinnerFrames[4] = {'|', '/', '-', '\\'};
+    UINT32 SpinnerColumn;
+    char SpinnerCharacter;
+
+    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.MaxColumns == 0U)
+    {
+        return;
+    }
+
+    SpinnerColumn = LosKernelScreenState.MaxColumns - 1U;
+    SpinnerCharacter = LosSpinnerFrames[(UINTN)(TickCount & 0x3ULL)];
+    FillCellBackground(SpinnerColumn, 0U, 0x00000000U);
+    DrawCharacterAt(SpinnerColumn, 0U, SpinnerCharacter, GetOkPrefixColor());
+}
+
+void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN InterruptsLive)
+{
+    UINT32 StatusColor;
+    UINT32 Row;
+
+    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.MaxColumns < 30U || LosKernelScreenState.MaxRows < 3U)
+    {
+        return;
+    }
+
+    StatusColor = InterruptsLive != 0U ? GetOkPrefixColor() : GetFailPrefixColor();
+    Row = 1U;
+
+    DrawTextAt(0U, Row, "TIMER IRQ ", GetTextColor());
+    DrawTextAt(10U, Row, InterruptsLive != 0U ? "LIVE" : "WAIT", StatusColor);
+    DrawTextAt(16U, Row, "HZ ", GetTextColor());
+    DrawUnsignedAt(19U, Row, TargetHz, 3U, GetTextColor());
+    DrawTextAt(24U, Row, "TICKS ", GetTextColor());
+    DrawUnsignedAt(30U, Row, TickCount, 10U, GetTextColor());
+}
+
 void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
 {
     LOS_X64_MAP_PAGES_REQUEST MapRequest;
@@ -239,6 +424,8 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     UINT64 PhysicalOffset;
     UINT64 MappingBytes;
     UINT64 PageCount;
+    UINT64 UsableFrameBufferBytes;
+    void *DirectMapPointer;
 
     LosKernelScreenState.FrameBuffer = 0;
     LosKernelScreenState.FrameBufferVirtualAddress = 0ULL;
@@ -255,35 +442,67 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
 
     if (BootContext == 0 ||
         BootContext->FrameBufferPhysicalAddress == 0ULL ||
-        BootContext->FrameBufferSize == 0ULL ||
         BootContext->FrameBufferWidth == 0U ||
         BootContext->FrameBufferHeight == 0U ||
         BootContext->FrameBufferPixelsPerScanLine == 0U)
     {
+        LosKernelSerialWriteText("[KernelScreen] Framebuffer information missing.\n");
         return;
     }
 
-    PhysicalBase = BootContext->FrameBufferPhysicalAddress & ~0xFFFULL;
-    PhysicalOffset = BootContext->FrameBufferPhysicalAddress - PhysicalBase;
-    MappingBytes = PhysicalOffset + BootContext->FrameBufferSize;
-    PageCount = (MappingBytes + 4095ULL) / 4096ULL;
-
-    MapRequest.PageMapLevel4PhysicalAddress = 0ULL;
-    MapRequest.VirtualAddress = LOS_KERNEL_SCREEN_VIRTUAL_BASE;
-    MapRequest.PhysicalAddress = PhysicalBase;
-    MapRequest.PageCount = PageCount;
-    MapRequest.PageFlags = LOS_KERNEL_PAGE_WRITABLE | LOS_KERNEL_PAGE_WRITE_THROUGH | LOS_KERNEL_PAGE_CACHE_DISABLE;
-    MapRequest.Flags = LOS_X64_MAP_PAGES_FLAG_ALLOW_REMAP | LOS_X64_MAP_PAGES_FLAG_ALLOW_UNDISCOVERED_PHYSICAL;
-    MapRequest.Reserved = 0U;
-    LosX64MapPages(&MapRequest, &MapResult);
-    if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+    UsableFrameBufferBytes = GetUsableFrameBufferBytes(
+        BootContext->FrameBufferSize,
+        BootContext->FrameBufferPixelsPerScanLine,
+        BootContext->FrameBufferHeight);
+    if (UsableFrameBufferBytes == 0ULL)
     {
+        LosKernelSerialWriteText("[KernelScreen] Computed framebuffer size was zero.\n");
         return;
     }
 
-    LosKernelScreenState.FrameBufferVirtualAddress = LOS_KERNEL_SCREEN_VIRTUAL_BASE + PhysicalOffset;
-    LosKernelScreenState.FrameBuffer = (UINT32 *)(UINTN)LosKernelScreenState.FrameBufferVirtualAddress;
-    LosKernelScreenState.FrameBufferSize = BootContext->FrameBufferSize;
+    TraceScreenInitValue("[KernelScreen] Framebuffer physical base: ", BootContext->FrameBufferPhysicalAddress);
+    TraceScreenInitValue("[KernelScreen] Framebuffer bytes: ", UsableFrameBufferBytes);
+    TraceScreenInitValue("[KernelScreen] Framebuffer width: ", (UINT64)BootContext->FrameBufferWidth);
+    TraceScreenInitValue("[KernelScreen] Framebuffer height: ", (UINT64)BootContext->FrameBufferHeight);
+    TraceScreenInitValue("[KernelScreen] Framebuffer pixels per scan line: ", (UINT64)BootContext->FrameBufferPixelsPerScanLine);
+    TraceScreenInitValue("[KernelScreen] Framebuffer pixel format: ", (UINT64)BootContext->FrameBufferPixelFormat);
+
+    DirectMapPointer = LosX64GetDirectMapVirtualAddress(BootContext->FrameBufferPhysicalAddress, UsableFrameBufferBytes);
+    if (DirectMapPointer != 0)
+    {
+        LosKernelScreenState.FrameBufferVirtualAddress = (UINT64)(UINTN)DirectMapPointer;
+        LosKernelScreenState.FrameBuffer = (UINT32 *)DirectMapPointer;
+        LosKernelSerialWriteText("[KernelScreen] Using existing higher-half direct-map framebuffer mapping.\n");
+    }
+    else
+    {
+        PhysicalBase = BootContext->FrameBufferPhysicalAddress & ~0xFFFULL;
+        PhysicalOffset = BootContext->FrameBufferPhysicalAddress - PhysicalBase;
+        MappingBytes = PhysicalOffset + UsableFrameBufferBytes;
+        PageCount = (MappingBytes + 4095ULL) / 4096ULL;
+
+        MapRequest.PageMapLevel4PhysicalAddress = 0ULL;
+        MapRequest.VirtualAddress = LOS_KERNEL_SCREEN_VIRTUAL_BASE;
+        MapRequest.PhysicalAddress = PhysicalBase;
+        MapRequest.PageCount = PageCount;
+        MapRequest.PageFlags = LOS_KERNEL_PAGE_WRITABLE | LOS_KERNEL_PAGE_WRITE_THROUGH | LOS_KERNEL_PAGE_CACHE_DISABLE;
+        MapRequest.Flags = LOS_X64_MAP_PAGES_FLAG_ALLOW_REMAP | LOS_X64_MAP_PAGES_FLAG_ALLOW_UNDISCOVERED_PHYSICAL;
+        MapRequest.Reserved = 0U;
+        LosX64MapPages(&MapRequest, &MapResult);
+        if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+        {
+            LosKernelSerialWriteText("[KernelScreen] Explicit framebuffer remap failed with status ");
+            LosKernelSerialWriteUnsigned(MapResult.Status);
+            LosKernelSerialWriteText(".\n");
+            return;
+        }
+
+        LosKernelScreenState.FrameBufferVirtualAddress = LOS_KERNEL_SCREEN_VIRTUAL_BASE + PhysicalOffset;
+        LosKernelScreenState.FrameBuffer = (UINT32 *)(UINTN)LosKernelScreenState.FrameBufferVirtualAddress;
+        LosKernelSerialWriteText("[KernelScreen] Explicit higher-half framebuffer remap installed.\n");
+    }
+
+    LosKernelScreenState.FrameBufferSize = UsableFrameBufferBytes;
     LosKernelScreenState.Width = BootContext->FrameBufferWidth;
     LosKernelScreenState.Height = BootContext->FrameBufferHeight;
     LosKernelScreenState.PixelsPerScanLine = BootContext->FrameBufferPixelsPerScanLine;
@@ -291,7 +510,16 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.MaxColumns = BootContext->FrameBufferWidth / LOS_KERNEL_SCREEN_CELL_WIDTH;
     LosKernelScreenState.MaxRows = BootContext->FrameBufferHeight / LOS_KERNEL_SCREEN_CELL_HEIGHT;
     LosKernelScreenState.Ready = (LosKernelScreenState.MaxColumns != 0U && LosKernelScreenState.MaxRows != 0U) ? 1U : 0U;
+    if (LosKernelScreenState.Ready == 0U)
+    {
+        LosKernelSerialWriteText("[KernelScreen] Screen geometry was too small for the text grid.\n");
+        return;
+    }
+
     ClearScreen();
+    DrawInitializationProbe();
+    PutText("LIBERATION KERNEL SCREEN ONLINE\n");
+    LosKernelSerialWriteText("[KernelScreen] Screen path initialized.\n");
 }
 
 static void WriteStatusLine(const char *Prefix, UINT32 PrefixColor, const char *Text)

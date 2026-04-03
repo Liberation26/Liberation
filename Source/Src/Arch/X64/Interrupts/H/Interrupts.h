@@ -30,7 +30,11 @@ typedef struct __attribute__((packed))
 } LOS_X64_INTERRUPT_FRAME;
 
 void LosX64InstallInterrupts(void);
-void LosX64HandleException(
+void LosX64InitializeTimer(void);
+UINT64 LosX64GetTimerTickCount(void);
+BOOLEAN LosX64HasObservedTimerInterrupt(void);
+void LosX64AcknowledgePicInterrupt(UINT64 Vector);
+void LosX64HandleInterrupt(
     const LOS_X64_REGISTER_STATE *Registers,
     UINT64 Vector,
     UINT64 ErrorCode,
