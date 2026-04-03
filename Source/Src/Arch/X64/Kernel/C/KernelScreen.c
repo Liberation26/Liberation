@@ -199,6 +199,9 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
 {
     LOS_X64_MAP_PAGES_REQUEST MapRequest;
     LOS_X64_MAP_PAGES_RESULT MapResult;
+    UINT64 PhysicalBase;
+    UINT64 PhysicalOffset;
+    UINT64 MappingBytes;
     UINT64 PageCount;
 
     LosKernelScreenState.FrameBuffer = 0;
@@ -223,10 +226,14 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
         return;
     }
 
-    PageCount = (BootContext->FrameBufferSize + 4095ULL) / 4096ULL;
+    PhysicalBase = BootContext->FrameBufferPhysicalAddress & ~0xFFFULL;
+    PhysicalOffset = BootContext->FrameBufferPhysicalAddress - PhysicalBase;
+    MappingBytes = PhysicalOffset + BootContext->FrameBufferSize;
+    PageCount = (MappingBytes + 4095ULL) / 4096ULL;
+
     MapRequest.PageMapLevel4PhysicalAddress = 0ULL;
     MapRequest.VirtualAddress = LOS_KERNEL_SCREEN_VIRTUAL_BASE;
-    MapRequest.PhysicalAddress = BootContext->FrameBufferPhysicalAddress & ~0xFFFULL;
+    MapRequest.PhysicalAddress = PhysicalBase;
     MapRequest.PageCount = PageCount;
     MapRequest.PageFlags = LOS_KERNEL_PAGE_WRITABLE | LOS_KERNEL_PAGE_WRITE_THROUGH | LOS_KERNEL_PAGE_CACHE_DISABLE;
     MapRequest.Flags = LOS_X64_MAP_PAGES_FLAG_ALLOW_REMAP;
@@ -237,8 +244,8 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
         return;
     }
 
-    LosKernelScreenState.FrameBufferVirtualAddress = LOS_KERNEL_SCREEN_VIRTUAL_BASE;
-    LosKernelScreenState.FrameBuffer = (UINT32 *)(UINTN)LOS_KERNEL_SCREEN_VIRTUAL_BASE;
+    LosKernelScreenState.FrameBufferVirtualAddress = LOS_KERNEL_SCREEN_VIRTUAL_BASE + PhysicalOffset;
+    LosKernelScreenState.FrameBuffer = (UINT32 *)(UINTN)LosKernelScreenState.FrameBufferVirtualAddress;
     LosKernelScreenState.FrameBufferSize = BootContext->FrameBufferSize;
     LosKernelScreenState.Width = BootContext->FrameBufferWidth;
     LosKernelScreenState.Height = BootContext->FrameBufferHeight;

@@ -10,81 +10,51 @@ void LosBootPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
     SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16 *)Text);
 }
 
-void LosBootTrace(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
+void LosBootStatusOk(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
-    LosBootPrint(SystemTable, LOS_TEXT("[Boot] "));
+    LosBootPrint(SystemTable, LOS_TEXT("[OK] "));
     LosBootPrint(SystemTable, Text);
     LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
 }
 
+void LosBootStatusFail(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
+{
+    LosBootPrint(SystemTable, LOS_TEXT("[FAIL] "));
+    LosBootPrint(SystemTable, Text);
+    LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
+}
+
+void LosBootTrace(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
+{
+    (void)SystemTable;
+    (void)Text;
+}
+
 void LosBootTracePath(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, const CHAR16 *Path)
 {
-    LosBootPrint(SystemTable, LOS_TEXT("[Boot] "));
-    LosBootPrint(SystemTable, Prefix);
-    if (Path != 0)
-    {
-        LosBootPrint(SystemTable, Path);
-    }
-    else
-    {
-        LosBootPrint(SystemTable, LOS_TEXT("(null)"));
-    }
-    LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
+    (void)SystemTable;
+    (void)Prefix;
+    (void)Path;
 }
 
 void LosBootTraceHex64(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, UINT64 Value)
 {
-    LosBootPrint(SystemTable, LOS_TEXT("[Boot] "));
-    LosBootPrint(SystemTable, Prefix);
-    LosBootPrintHex64(SystemTable, Value);
-    LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
+    (void)SystemTable;
+    (void)Prefix;
+    (void)Value;
 }
 
 void LosBootTraceStatus(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, EFI_STATUS Status)
 {
-    LosBootPrint(SystemTable, LOS_TEXT("[Boot] "));
-    LosBootPrint(SystemTable, Prefix);
-    LosBootPrintHex64(SystemTable, Status);
-    LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
+    (void)SystemTable;
+    (void)Prefix;
+    (void)Status;
 }
-
 
 void LosBootAnnounceFunction(EFI_SYSTEM_TABLE *SystemTable, const char *FunctionName)
 {
-    CHAR16 Buffer[96];
-    UINTN Index;
-
-    if (SystemTable == 0 || FunctionName == 0)
-    {
-        return;
-    }
-
-    Buffer[0] = L'[';
-    Buffer[1] = L'B';
-    Buffer[2] = L'o';
-    Buffer[3] = L'o';
-    Buffer[4] = L't';
-    Buffer[5] = L']';
-    Buffer[6] = L' ';
-    Buffer[7] = L'E';
-    Buffer[8] = L'n';
-    Buffer[9] = L't';
-    Buffer[10] = L'e';
-    Buffer[11] = L'r';
-    Buffer[12] = L' ';
-    Index = 13U;
-
-    while (*FunctionName != '\0' && Index + 3U < (sizeof(Buffer) / sizeof(Buffer[0])))
-    {
-        Buffer[Index] = (CHAR16)(UINT8)(*FunctionName);
-        ++Index;
-        ++FunctionName;
-    }
-
-    Buffer[Index++] = L'\r';
-    Buffer[Index++] = L'\n';
-    Buffer[Index] = 0;
-    LosBootPrint(SystemTable, Buffer);
+    (void)SystemTable;
+    (void)FunctionName;
 }
 
 void LosBootClear(EFI_SYSTEM_TABLE *SystemTable)
@@ -118,6 +88,7 @@ void LosBootPrintHex64(EFI_SYSTEM_TABLE *SystemTable, UINT64 Value)
 void LosBootPrintStatusError(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, EFI_STATUS Status)
 {
     LOS_BOOT_ENTER(SystemTable);
+    LosBootPrint(SystemTable, LOS_TEXT("[FAIL] "));
     LosBootPrint(SystemTable, Prefix);
     LosBootPrintHex64(SystemTable, Status);
     LosBootPrint(SystemTable, LOS_TEXT("\r\n"));

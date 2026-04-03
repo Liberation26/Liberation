@@ -303,12 +303,6 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosX64InstallInterrupts();
     LosKernelTraceOk("Vector-specific exception IDT installed.");
 
-    if (BootContext == 0)
-    {
-        LosKernelTraceFail("Missing boot context.");
-        LosKernelHaltForever();
-    }
-
     LosKernelTraceOk("ExitBootServices complete. Kernel owns firmware memory map.");
     LosKernelSerialWriteText("[Kernel] The EFI monitor was handoff-only and does not remain a live UEFI application.\n");
     LosKernelSerialWriteText("[Kernel] Boot source: ");

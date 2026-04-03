@@ -59,6 +59,8 @@ typedef struct __attribute__((packed))
 } LOS_ELF64_PROGRAM_HEADER;
 
 void LosBootPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text);
+void LosBootStatusOk(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text);
+void LosBootStatusFail(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text);
 void LosBootClear(EFI_SYSTEM_TABLE *SystemTable);
 void LosBootPrintHex64(EFI_SYSTEM_TABLE *SystemTable, UINT64 Value);
 void LosBootPrintStatusError(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, EFI_STATUS Status);

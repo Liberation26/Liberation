@@ -31,9 +31,9 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
         return EFI_SUCCESS;
     }
 
-    LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor started.\r\n"));
-    LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor is a handoff stage only.\r\n"));
-    LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor loading Liberation kernel...\r\n"));
+    LosMonitorStatusOk(SystemTable, LOS_TEXT("Kernel monitor started."));
+    LosMonitorStatusOk(SystemTable, LOS_TEXT("Kernel monitor is a handoff stage only."));
+    LosMonitorStatusOk(SystemTable, LOS_TEXT("Kernel monitor loading Liberation kernel."));
 
     ParentDeviceHandle = 0;
     Root = 0;
@@ -140,7 +140,7 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
 
     if (EFI_ERROR(Status) || KernelBuffer == 0 || KernelSize == 0U)
     {
-        LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor could not load the kernel.\r\n"));
+        LosMonitorStatusFail(SystemTable, LOS_TEXT("Kernel monitor could not load the kernel."));
         LosMonitorHaltForever();
     }
 
@@ -148,7 +148,7 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
     if (EFI_ERROR(Status) || BootContextAddress == 0ULL)
     {
         LosMonitorTraceStatus(SystemTable, LOS_TEXT("AllocatePages for boot context failed: "), Status);
-        LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor could not allocate boot context.\r\n"));
+        LosMonitorStatusFail(SystemTable, LOS_TEXT("Kernel monitor could not allocate boot context."));
         LosMonitorHaltForever();
     }
 
@@ -167,13 +167,13 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
     LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot context address: "), BootContext->BootContextAddress);
     LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot context bytes: "), BootContext->BootContextSize);
 
-    LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor preparing final handoff to the kernel...\r\n"));
-    LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor exiting UEFI boot services...\r\n"));
+    LosMonitorStatusOk(SystemTable, LOS_TEXT("Kernel monitor preparing final handoff to the kernel."));
+    LosMonitorStatusOk(SystemTable, LOS_TEXT("Kernel monitor exiting UEFI boot services."));
     Status = LosMonitorExitBootServicesWithMemoryMap(ImageHandle, SystemTable, BootContext);
     if (EFI_ERROR(Status))
     {
         LosMonitorTraceStatus(SystemTable, LOS_TEXT("ExitBootServices path failed: "), Status);
-        LosMonitorPrint(SystemTable, LOS_TEXT("Kernel monitor failed to exit boot services.\r\n"));
+        LosMonitorStatusFail(SystemTable, LOS_TEXT("Kernel monitor failed to exit boot services."));
         LosMonitorHaltForever();
     }
 

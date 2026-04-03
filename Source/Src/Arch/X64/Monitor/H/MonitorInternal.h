@@ -105,6 +105,8 @@ typedef struct __attribute__((packed))
 } LOS_ELF64_PROGRAM_HEADER;
 
 void LosMonitorPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text);
+void LosMonitorStatusOk(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text);
+void LosMonitorStatusFail(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text);
 void LosMonitorAnnounceFunction(EFI_SYSTEM_TABLE *SystemTable, const char *FunctionName);
 void LosMonitorTrace(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text);
 void LosMonitorTracePath(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, const CHAR16 *Path);

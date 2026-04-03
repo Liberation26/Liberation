@@ -10,93 +10,51 @@ void LosMonitorPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
     SystemTable->ConOut->OutputString(SystemTable->ConOut, (CHAR16 *)Text);
 }
 
-void LosMonitorTrace(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
+void LosMonitorStatusOk(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
-    LosMonitorPrint(SystemTable, LOS_TEXT("[Monitor] "));
+    LosMonitorPrint(SystemTable, LOS_TEXT("[OK] "));
     LosMonitorPrint(SystemTable, Text);
     LosMonitorPrint(SystemTable, LOS_TEXT("\r\n"));
 }
 
+void LosMonitorStatusFail(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
+{
+    LosMonitorPrint(SystemTable, LOS_TEXT("[FAIL] "));
+    LosMonitorPrint(SystemTable, Text);
+    LosMonitorPrint(SystemTable, LOS_TEXT("\r\n"));
+}
+
+void LosMonitorTrace(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
+{
+    (void)SystemTable;
+    (void)Text;
+}
+
 void LosMonitorTracePath(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, const CHAR16 *Path)
 {
-    LosMonitorPrint(SystemTable, LOS_TEXT("[Monitor] "));
-    LosMonitorPrint(SystemTable, Prefix);
-    if (Path != 0)
-    {
-        LosMonitorPrint(SystemTable, Path);
-    }
-    else
-    {
-        LosMonitorPrint(SystemTable, LOS_TEXT("(null)"));
-    }
-    LosMonitorPrint(SystemTable, LOS_TEXT("\r\n"));
+    (void)SystemTable;
+    (void)Prefix;
+    (void)Path;
 }
 
 void LosMonitorTraceHex64(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, UINT64 Value)
 {
-    CHAR16 Buffer[19];
-    UINTN Index;
-
-    LosMonitorPrint(SystemTable, LOS_TEXT("[Monitor] "));
-    LosMonitorPrint(SystemTable, Prefix);
-    Buffer[0] = L'0';
-    Buffer[1] = L'x';
-    for (Index = 0; Index < 16U; ++Index)
-    {
-        UINTN Shift = (UINTN)((15U - Index) * 4U);
-        UINT8 Nibble = (UINT8)((Value >> Shift) & 0xFULL);
-        Buffer[2U + Index] = (CHAR16)((Nibble < 10U) ? (L'0' + Nibble) : (L'A' + (Nibble - 10U)));
-    }
-    Buffer[18] = 0;
-    LosMonitorPrint(SystemTable, Buffer);
-    LosMonitorPrint(SystemTable, LOS_TEXT("\r\n"));
+    (void)SystemTable;
+    (void)Prefix;
+    (void)Value;
 }
 
 void LosMonitorTraceStatus(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, EFI_STATUS Status)
 {
-    LosMonitorTraceHex64(SystemTable, Prefix, (UINT64)Status);
+    (void)SystemTable;
+    (void)Prefix;
+    (void)Status;
 }
-
 
 void LosMonitorAnnounceFunction(EFI_SYSTEM_TABLE *SystemTable, const char *FunctionName)
 {
-    CHAR16 Buffer[96];
-    UINTN Index;
-
-    if (SystemTable == 0 || FunctionName == 0)
-    {
-        return;
-    }
-
-    Buffer[0] = L'[';
-    Buffer[1] = L'M';
-    Buffer[2] = L'o';
-    Buffer[3] = L'n';
-    Buffer[4] = L'i';
-    Buffer[5] = L't';
-    Buffer[6] = L'o';
-    Buffer[7] = L'r';
-    Buffer[8] = L']';
-    Buffer[9] = L' ';
-    Buffer[10] = L'E';
-    Buffer[11] = L'n';
-    Buffer[12] = L't';
-    Buffer[13] = L'e';
-    Buffer[14] = L'r';
-    Buffer[15] = L' ';
-    Index = 16U;
-
-    while (*FunctionName != '\0' && Index + 3U < (sizeof(Buffer) / sizeof(Buffer[0])))
-    {
-        Buffer[Index] = (CHAR16)(UINT8)(*FunctionName);
-        ++Index;
-        ++FunctionName;
-    }
-
-    Buffer[Index++] = L'\r';
-    Buffer[Index++] = L'\n';
-    Buffer[Index] = 0;
-    LosMonitorPrint(SystemTable, Buffer);
+    (void)SystemTable;
+    (void)FunctionName;
 }
 
 void LosMonitorHaltForever(void)
@@ -137,7 +95,6 @@ UINT64 LosMonitorAlignUp(UINT64 Value, UINT64 Alignment)
 {
     return (Value + Alignment - 1ULL) & ~(Alignment - 1ULL);
 }
-
 
 void LosMonitorUtf16Copy(CHAR16 *Destination, UINTN DestinationCharacterCount, const CHAR16 *Source)
 {
