@@ -218,6 +218,7 @@ BOOLEAN LosX64MapVirtualPage(UINT64 VirtualAddress, UINT64 PhysicalAddress, UINT
 BOOLEAN LosX64MapVirtualRange(UINT64 VirtualAddress, UINT64 PhysicalAddress, UINTN PageCount, UINT64 Flags);
 BOOLEAN LosX64UnmapVirtualPage(UINT64 VirtualAddress);
 BOOLEAN LosX64UnmapVirtualRange(UINT64 VirtualAddress, UINTN PageCount);
+void *LosX64GetDirectMapVirtualAddress(UINT64 PhysicalAddress, UINT64 Length);
 void *LosX64GetKernelStackTop(void);
 BOOLEAN LosX64ReservePhysicalRange(UINT64 PhysicalAddress, UINT64 Length, UINT32 ReservationKind);
 BOOLEAN LosX64ClaimPhysicalPages(UINT64 PhysicalAddress, UINT64 PageCount);
