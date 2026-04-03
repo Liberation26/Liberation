@@ -2,11 +2,26 @@
 #include "VirtualMemory.h"
 
 #define LOS_KERNEL_SCREEN_VIRTUAL_BASE 0xFFFF900000000000ULL
-#define LOS_KERNEL_SCREEN_CELL_WIDTH 8U
-#define LOS_KERNEL_SCREEN_CELL_HEIGHT 8U
+#define LOS_KERNEL_SCREEN_DEFAULT_CELL_WIDTH 8U
+#define LOS_KERNEL_SCREEN_DEFAULT_CELL_HEIGHT 8U
+#define LOS_KERNEL_SCREEN_DEFAULT_GLYPH_WIDTH 5U
+#define LOS_KERNEL_SCREEN_DEFAULT_GLYPH_HEIGHT 7U
 #define LOS_KERNEL_PAGE_WRITABLE 0x002ULL
 #define LOS_KERNEL_PAGE_WRITE_THROUGH 0x008ULL
 #define LOS_KERNEL_PAGE_CACHE_DISABLE 0x010ULL
+#define LOS_PSF2_MAGIC 0x864AB572U
+
+typedef struct
+{
+    UINT32 Magic;
+    UINT32 Version;
+    UINT32 HeaderSize;
+    UINT32 Flags;
+    UINT32 Length;
+    UINT32 CharSize;
+    UINT32 Height;
+    UINT32 Width;
+} LOS_PSF2_HEADER;
 
 typedef struct
 {
@@ -21,6 +36,15 @@ typedef struct
     UINT32 CursorRow;
     UINT32 MaxColumns;
     UINT32 MaxRows;
+    UINT32 CellWidth;
+    UINT32 CellHeight;
+    UINT32 GlyphWidth;
+    UINT32 GlyphHeight;
+    UINT32 FontGlyphCount;
+    UINT32 FontBytesPerGlyph;
+    UINT32 FontRowStride;
+    const UINT8 *FontGlyphs;
+    BOOLEAN FontLoaded;
     BOOLEAN Ready;
 } LOS_KERNEL_SCREEN_STATE;
 
@@ -191,10 +215,62 @@ static void AdvanceLine(void)
     }
 }
 
-static void PutCharacterColored(char Character, UINT32 Color)
+static void RenderFallbackGlyph(char Character, UINT32 BaseX, UINT32 BaseY, UINT32 Color)
 {
     UINT32 GlyphRow;
     UINT32 GlyphColumn;
+
+    for (GlyphRow = 0U; GlyphRow < LOS_KERNEL_SCREEN_DEFAULT_GLYPH_HEIGHT; ++GlyphRow)
+    {
+        UINT8 RowBits;
+        RowBits = GetGlyphRow(Character, GlyphRow);
+        for (GlyphColumn = 0U; GlyphColumn < LOS_KERNEL_SCREEN_DEFAULT_GLYPH_WIDTH; ++GlyphColumn)
+        {
+            if ((RowBits & (UINT8)(1U << (4U - GlyphColumn))) != 0U)
+            {
+                PutPixel(BaseX + GlyphColumn + 1U, BaseY + GlyphRow, Color);
+            }
+        }
+    }
+}
+
+static void RenderPsfGlyph(UINT8 Character, UINT32 BaseX, UINT32 BaseY, UINT32 Color)
+{
+    const UINT8 *Glyph;
+    UINT32 Row;
+    UINT32 Column;
+
+    if (LosKernelScreenState.FontLoaded == 0U || LosKernelScreenState.FontGlyphs == 0)
+    {
+        return;
+    }
+
+    if ((UINT32)Character >= LosKernelScreenState.FontGlyphCount)
+    {
+        Character = (UINT8)'?';
+    }
+
+    Glyph = LosKernelScreenState.FontGlyphs + ((UINT32)Character * LosKernelScreenState.FontBytesPerGlyph);
+    for (Row = 0U; Row < LosKernelScreenState.GlyphHeight; ++Row)
+    {
+        const UINT8 *RowData;
+        RowData = Glyph + (Row * LosKernelScreenState.FontRowStride);
+        for (Column = 0U; Column < LosKernelScreenState.GlyphWidth; ++Column)
+        {
+            UINT8 ByteValue;
+            UINT8 BitMask;
+            ByteValue = RowData[Column / 8U];
+            BitMask = (UINT8)(0x80U >> (Column & 7U));
+            if ((ByteValue & BitMask) != 0U)
+            {
+                PutPixel(BaseX + Column, BaseY + Row, Color);
+            }
+        }
+    }
+}
+
+static void PutCharacterColored(char Character, UINT32 Color)
+{
     UINT32 BaseX;
     UINT32 BaseY;
 
@@ -219,20 +295,16 @@ static void PutCharacterColored(char Character, UINT32 Color)
         AdvanceLine();
     }
 
-    BaseX = LosKernelScreenState.CursorColumn * LOS_KERNEL_SCREEN_CELL_WIDTH;
-    BaseY = LosKernelScreenState.CursorRow * LOS_KERNEL_SCREEN_CELL_HEIGHT;
+    BaseX = LosKernelScreenState.CursorColumn * LosKernelScreenState.CellWidth;
+    BaseY = LosKernelScreenState.CursorRow * LosKernelScreenState.CellHeight;
 
-    for (GlyphRow = 0U; GlyphRow < 7U; ++GlyphRow)
+    if (LosKernelScreenState.FontLoaded != 0U)
     {
-        UINT8 RowBits;
-        RowBits = GetGlyphRow(Character, GlyphRow);
-        for (GlyphColumn = 0U; GlyphColumn < 5U; ++GlyphColumn)
-        {
-            if ((RowBits & (UINT8)(1U << (4U - GlyphColumn))) != 0U)
-            {
-                PutPixel(BaseX + GlyphColumn + 1U, BaseY + GlyphRow, Color);
-            }
-        }
+        RenderPsfGlyph((UINT8)Character, BaseX, BaseY, Color);
+    }
+    else
+    {
+        RenderFallbackGlyph(Character, BaseX, BaseY, Color);
     }
 
     LosKernelScreenState.CursorColumn += 1U;
@@ -259,11 +331,11 @@ static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color)
         return;
     }
 
-    StartX = Column * LOS_KERNEL_SCREEN_CELL_WIDTH;
-    StartY = Row * LOS_KERNEL_SCREEN_CELL_HEIGHT;
-    for (Y = 0U; Y < LOS_KERNEL_SCREEN_CELL_HEIGHT; ++Y)
+    StartX = Column * LosKernelScreenState.CellWidth;
+    StartY = Row * LosKernelScreenState.CellHeight;
+    for (Y = 0U; Y < LosKernelScreenState.CellHeight; ++Y)
     {
-        for (X = 0U; X < LOS_KERNEL_SCREEN_CELL_WIDTH; ++X)
+        for (X = 0U; X < LosKernelScreenState.CellWidth; ++X)
         {
             PutPixel(StartX + X, StartY + Y, Color);
         }
@@ -378,6 +450,82 @@ static void DrawInitializationProbe(void)
     }
 }
 
+static void InitializeDefaultFont(void)
+{
+    LosKernelScreenState.CellWidth = LOS_KERNEL_SCREEN_DEFAULT_CELL_WIDTH;
+    LosKernelScreenState.CellHeight = LOS_KERNEL_SCREEN_DEFAULT_CELL_HEIGHT;
+    LosKernelScreenState.GlyphWidth = LOS_KERNEL_SCREEN_DEFAULT_GLYPH_WIDTH;
+    LosKernelScreenState.GlyphHeight = LOS_KERNEL_SCREEN_DEFAULT_GLYPH_HEIGHT;
+    LosKernelScreenState.FontGlyphCount = 0U;
+    LosKernelScreenState.FontBytesPerGlyph = 0U;
+    LosKernelScreenState.FontRowStride = 0U;
+    LosKernelScreenState.FontGlyphs = 0;
+    LosKernelScreenState.FontLoaded = 0U;
+}
+
+static void TryInitializePsfFont(const LOS_BOOT_CONTEXT *BootContext)
+{
+    const LOS_PSF2_HEADER *Header;
+    const void *MappedPointer;
+    UINT32 RowStride;
+    UINT64 RequiredBytes;
+
+    InitializeDefaultFont();
+    if (BootContext == 0 || BootContext->KernelFontPhysicalAddress == 0ULL || BootContext->KernelFontSize < sizeof(LOS_PSF2_HEADER))
+    {
+        LosKernelSerialWriteText("[KernelScreen] No boot font supplied. Using built-in font.\n");
+        return;
+    }
+
+    MappedPointer = LosX64GetDirectMapVirtualAddress(BootContext->KernelFontPhysicalAddress, BootContext->KernelFontSize);
+    if (MappedPointer == 0)
+    {
+        LosKernelSerialWriteText("[KernelScreen] Boot font direct-map lookup failed. Using built-in font.\n");
+        return;
+    }
+
+    Header = (const LOS_PSF2_HEADER *)MappedPointer;
+    if (Header->Magic != LOS_PSF2_MAGIC)
+    {
+        LosKernelSerialWriteText("[KernelScreen] Boot font is not PSF2. Using built-in font.\n");
+        return;
+    }
+    if (Header->HeaderSize < sizeof(LOS_PSF2_HEADER) || Header->Length == 0U || Header->CharSize == 0U || Header->Width == 0U || Header->Height == 0U)
+    {
+        LosKernelSerialWriteText("[KernelScreen] Boot font header invalid. Using built-in font.\n");
+        return;
+    }
+
+    RowStride = (Header->Width + 7U) / 8U;
+    if (RowStride == 0U || Header->CharSize < (RowStride * Header->Height))
+    {
+        LosKernelSerialWriteText("[KernelScreen] Boot font glyph layout invalid. Using built-in font.\n");
+        return;
+    }
+
+    RequiredBytes = (UINT64)Header->HeaderSize + ((UINT64)Header->Length * (UINT64)Header->CharSize);
+    if (RequiredBytes > BootContext->KernelFontSize)
+    {
+        LosKernelSerialWriteText("[KernelScreen] Boot font truncated. Using built-in font.\n");
+        return;
+    }
+
+    LosKernelScreenState.CellWidth = Header->Width;
+    LosKernelScreenState.CellHeight = Header->Height;
+    LosKernelScreenState.GlyphWidth = Header->Width;
+    LosKernelScreenState.GlyphHeight = Header->Height;
+    LosKernelScreenState.FontGlyphCount = Header->Length;
+    LosKernelScreenState.FontBytesPerGlyph = Header->CharSize;
+    LosKernelScreenState.FontRowStride = RowStride;
+    LosKernelScreenState.FontGlyphs = ((const UINT8 *)MappedPointer) + Header->HeaderSize;
+    LosKernelScreenState.FontLoaded = 1U;
+    LosKernelSerialWriteText("[KernelScreen] Boot PSF2 font loaded from monitor handoff.\n");
+    TraceScreenInitValue("[KernelScreen] Boot font physical base: ", BootContext->KernelFontPhysicalAddress);
+    TraceScreenInitValue("[KernelScreen] Boot font bytes: ", BootContext->KernelFontSize);
+    TraceScreenInitValue("[KernelScreen] Boot font glyph width: ", (UINT64)Header->Width);
+    TraceScreenInitValue("[KernelScreen] Boot font glyph height: ", (UINT64)Header->Height);
+}
+
 void LosKernelScreenUpdateSpinner(UINT64 TickCount)
 {
     static const char LosSpinnerFrames[4] = {'|', '/', '-', '\\'};
@@ -438,6 +586,7 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.CursorRow = 0U;
     LosKernelScreenState.MaxColumns = 0U;
     LosKernelScreenState.MaxRows = 0U;
+    InitializeDefaultFont();
     LosKernelScreenState.Ready = 0U;
 
     if (BootContext == 0 ||
@@ -507,14 +656,20 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.Height = BootContext->FrameBufferHeight;
     LosKernelScreenState.PixelsPerScanLine = BootContext->FrameBufferPixelsPerScanLine;
     LosKernelScreenState.PixelFormat = BootContext->FrameBufferPixelFormat;
-    LosKernelScreenState.MaxColumns = BootContext->FrameBufferWidth / LOS_KERNEL_SCREEN_CELL_WIDTH;
-    LosKernelScreenState.MaxRows = BootContext->FrameBufferHeight / LOS_KERNEL_SCREEN_CELL_HEIGHT;
+    TryInitializePsfFont(BootContext);
+    LosKernelScreenState.MaxColumns = BootContext->FrameBufferWidth / LosKernelScreenState.CellWidth;
+    LosKernelScreenState.MaxRows = BootContext->FrameBufferHeight / LosKernelScreenState.CellHeight;
     LosKernelScreenState.Ready = (LosKernelScreenState.MaxColumns != 0U && LosKernelScreenState.MaxRows != 0U) ? 1U : 0U;
     if (LosKernelScreenState.Ready == 0U)
     {
         LosKernelSerialWriteText("[KernelScreen] Screen geometry was too small for the text grid.\n");
         return;
     }
+
+    TraceScreenInitValue("[KernelScreen] Text cell width: ", (UINT64)LosKernelScreenState.CellWidth);
+    TraceScreenInitValue("[KernelScreen] Text cell height: ", (UINT64)LosKernelScreenState.CellHeight);
+    TraceScreenInitValue("[KernelScreen] Max columns: ", (UINT64)LosKernelScreenState.MaxColumns);
+    TraceScreenInitValue("[KernelScreen] Max rows: ", (UINT64)LosKernelScreenState.MaxRows);
 
     ClearScreen();
     DrawInitializationProbe();

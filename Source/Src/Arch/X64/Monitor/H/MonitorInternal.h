@@ -19,7 +19,7 @@
 #define LOS_ELF_TYPE_EXEC 2U
 #define LOS_ELF_PROGRAM_TYPE_LOAD 1U
 #define LOS_BOOT_CONTEXT_SIGNATURE 0x544F4F424F534F4CULL
-#define LOS_BOOT_CONTEXT_VERSION 5U
+#define LOS_BOOT_CONTEXT_VERSION 6U
 #define LOS_BOOT_CONTEXT_FLAG_MONITOR_HANDOFF_ONLY 0x0000000000000001ULL
 #define LOS_BOOT_CONTEXT_FLAG_KERNEL_SEGMENTS_VALID 0x0000000000000002ULL
 #define LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS 8U
@@ -59,6 +59,8 @@ typedef struct
     UINT32 FrameBufferHeight;
     UINT32 FrameBufferPixelsPerScanLine;
     UINT32 FrameBufferPixelFormat;
+    UINT64 KernelFontPhysicalAddress;
+    UINT64 KernelFontSize;
     UINT64 KernelLoadSegmentCount;
     LOS_BOOT_CONTEXT_LOAD_SEGMENT KernelLoadSegments[LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS];
     CHAR16 BootSourceText[LOS_BOOT_CONTEXT_TEXT_CHARACTERS];
@@ -128,6 +130,8 @@ EFI_STATUS LosMonitorGetParentDeviceHandle(EFI_HANDLE ImageHandle, EFI_SYSTEM_TA
 EFI_STATUS LosMonitorLoadKernelFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL *Root, const CHAR16 *KernelPath, void **KernelEntryAddress, UINT64 *KernelImagePhysicalAddress, UINTN *KernelImageSize, LOS_BOOT_CONTEXT_LOAD_SEGMENT *KernelLoadSegments, UINT64 *KernelLoadSegmentCount);
 EFI_STATUS LosMonitorLoadKernelFromSiblingFileSystemHandle(EFI_HANDLE DeviceHandle, EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *KernelPath, void **KernelEntryAddress, UINT64 *KernelImagePhysicalAddress, UINTN *KernelImageSize, LOS_BOOT_CONTEXT_LOAD_SEGMENT *KernelLoadSegments, UINT64 *KernelLoadSegmentCount);
 EFI_STATUS LosMonitorReadTextFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL *Root, const CHAR16 *TextPath, CHAR16 **TextBuffer);
+EFI_STATUS LosMonitorReadBinaryFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL *Root, const CHAR16 *FilePath, UINT64 *FilePhysicalAddress, UINT64 *FileSize);
+EFI_STATUS LosMonitorReadBinaryFileFromSiblingFileSystemHandle(EFI_HANDLE DeviceHandle, EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *FilePath, UINT64 *FilePhysicalAddress, UINT64 *FileSize);
 EFI_STATUS LosMonitorExitBootServicesWithMemoryMap(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable, LOS_BOOT_CONTEXT *BootContext);
 
 #endif

@@ -705,6 +705,10 @@ static void ReserveBootstrapRanges(const LOS_BOOT_CONTEXT *BootContext)
     {
         LosX64ReservePhysicalRange(BootContext->MemoryMapAddress, BootContext->MemoryMapBufferSize, LOS_X64_PHYSICAL_FRAME_RESERVED_MEMORY_MAP);
     }
+    if (BootContext->KernelFontPhysicalAddress != 0ULL && BootContext->KernelFontSize != 0ULL)
+    {
+        LosX64ReservePhysicalRange(BootContext->KernelFontPhysicalAddress, BootContext->KernelFontSize, LOS_X64_PHYSICAL_FRAME_RESERVED_KERNEL_FONT);
+    }
 
     LosX64ReservePhysicalRange(LosX64GetBootstrapPageTableStorageBase(), LosX64GetBootstrapPageTableStorageSize(), LOS_X64_PHYSICAL_FRAME_RESERVED_BOOTSTRAP_PAGE_TABLES);
     LosX64ReservePhysicalRange(LosX64GetBootstrapTransitionStackBase(), LosX64GetBootstrapTransitionStackSize(), LOS_X64_PHYSICAL_FRAME_RESERVED_BOOTSTRAP_STACK);

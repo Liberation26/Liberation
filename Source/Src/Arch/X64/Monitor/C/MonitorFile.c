@@ -175,3 +175,111 @@ EFI_STATUS LosMonitorReadTextFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FIL
     (*TextBuffer)[CharacterCount] = 0;
     return EFI_SUCCESS;
 }
+
+EFI_STATUS LosMonitorReadBinaryFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL *Root, const CHAR16 *FilePath, UINT64 *FilePhysicalAddress, UINT64 *FileSize)
+{
+    EFI_FILE_PROTOCOL *File;
+    EFI_STATUS Status;
+    UINT8 FileInfoBuffer[LOS_KERNEL_PATH_MAX_INFO_BUFFER];
+    EFI_FILE_INFO *FileInfo;
+    UINTN ReadSize;
+    UINTN PageCount;
+    UINT64 PhysicalAddress;
+
+    if (SystemTable == 0 || SystemTable->BootServices == 0 || Root == 0 || FilePath == 0 || FilePhysicalAddress == 0 || FileSize == 0)
+    {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    *FilePhysicalAddress = 0ULL;
+    *FileSize = 0ULL;
+    File = 0;
+    Status = Root->Open(Root, &File, (CHAR16 *)FilePath, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(Status) || File == 0)
+    {
+        return Status;
+    }
+
+    FileInfo = (EFI_FILE_INFO *)(void *)FileInfoBuffer;
+    Status = LosMonitorReadFileInfo(File, FileInfo, sizeof(FileInfoBuffer));
+    if (EFI_ERROR(Status) || FileInfo->FileSize == 0ULL)
+    {
+        File->Close(File);
+        return EFI_NOT_FOUND;
+    }
+
+    PageCount = (UINTN)((FileInfo->FileSize + (LOS_PAGE_SIZE - 1ULL)) / LOS_PAGE_SIZE);
+    PhysicalAddress = 0ULL;
+    Status = SystemTable->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, PageCount, &PhysicalAddress);
+    if (EFI_ERROR(Status) || PhysicalAddress == 0ULL)
+    {
+        File->Close(File);
+        return Status;
+    }
+
+    LosMonitorMemorySet((void *)(UINTN)PhysicalAddress, 0, PageCount * (UINTN)LOS_PAGE_SIZE);
+    ReadSize = (UINTN)FileInfo->FileSize;
+    Status = File->Read(File, &ReadSize, (void *)(UINTN)PhysicalAddress);
+    File->Close(File);
+    if (EFI_ERROR(Status) || ReadSize != (UINTN)FileInfo->FileSize)
+    {
+        SystemTable->BootServices->FreePages(PhysicalAddress, PageCount);
+        return EFI_LOAD_ERROR;
+    }
+
+    *FilePhysicalAddress = PhysicalAddress;
+    *FileSize = (UINT64)FileInfo->FileSize;
+    return EFI_SUCCESS;
+}
+
+EFI_STATUS LosMonitorReadBinaryFileFromSiblingFileSystemHandle(EFI_HANDLE DeviceHandle, EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *FilePath, UINT64 *FilePhysicalAddress, UINT64 *FileSize)
+{
+    EFI_HANDLE *Handles;
+    UINTN HandleCount;
+    UINTN HandleIndex;
+    EFI_STATUS Status;
+
+    if (SystemTable == 0 || FilePath == 0 || FilePhysicalAddress == 0 || FileSize == 0)
+    {
+        return EFI_INVALID_PARAMETER;
+    }
+
+    *FilePhysicalAddress = 0ULL;
+    *FileSize = 0ULL;
+    Handles = 0;
+    HandleCount = 0U;
+    Status = LosMonitorLocateHandleBufferByProtocol(SystemTable, (EFI_GUID *)&EfiSimpleFileSystemProtocolGuid, &Handles, &HandleCount);
+    if (EFI_ERROR(Status))
+    {
+        return Status;
+    }
+
+    for (HandleIndex = 0U; HandleIndex < HandleCount; ++HandleIndex)
+    {
+        EFI_FILE_PROTOCOL *Root;
+        EFI_STATUS ReadStatus;
+
+        if (Handles[HandleIndex] == DeviceHandle)
+        {
+            continue;
+        }
+
+        Root = 0;
+        Status = LosMonitorOpenRootForHandle(SystemTable, Handles[HandleIndex], &Root);
+        if (EFI_ERROR(Status) || Root == 0)
+        {
+            continue;
+        }
+
+        ReadStatus = LosMonitorReadBinaryFileFromRoot(SystemTable, Root, FilePath, FilePhysicalAddress, FileSize);
+        Root->Close(Root);
+        if (!EFI_ERROR(ReadStatus))
+        {
+            SystemTable->BootServices->FreePool(Handles);
+            return EFI_SUCCESS;
+        }
+    }
+
+    SystemTable->BootServices->FreePool(Handles);
+    return EFI_NOT_FOUND;
+}

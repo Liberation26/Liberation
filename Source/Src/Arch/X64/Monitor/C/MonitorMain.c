@@ -3,9 +3,59 @@
 static const CHAR16 *const KernelPathDataPartition = LOS_TEXT("\\LIBERATION\\KERNELX64.ELF");
 static const CHAR16 *const KernelPathEspFallback = LOS_TEXT("\\EFI\\BOOT\\KERNELX64.ELF");
 static const CHAR16 *const BootInfoPath = LOS_TEXT("\\EFI\\BOOT\\BOOTINFO.TXT");
+static const CHAR16 *const BootFontPathDataPartition = LOS_TEXT("\\LIBERATION\\FONTS\\Boot.psf");
+static const CHAR16 *const BootFontPathEspFallback = LOS_TEXT("\\EFI\\BOOT\\Boot.psf");
 static const CHAR16 *const DefaultBootInfoText = LOS_TEXT("Booting from an installed Liberation drive\r\n");
 static const CHAR16 *const DataPartitionText = LOS_TEXT("Kernel partition: Partition 2 (Liberation Data)\r\n");
 static const CHAR16 *const EspPartitionText = LOS_TEXT("Kernel partition: Partition 1 (EFI System Partition)\r\n");
+
+static void LoadBootFont(EFI_HANDLE ParentDeviceHandle, EFI_SYSTEM_TABLE *SystemTable, UINT64 *FontPhysicalAddress, UINT64 *FontSize)
+{
+    EFI_FILE_PROTOCOL *Root;
+    EFI_STATUS Status;
+
+    if (FontPhysicalAddress == 0 || FontSize == 0)
+    {
+        return;
+    }
+
+    *FontPhysicalAddress = 0ULL;
+    *FontSize = 0ULL;
+    Root = 0;
+
+    if (ParentDeviceHandle != 0)
+    {
+        Status = LosMonitorOpenRootForHandle(SystemTable, ParentDeviceHandle, &Root);
+        if (!EFI_ERROR(Status) && Root != 0)
+        {
+            Status = LosMonitorReadBinaryFileFromRoot(SystemTable, Root, BootFontPathDataPartition, FontPhysicalAddress, FontSize);
+            if (EFI_ERROR(Status))
+            {
+                Status = LosMonitorReadBinaryFileFromRoot(SystemTable, Root, BootFontPathEspFallback, FontPhysicalAddress, FontSize);
+            }
+            Root->Close(Root);
+            Root = 0;
+            if (!EFI_ERROR(Status) && *FontPhysicalAddress != 0ULL && *FontSize != 0ULL)
+            {
+                LosMonitorTraceHex64(SystemTable, LOS_TEXT("Kernel boot font physical base from boot device: "), *FontPhysicalAddress);
+                LosMonitorTraceHex64(SystemTable, LOS_TEXT("Kernel boot font bytes from boot device: "), *FontSize);
+                return;
+            }
+        }
+    }
+
+    Status = LosMonitorReadBinaryFileFromSiblingFileSystemHandle(ParentDeviceHandle, SystemTable, BootFontPathDataPartition, FontPhysicalAddress, FontSize);
+    if (!EFI_ERROR(Status) && *FontPhysicalAddress != 0ULL && *FontSize != 0ULL)
+    {
+        LosMonitorTraceHex64(SystemTable, LOS_TEXT("Kernel boot font physical base from sibling filesystem: "), *FontPhysicalAddress);
+        LosMonitorTraceHex64(SystemTable, LOS_TEXT("Kernel boot font bytes from sibling filesystem: "), *FontSize);
+        return;
+    }
+
+    LosMonitorTraceStatus(SystemTable, LOS_TEXT("Kernel boot font load status: "), Status);
+    *FontPhysicalAddress = 0ULL;
+    *FontSize = 0ULL;
+}
 
 EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
@@ -17,6 +67,8 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
     void *KernelBuffer;
     UINT64 KernelPhysicalBase;
     UINTN KernelSize;
+    UINT64 KernelFontPhysicalAddress;
+    UINT64 KernelFontSize;
     CHAR16 *BootInfoBuffer;
     const CHAR16 *BootInfoText;
     const CHAR16 *KernelPartitionText;
@@ -40,6 +92,8 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
     KernelBuffer = 0;
     KernelPhysicalBase = 0ULL;
     KernelSize = 0U;
+    KernelFontPhysicalAddress = 0ULL;
+    KernelFontSize = 0ULL;
     BootInfoBuffer = 0;
     BootInfoText = DefaultBootInfoText;
     KernelPartitionText = LOS_TEXT("Kernel partition: unknown\r\n");
@@ -144,6 +198,8 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
         LosMonitorHaltForever();
     }
 
+    LoadBootFont(ParentDeviceHandle, SystemTable, &KernelFontPhysicalAddress, &KernelFontSize);
+
     Status = SystemTable->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, BootContextPageCount, &BootContextAddress);
     if (EFI_ERROR(Status) || BootContextAddress == 0ULL)
     {
@@ -163,9 +219,13 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
         KernelLoadSegmentCount,
         BootInfoText,
         KernelPartitionText);
+    BootContext->KernelFontPhysicalAddress = KernelFontPhysicalAddress;
+    BootContext->KernelFontSize = KernelFontSize;
     LosMonitorCaptureFramebufferInfo(SystemTable, BootContext);
     LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot context address: "), BootContext->BootContextAddress);
     LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot context bytes: "), BootContext->BootContextSize);
+    LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot font physical address: "), BootContext->KernelFontPhysicalAddress);
+    LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot font size: "), BootContext->KernelFontSize);
 
     LosMonitorStatusOk(SystemTable, LOS_TEXT("Kernel monitor preparing final handoff to the kernel."));
     LosMonitorStatusOk(SystemTable, LOS_TEXT("Kernel monitor exiting UEFI boot services."));
