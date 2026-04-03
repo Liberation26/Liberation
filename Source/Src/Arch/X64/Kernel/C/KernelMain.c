@@ -349,8 +349,8 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosX64DescribeMemoryManagerHandoff();
     LosKernelTraceOk("Kernel now owns deliberate paging structures.");
     LosKernelTraceOk("Dedicated kernel stack mapping is active.");
-    LosKernelTraceOk("Page-map/unmap primitives are ready for the future userland memory manager.");
-    LosKernelTraceOk("Frame reservation/claim primitives are active for bootstrap memory ownership.");
+    LosKernelTraceOk("QueryMemoryRegions, ReserveFrames, and ClaimFrames are ready for the future userland memory manager.");
+    LosKernelTraceOk("MapPages and UnmapPages are ready for explicit address-space work.");
     LosKernelTraceOk("Memory manager remains a userland service.");
 
     LosKernelHaltForever();

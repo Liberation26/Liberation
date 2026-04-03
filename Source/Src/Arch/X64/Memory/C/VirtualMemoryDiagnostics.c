@@ -81,6 +81,10 @@ void LosX64DescribePhysicalMemoryState(void)
     LosKernelSerialWriteUnsigned(Handoff->TotalMmioBytes);
     LosKernelSerialWriteText("\n");
 
+    LosKernelSerialWriteText("[Kernel] Total ACPI/NVS memory: ");
+    LosKernelSerialWriteUnsigned(Handoff->TotalAcpiBytes);
+    LosKernelSerialWriteText("\n");
+
     LosKernelSerialWriteText("[Kernel] Total unusable memory: ");
     LosKernelSerialWriteUnsigned(Handoff->TotalUnusableBytes);
     LosKernelSerialWriteText("\n");
@@ -154,7 +158,7 @@ void LosX64DescribeMemoryManagerHandoff(void)
     const LOS_X64_MEMORY_MANAGER_HANDOFF *Handoff;
 
     Handoff = LosX64GetMemoryManagerHandoff();
-    LosKernelSerialWriteText("[Kernel] Memory-manager handoff database: ");
+    LosKernelSerialWriteText("[Kernel] Memory-manager normalized region table: ");
     LosKernelSerialWriteHex64(Handoff->RegionDatabaseAddress);
     LosKernelSerialWriteText(" regions=");
     LosKernelSerialWriteUnsigned(Handoff->RegionCount);

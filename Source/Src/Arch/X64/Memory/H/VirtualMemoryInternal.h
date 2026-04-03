@@ -31,8 +31,8 @@
 #define LOS_X64_KERNEL_STACK_TOP (LOS_X64_KERNEL_STACK_BASE + ((LOS_X64_KERNEL_STACK_GUARD_PAGES + LOS_X64_KERNEL_STACK_COMMITTED_PAGES) * 4096ULL))
 #define LOS_X64_PAGE_TABLE_POOL_PAGES 512U
 #define LOS_X64_MAX_PHYSICAL_MEMORY_DESCRIPTORS 512U
-#define LOS_X64_MAX_PHYSICAL_FRAME_REGIONS 2048U
-#define LOS_X64_MAX_MEMORY_REGIONS 2048U
+#define LOS_X64_MAX_PHYSICAL_FRAME_REGIONS 4096U
+#define LOS_X64_MAX_MEMORY_REGIONS 4096U
 #define LOS_X64_BOOTSTRAP_TRANSITION_STACK_PAGES 8U
 #define LOS_X64_BOOTSTRAP_TRANSITION_STACK_BYTES (LOS_X64_BOOTSTRAP_TRANSITION_STACK_PAGES * 4096U)
 #define LOS_X64_BOOTSTRAP_SECTION __attribute__((section(".bootstrap.text")))
@@ -208,6 +208,9 @@ UINTN LosX64GetPhysicalMemoryDescriptorCount(void);
 const LOS_X64_PHYSICAL_MEMORY_DESCRIPTOR *LosX64GetPhysicalMemoryDescriptor(UINTN Index);
 BOOLEAN LosX64IsPhysicalRangeDiscovered(UINT64 PhysicalAddress, UINT64 Length);
 BOOLEAN LosX64IsPhysicalRangeDirectMapCandidate(UINT64 PhysicalAddress, UINT64 Length);
+BOOLEAN LosX64TryTranslateKernelVirtualToPhysical(UINT64 VirtualAddress, UINT64 *PhysicalAddress);
+UINT64 LosX64GetCurrentPageMapLevel4PhysicalAddress(void);
+void *LosX64GetDirectMapVirtualAddress(UINT64 PhysicalAddress, UINT64 Length);
 BOOLEAN LosX64MapVirtualRangeUnchecked(UINT64 VirtualAddress, UINT64 PhysicalAddress, UINTN PageCount, UINT64 Flags);
 
 extern char __LosKernelBootstrapEnd[];

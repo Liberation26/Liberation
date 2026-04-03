@@ -242,6 +242,392 @@ static void LosX64InvalidatePage(UINT64 VirtualAddress)
 }
 
 LOS_X64_BOOTSTRAP_SECTION
+static void LosX64ZeroPageTable(UINT64 *Table)
+{
+    UINTN Index;
+
+    for (Index = 0U; Index < 512U; ++Index)
+    {
+        Table[Index] = 0ULL;
+    }
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static UINT64 *LosX64GetPageTableVirtualFromPhysical(UINT64 PhysicalAddress)
+{
+    return (UINT64 *)LosX64GetDirectMapVirtualAddress(PhysicalAddress, 4096ULL);
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static BOOLEAN LosX64ResolveTargetPageMapLevel4(UINT64 RequestedPhysicalAddress, UINT64 *ResolvedPhysicalAddress, UINT64 **PageMapLevel4)
+{
+    UINT64 TargetPhysicalAddress;
+
+    if (ResolvedPhysicalAddress == 0 || PageMapLevel4 == 0)
+    {
+        return 0;
+    }
+
+    TargetPhysicalAddress = RequestedPhysicalAddress == 0ULL ? LosX64GetCurrentPageMapLevel4PhysicalAddress() : RequestedPhysicalAddress;
+    if ((TargetPhysicalAddress & 0xFFFULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    *PageMapLevel4 = LosX64GetPageTableVirtualFromPhysical(TargetPhysicalAddress);
+    if (*PageMapLevel4 == 0)
+    {
+        return 0;
+    }
+
+    *ResolvedPhysicalAddress = TargetPhysicalAddress;
+    return 1;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static BOOLEAN LosX64AllocatePageTableForTarget(UINT64 *PhysicalAddress, UINT64 **VirtualAddress)
+{
+    UINT64 *NewTable;
+    UINT64 NewPhysicalAddress;
+
+    if (PhysicalAddress == 0 || VirtualAddress == 0)
+    {
+        return 0;
+    }
+
+    NewTable = LosX64AllocatePageTablePage();
+    if (NewTable == 0)
+    {
+        return 0;
+    }
+
+    LosX64ZeroPageTable(NewTable);
+    if (!LosX64TryTranslateKernelVirtualToPhysical((UINT64)(UINTN)NewTable, &NewPhysicalAddress))
+    {
+        return 0;
+    }
+
+    *PhysicalAddress = NewPhysicalAddress;
+    *VirtualAddress = NewTable;
+    return 1;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static UINT32 LosX64MapSinglePageIntoAddressSpace(UINT64 PageMapLevel4PhysicalAddress, UINT64 VirtualAddress, UINT64 PhysicalAddress, UINT64 Flags, UINT32 RequestFlags)
+{
+    UINT64 *PageMapLevel4;
+    UINT64 *PageDirectoryPointerTable;
+    UINT64 *PageDirectory;
+    UINT64 *PageTable;
+    UINT64 NewTablePhysicalAddress;
+    UINT64 CurrentRootPhysicalAddress;
+    UINT64 ParentEntryFlags;
+    UINT16 Pml4Index;
+    UINT16 PdptIndex;
+    UINT16 PdIndex;
+    UINT16 PtIndex;
+
+    if ((VirtualAddress & 0xFFFULL) != 0ULL || (PhysicalAddress & 0xFFFULL) != 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    }
+
+    if (!LosX64IsPhysicalRangeDiscovered(PhysicalAddress, 4096ULL))
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+
+    PageMapLevel4 = LosX64GetPageTableVirtualFromPhysical(PageMapLevel4PhysicalAddress);
+    if (PageMapLevel4 == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+
+    ParentEntryFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_WRITABLE;
+    if ((Flags & LOS_X64_PAGE_USER) != 0ULL)
+    {
+        ParentEntryFlags |= LOS_X64_PAGE_USER;
+    }
+
+    Pml4Index = LosX64GetPml4Index(VirtualAddress);
+    PdptIndex = LosX64GetPdptIndex(VirtualAddress);
+    PdIndex = LosX64GetPdIndex(VirtualAddress);
+    PtIndex = LosX64GetPtIndex(VirtualAddress);
+
+    if ((PageMapLevel4[Pml4Index] & LOS_X64_PAGE_PRESENT) == 0ULL)
+    {
+        if (!LosX64AllocatePageTableForTarget(&NewTablePhysicalAddress, &PageDirectoryPointerTable))
+        {
+            return LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        }
+        PageMapLevel4[Pml4Index] = NewTablePhysicalAddress | ParentEntryFlags;
+    }
+
+    PageDirectoryPointerTable = LosX64GetPageTableVirtualFromPhysical(PageMapLevel4[Pml4Index] & LOS_X64_PAGE_TABLE_ADDRESS_MASK);
+    if (PageDirectoryPointerTable == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+    if ((PageDirectoryPointerTable[PdptIndex] & LOS_X64_PAGE_LARGE) != 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+    }
+    if ((PageDirectoryPointerTable[PdptIndex] & LOS_X64_PAGE_PRESENT) == 0ULL)
+    {
+        if (!LosX64AllocatePageTableForTarget(&NewTablePhysicalAddress, &PageDirectory))
+        {
+            return LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        }
+        PageDirectoryPointerTable[PdptIndex] = NewTablePhysicalAddress | ParentEntryFlags;
+    }
+
+    PageDirectory = LosX64GetPageTableVirtualFromPhysical(PageDirectoryPointerTable[PdptIndex] & LOS_X64_PAGE_TABLE_ADDRESS_MASK);
+    if (PageDirectory == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+    if ((PageDirectory[PdIndex] & LOS_X64_PAGE_LARGE) != 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+    }
+    if ((PageDirectory[PdIndex] & LOS_X64_PAGE_PRESENT) == 0ULL)
+    {
+        if (!LosX64AllocatePageTableForTarget(&NewTablePhysicalAddress, &PageTable))
+        {
+            return LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        }
+        PageDirectory[PdIndex] = NewTablePhysicalAddress | ParentEntryFlags;
+    }
+
+    PageTable = LosX64GetPageTableVirtualFromPhysical(PageDirectory[PdIndex] & LOS_X64_PAGE_TABLE_ADDRESS_MASK);
+    if (PageTable == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+    if ((PageTable[PtIndex] & LOS_X64_PAGE_PRESENT) != 0ULL && (RequestFlags & LOS_X64_MAP_PAGES_FLAG_ALLOW_REMAP) == 0U)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+    }
+
+    PageTable[PtIndex] = (PhysicalAddress & LOS_X64_PAGE_TABLE_ADDRESS_MASK) | (Flags & ~LOS_X64_PAGE_TABLE_ADDRESS_MASK) | LOS_X64_PAGE_PRESENT;
+    CurrentRootPhysicalAddress = LosX64GetCurrentPageMapLevel4PhysicalAddress();
+    if (CurrentRootPhysicalAddress == PageMapLevel4PhysicalAddress)
+    {
+        LosX64InvalidatePage(VirtualAddress);
+    }
+
+    return LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static UINT32 LosX64UnmapSinglePageFromAddressSpace(UINT64 PageMapLevel4PhysicalAddress, UINT64 VirtualAddress, UINT32 RequestFlags)
+{
+    UINT64 *PageMapLevel4;
+    UINT64 *PageDirectoryPointerTable;
+    UINT64 *PageDirectory;
+    UINT64 *PageTable;
+    UINT64 CurrentRootPhysicalAddress;
+    UINT16 Pml4Index;
+    UINT16 PdptIndex;
+    UINT16 PdIndex;
+    UINT16 PtIndex;
+
+    if ((VirtualAddress & 0xFFFULL) != 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    }
+
+    PageMapLevel4 = LosX64GetPageTableVirtualFromPhysical(PageMapLevel4PhysicalAddress);
+    if (PageMapLevel4 == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+
+    Pml4Index = LosX64GetPml4Index(VirtualAddress);
+    PdptIndex = LosX64GetPdptIndex(VirtualAddress);
+    PdIndex = LosX64GetPdIndex(VirtualAddress);
+    PtIndex = LosX64GetPtIndex(VirtualAddress);
+    CurrentRootPhysicalAddress = LosX64GetCurrentPageMapLevel4PhysicalAddress();
+
+    if ((PageMapLevel4[Pml4Index] & LOS_X64_PAGE_PRESENT) == 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+    }
+
+    PageDirectoryPointerTable = LosX64GetPageTableVirtualFromPhysical(PageMapLevel4[Pml4Index] & LOS_X64_PAGE_TABLE_ADDRESS_MASK);
+    if (PageDirectoryPointerTable == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+    if ((PageDirectoryPointerTable[PdptIndex] & LOS_X64_PAGE_PRESENT) == 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+    }
+    if ((PageDirectoryPointerTable[PdptIndex] & LOS_X64_PAGE_LARGE) != 0ULL)
+    {
+        if ((RequestFlags & LOS_X64_UNMAP_PAGES_FLAG_ALLOW_LARGE) == 0U)
+        {
+            return LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+        }
+        PageDirectoryPointerTable[PdptIndex] = 0ULL;
+        if (CurrentRootPhysicalAddress == PageMapLevel4PhysicalAddress)
+        {
+            LosX64InvalidatePage(VirtualAddress);
+        }
+        return LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    }
+
+    PageDirectory = LosX64GetPageTableVirtualFromPhysical(PageDirectoryPointerTable[PdptIndex] & LOS_X64_PAGE_TABLE_ADDRESS_MASK);
+    if (PageDirectory == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+    if ((PageDirectory[PdIndex] & LOS_X64_PAGE_PRESENT) == 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+    }
+    if ((PageDirectory[PdIndex] & LOS_X64_PAGE_LARGE) != 0ULL)
+    {
+        if ((RequestFlags & LOS_X64_UNMAP_PAGES_FLAG_ALLOW_LARGE) == 0U)
+        {
+            return LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+        }
+        PageDirectory[PdIndex] = 0ULL;
+        if (CurrentRootPhysicalAddress == PageMapLevel4PhysicalAddress)
+        {
+            LosX64InvalidatePage(VirtualAddress);
+        }
+        return LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    }
+
+    PageTable = LosX64GetPageTableVirtualFromPhysical(PageDirectory[PdIndex] & LOS_X64_PAGE_TABLE_ADDRESS_MASK);
+    if (PageTable == 0)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+    }
+    if ((PageTable[PtIndex] & LOS_X64_PAGE_PRESENT) == 0ULL)
+    {
+        return LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+    }
+
+    PageTable[PtIndex] = 0ULL;
+    if (CurrentRootPhysicalAddress == PageMapLevel4PhysicalAddress)
+    {
+        LosX64InvalidatePage(VirtualAddress);
+    }
+    return LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+void LosX64MapPages(const LOS_X64_MAP_PAGES_REQUEST *Request, LOS_X64_MAP_PAGES_RESULT *Result)
+{
+    UINT64 PageMapLevel4PhysicalAddress;
+    UINT64 *PageMapLevel4;
+    UINT64 PhysicalAddress;
+    UINT64 VirtualAddress;
+    UINT64 PageIndex;
+    UINT32 Status;
+
+    LOS_KERNEL_ENTER();
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->TargetPageMapLevel4PhysicalAddress = 0ULL;
+    Result->PagesProcessed = 0ULL;
+    Result->LastVirtualAddress = 0ULL;
+
+    if (Request == 0 || Request->PageCount == 0ULL)
+    {
+        return;
+    }
+
+    if (!LosX64ResolveTargetPageMapLevel4(Request->PageMapLevel4PhysicalAddress, &PageMapLevel4PhysicalAddress, &PageMapLevel4))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+        return;
+    }
+    (void)PageMapLevel4;
+
+    PhysicalAddress = Request->PhysicalAddress;
+    VirtualAddress = Request->VirtualAddress;
+    for (PageIndex = 0ULL; PageIndex < Request->PageCount; ++PageIndex)
+    {
+        Status = LosX64MapSinglePageIntoAddressSpace(PageMapLevel4PhysicalAddress, VirtualAddress, PhysicalAddress, Request->PageFlags, Request->Flags);
+        if (Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+        {
+            Result->Status = Status;
+            Result->TargetPageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
+            return;
+        }
+
+        Result->PagesProcessed += 1ULL;
+        Result->LastVirtualAddress = VirtualAddress;
+        VirtualAddress += 4096ULL;
+        PhysicalAddress += 4096ULL;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->TargetPageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+void LosX64UnmapPages(const LOS_X64_UNMAP_PAGES_REQUEST *Request, LOS_X64_UNMAP_PAGES_RESULT *Result)
+{
+    UINT64 PageMapLevel4PhysicalAddress;
+    UINT64 *PageMapLevel4;
+    UINT64 VirtualAddress;
+    UINT64 PageIndex;
+    UINT32 Status;
+
+    LOS_KERNEL_ENTER();
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->TargetPageMapLevel4PhysicalAddress = 0ULL;
+    Result->PagesProcessed = 0ULL;
+    Result->LastVirtualAddress = 0ULL;
+
+    if (Request == 0 || Request->PageCount == 0ULL)
+    {
+        return;
+    }
+
+    if (!LosX64ResolveTargetPageMapLevel4(Request->PageMapLevel4PhysicalAddress, &PageMapLevel4PhysicalAddress, &PageMapLevel4))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+        return;
+    }
+    (void)PageMapLevel4;
+
+    VirtualAddress = Request->VirtualAddress;
+    for (PageIndex = 0ULL; PageIndex < Request->PageCount; ++PageIndex)
+    {
+        Status = LosX64UnmapSinglePageFromAddressSpace(PageMapLevel4PhysicalAddress, VirtualAddress, Request->Flags);
+        if (Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+        {
+            Result->Status = Status;
+            Result->TargetPageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
+            return;
+        }
+
+        Result->PagesProcessed += 1ULL;
+        Result->LastVirtualAddress = VirtualAddress;
+        VirtualAddress += 4096ULL;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->TargetPageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
 BOOLEAN LosX64UnmapVirtualPage(UINT64 VirtualAddress)
 {
     UINT64 *PageMapLevel4;

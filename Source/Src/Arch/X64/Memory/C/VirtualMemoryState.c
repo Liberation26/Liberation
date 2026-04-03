@@ -1,6 +1,12 @@
 #include "VirtualMemoryInternal.h"
 #include "InterruptsInternal.h"
 
+typedef struct
+{
+    UINT64 BaseAddress;
+    UINT64 Length;
+} LOS_X64_PHYSICAL_SPAN;
+
 static const char LosKernelStackBackingPhysicalStartPrefix[] LOS_X64_BOOTSTRAP_RODATA = "[Kernel] Higher-half stack backing physical start: ";
 static const char LosKernelStackBackingPhysicalEndPrefix[] LOS_X64_BOOTSTRAP_RODATA = "[Kernel] Higher-half stack backing physical end: ";
 static const char LosKernelStackBackingVirtualStartPrefix[] LOS_X64_BOOTSTRAP_RODATA = "[Kernel] Higher-half stack virtual start: ";
@@ -18,12 +24,18 @@ static UINT8 LosBootstrapTransitionStack[LOS_X64_BOOTSTRAP_TRANSITION_STACK_BYTE
 static LOS_X64_PHYSICAL_MEMORY_DESCRIPTOR LosPhysicalMemoryDescriptors[LOS_X64_MAX_PHYSICAL_MEMORY_DESCRIPTORS] LOS_X64_BOOTSTRAP_DATA;
 static LOS_X64_PHYSICAL_FRAME_REGION LosPhysicalFrameRegions[LOS_X64_MAX_PHYSICAL_FRAME_REGIONS] LOS_X64_BOOTSTRAP_DATA;
 static LOS_X64_PHYSICAL_FRAME_REGION LosPhysicalFrameRegionScratch[LOS_X64_MAX_PHYSICAL_FRAME_REGIONS] LOS_X64_BOOTSTRAP_DATA;
+static LOS_X64_MEMORY_REGION LosBaseMemoryRegions[LOS_X64_MAX_MEMORY_REGIONS] LOS_X64_BOOTSTRAP_DATA;
+static LOS_X64_MEMORY_REGION LosOverlayMemoryRegions[LOS_X64_MAX_MEMORY_REGIONS] LOS_X64_BOOTSTRAP_DATA;
 static LOS_X64_MEMORY_REGION LosMemoryRegions[LOS_X64_MAX_MEMORY_REGIONS] LOS_X64_BOOTSTRAP_DATA;
+static LOS_X64_MEMORY_REGION LosMemoryRegionScratch[LOS_X64_MAX_MEMORY_REGIONS] LOS_X64_BOOTSTRAP_DATA;
+static LOS_X64_PHYSICAL_SPAN LosPhysicalSpanScratch[LOS_X64_MAX_PHYSICAL_FRAME_REGIONS] LOS_X64_BOOTSTRAP_DATA;
 static LOS_X64_MEMORY_MANAGER_HANDOFF LosMemoryManagerHandoff LOS_X64_BOOTSTRAP_DATA;
 static LOS_X64_VIRTUAL_MEMORY_LAYOUT LosLayout __attribute__((section(".bootstrap.data")));
 static UINTN LosPageTablePoolNextIndex __attribute__((section(".bootstrap.data")));
 static UINTN LosPhysicalMemoryDescriptorCount __attribute__((section(".bootstrap.data")));
 static UINTN LosPhysicalFrameRegionCount __attribute__((section(".bootstrap.data")));
+static UINTN LosBaseMemoryRegionCount __attribute__((section(".bootstrap.data")));
+static UINTN LosOverlayMemoryRegionCount __attribute__((section(".bootstrap.data")));
 static UINTN LosMemoryRegionCount __attribute__((section(".bootstrap.data")));
 static UINT64 LosAddressSpaceGapBytes __attribute__((section(".bootstrap.data")));
 
@@ -180,12 +192,16 @@ static UINT32 GetMemoryRegionSourceForReservationKind(UINT32 ReservationKind)
         return LOS_X64_MEMORY_REGION_SOURCE_KERNEL;
     }
 
-    if (ReservationKind == LOS_X64_MEMORY_REGION_OWNER_CLAIMED)
+    if (ReservationKind == LOS_X64_MEMORY_REGION_OWNER_BOOT_CONTEXT ||
+        ReservationKind == LOS_X64_MEMORY_REGION_OWNER_MEMORY_MAP ||
+        ReservationKind == LOS_X64_MEMORY_REGION_OWNER_BOOTSTRAP_PAGE_TABLES ||
+        ReservationKind == LOS_X64_MEMORY_REGION_OWNER_BOOTSTRAP_STACK ||
+        ReservationKind == LOS_X64_MEMORY_REGION_OWNER_DEBUG)
     {
-        return LOS_X64_MEMORY_REGION_SOURCE_RUNTIME;
+        return LOS_X64_MEMORY_REGION_SOURCE_BOOTSTRAP;
     }
 
-    return LOS_X64_MEMORY_REGION_SOURCE_BOOTSTRAP;
+    return LOS_X64_MEMORY_REGION_SOURCE_RUNTIME;
 }
 
 LOS_X64_BOOTSTRAP_SECTION
@@ -194,7 +210,7 @@ static UINT32 GetMemoryRegionFlagsForReservationKind(UINT32 ReservationKind)
     UINT32 Flags;
 
     Flags = LOS_X64_MEMORY_REGION_FLAG_OVERLAY;
-    if (ReservationKind == LOS_X64_MEMORY_REGION_OWNER_CLAIMED)
+    if (GetMemoryRegionSourceForReservationKind(ReservationKind) == LOS_X64_MEMORY_REGION_SOURCE_RUNTIME)
     {
         Flags |= LOS_X64_MEMORY_REGION_FLAG_CLAIMED;
     }
@@ -240,21 +256,111 @@ static BOOLEAN AppendMemoryRegionToArray(LOS_X64_MEMORY_REGION *Array, UINTN *Co
 }
 
 LOS_X64_BOOTSTRAP_SECTION
-static BOOLEAN AppendMemoryRegion(UINT64 BaseAddress, UINT64 Length, UINT32 Type, UINT32 Flags, UINT32 Owner, UINT32 Source)
+static BOOLEAN AppendBaseMemoryRegion(UINT64 BaseAddress, UINT64 Length, UINT32 Type, UINT32 Flags, UINT32 Owner, UINT32 Source)
 {
-    return AppendMemoryRegionToArray(LosMemoryRegions, &LosMemoryRegionCount, BaseAddress, Length, Type, Flags, Owner, Source);
+    return AppendMemoryRegionToArray(LosBaseMemoryRegions, &LosBaseMemoryRegionCount, BaseAddress, Length, Type, Flags, Owner, Source);
 }
 
 LOS_X64_BOOTSTRAP_SECTION
-static BOOLEAN AddOverlayMemoryRegion(UINT64 BaseAddress, UINT64 Length, UINT32 ReservationKind)
+static BOOLEAN AppendOverlayMemoryRegionRecord(UINT64 BaseAddress, UINT64 Length, UINT32 ReservationKind)
 {
-    return AppendMemoryRegion(
+    return AppendMemoryRegionToArray(
+        LosOverlayMemoryRegions,
+        &LosOverlayMemoryRegionCount,
         BaseAddress,
         Length,
         LOS_X64_MEMORY_REGION_TYPE_BOOT_RESERVED,
         GetMemoryRegionFlagsForReservationKind(ReservationKind),
         ReservationKind,
         GetMemoryRegionSourceForReservationKind(ReservationKind));
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static BOOLEAN ApplyOverlayMemoryRegion(const LOS_X64_MEMORY_REGION *Overlay)
+{
+    UINTN SourceIndex;
+    UINTN ScratchCount;
+
+    ScratchCount = 0U;
+    for (SourceIndex = 0U; SourceIndex < LosMemoryRegionCount; ++SourceIndex)
+    {
+        const LOS_X64_MEMORY_REGION *SourceRegion;
+        UINT64 SourceEnd;
+        UINT64 OverlayEnd;
+        UINT64 OverlapBase;
+        UINT64 OverlapEnd;
+
+        SourceRegion = &LosMemoryRegions[SourceIndex];
+        SourceEnd = SourceRegion->Base + SourceRegion->Length;
+        OverlayEnd = Overlay->Base + Overlay->Length;
+        if (SourceEnd <= Overlay->Base || SourceRegion->Base >= OverlayEnd)
+        {
+            if (!AppendMemoryRegionToArray(LosMemoryRegionScratch, &ScratchCount, SourceRegion->Base, SourceRegion->Length, SourceRegion->Type, SourceRegion->Flags, SourceRegion->Owner, SourceRegion->Source))
+            {
+                return 0;
+            }
+            continue;
+        }
+
+        OverlapBase = Overlay->Base > SourceRegion->Base ? Overlay->Base : SourceRegion->Base;
+        OverlapEnd = OverlayEnd < SourceEnd ? OverlayEnd : SourceEnd;
+
+        if (SourceRegion->Base < OverlapBase)
+        {
+            if (!AppendMemoryRegionToArray(LosMemoryRegionScratch, &ScratchCount, SourceRegion->Base, OverlapBase - SourceRegion->Base, SourceRegion->Type, SourceRegion->Flags, SourceRegion->Owner, SourceRegion->Source))
+            {
+                return 0;
+            }
+        }
+
+        if (!AppendMemoryRegionToArray(LosMemoryRegionScratch, &ScratchCount, OverlapBase, OverlapEnd - OverlapBase, Overlay->Type, Overlay->Flags, Overlay->Owner, Overlay->Source))
+        {
+            return 0;
+        }
+
+        if (SourceEnd > OverlapEnd)
+        {
+            if (!AppendMemoryRegionToArray(LosMemoryRegionScratch, &ScratchCount, OverlapEnd, SourceEnd - OverlapEnd, SourceRegion->Type, SourceRegion->Flags, SourceRegion->Owner, SourceRegion->Source))
+            {
+                return 0;
+            }
+        }
+    }
+
+    for (SourceIndex = 0U; SourceIndex < ScratchCount; ++SourceIndex)
+    {
+        LosMemoryRegions[SourceIndex] = LosMemoryRegionScratch[SourceIndex];
+    }
+    LosMemoryRegionCount = ScratchCount;
+    return 1;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static BOOLEAN RebuildPublishedMemoryRegions(void)
+{
+    UINTN Index;
+
+    LosMemoryRegionCount = 0U;
+    for (Index = 0U; Index < LosBaseMemoryRegionCount; ++Index)
+    {
+        const LOS_X64_MEMORY_REGION *Region;
+
+        Region = &LosBaseMemoryRegions[Index];
+        if (!AppendMemoryRegionToArray(LosMemoryRegions, &LosMemoryRegionCount, Region->Base, Region->Length, Region->Type, Region->Flags, Region->Owner, Region->Source))
+        {
+            return 0;
+        }
+    }
+
+    for (Index = 0U; Index < LosOverlayMemoryRegionCount; ++Index)
+    {
+        if (!ApplyOverlayMemoryRegion(&LosOverlayMemoryRegions[Index]))
+        {
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 LOS_X64_BOOTSTRAP_SECTION
@@ -418,10 +524,11 @@ static void RefreshMemoryManagerHandoff(void)
     LosMemoryManagerHandoff.Version = LOS_X64_MEMORY_MANAGER_HANDOFF_VERSION;
     LosMemoryManagerHandoff.Reserved = 0U;
     LosMemoryManagerHandoff.Flags =
-        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_PAGE_MAP |
-        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_PAGE_UNMAP |
-        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_FRAME_RESERVE |
-        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_FRAME_CLAIM;
+        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_QUERY_MEMORY_REGIONS |
+        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_RESERVE_FRAMES |
+        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_CLAIM_FRAMES |
+        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_MAP_PAGES |
+        LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_UNMAP_PAGES;
     LosMemoryManagerHandoff.RegionDatabaseAddress = (UINT64)(UINTN)&LosMemoryRegions[0];
     LosMemoryManagerHandoff.RegionCount = (UINT64)LosMemoryRegionCount;
     LosMemoryManagerHandoff.RegionEntrySize = (UINT64)sizeof(LOS_X64_MEMORY_REGION);
@@ -644,12 +751,18 @@ void LosX64InitializeVirtualMemoryState(const LOS_BOOT_CONTEXT *BootContext)
     }
     ZeroBytes((UINT8 *)&LosPhysicalFrameRegions[0], sizeof(LosPhysicalFrameRegions));
     ZeroBytes((UINT8 *)&LosPhysicalFrameRegionScratch[0], sizeof(LosPhysicalFrameRegionScratch));
+    ZeroBytes((UINT8 *)&LosBaseMemoryRegions[0], sizeof(LosBaseMemoryRegions));
+    ZeroBytes((UINT8 *)&LosOverlayMemoryRegions[0], sizeof(LosOverlayMemoryRegions));
     ZeroBytes((UINT8 *)&LosMemoryRegions[0], sizeof(LosMemoryRegions));
+    ZeroBytes((UINT8 *)&LosMemoryRegionScratch[0], sizeof(LosMemoryRegionScratch));
+    ZeroBytes((UINT8 *)&LosPhysicalSpanScratch[0], sizeof(LosPhysicalSpanScratch));
     ZeroBytes((UINT8 *)&LosMemoryManagerHandoff, sizeof(LosMemoryManagerHandoff));
 
     LosPageTablePoolNextIndex = 0U;
     LosPhysicalMemoryDescriptorCount = 0U;
     LosPhysicalFrameRegionCount = 0U;
+    LosBaseMemoryRegionCount = 0U;
+    LosOverlayMemoryRegionCount = 0U;
     LosMemoryRegionCount = 0U;
     LosAddressSpaceGapBytes = 0ULL;
     LosLayout.BootstrapIdentityBase = 0ULL;
@@ -719,7 +832,7 @@ void LosX64BuildPhysicalMemoryState(const LOS_BOOT_CONTEXT *BootContext)
             LosX64BootstrapHaltForever();
         }
 
-        if (!AppendMemoryRegion(
+        if (!AppendBaseMemoryRegion(
                 SourceDescriptor->PhysicalStart,
                 Length,
                 ClassifyMemoryRegionType(SourceDescriptor->Type),
@@ -739,6 +852,11 @@ void LosX64BuildPhysicalMemoryState(const LOS_BOOT_CONTEXT *BootContext)
 
     LosAddressSpaceGapBytes = CalculateAddressSpaceGapBytes();
     LosLayout.HigherHalfDirectMapSize = HighestUsableEnd;
+    if (!RebuildPublishedMemoryRegions())
+    {
+        LosX64BootstrapSerialWriteText("[Kernel] Normalized memory-region database overflow.\n");
+        LosX64BootstrapHaltForever();
+    }
     RefreshMemoryManagerHandoff();
     ReserveBootstrapRanges(BootContext);
     RefreshMemoryManagerHandoff();
@@ -928,83 +1046,485 @@ BOOLEAN LosX64IsPhysicalRangeDirectMapCandidate(UINT64 PhysicalAddress, UINT64 L
 }
 
 LOS_X64_BOOTSTRAP_SECTION
-BOOLEAN LosX64ReservePhysicalRange(UINT64 PhysicalAddress, UINT64 Length, UINT32 ReservationKind)
+static BOOLEAN IsPowerOfTwo(UINT64 Value)
 {
-    UINT64 AlignedBase;
-    UINT64 AlignedEnd;
+    return Value != 0ULL && (Value & (Value - 1ULL)) == 0ULL;
+}
 
-    LOS_KERNEL_ENTER();
+LOS_X64_BOOTSTRAP_SECTION
+static UINT64 AlignUpToBoundary(UINT64 Value, UINT64 Alignment)
+{
+    return (Value + (Alignment - 1ULL)) & ~(Alignment - 1ULL);
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static BOOLEAN AppendPhysicalSpanToArray(LOS_X64_PHYSICAL_SPAN *Array, UINTN *Count, UINT64 BaseAddress, UINT64 Length)
+{
+    LOS_X64_PHYSICAL_SPAN *Span;
+
+    if (Length == 0ULL)
+    {
+        return 1;
+    }
+
+    if (*Count != 0U)
+    {
+        LOS_X64_PHYSICAL_SPAN *Previous;
+
+        Previous = &Array[*Count - 1U];
+        if (Previous->BaseAddress + Previous->Length == BaseAddress)
+        {
+            Previous->Length += Length;
+            return 1;
+        }
+    }
+
+    if (*Count >= LOS_X64_MAX_PHYSICAL_FRAME_REGIONS)
+    {
+        return 0;
+    }
+
+    Span = &Array[*Count];
+    Span->BaseAddress = BaseAddress;
+    Span->Length = Length;
+    *Count += 1U;
+    return 1;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static UINT64 CollectFreePhysicalSpans(UINT64 BaseAddress, UINT64 EndAddress, LOS_X64_PHYSICAL_SPAN *Array, UINTN *Count)
+{
+    UINTN Index;
+    UINT64 PagesFound;
+
+    *Count = 0U;
+    PagesFound = 0ULL;
+    for (Index = 0U; Index < LosPhysicalFrameRegionCount; ++Index)
+    {
+        const LOS_X64_PHYSICAL_FRAME_REGION *Region;
+        UINT64 RegionEnd;
+        UINT64 OverlapBase;
+        UINT64 OverlapEnd;
+
+        Region = &LosPhysicalFrameRegions[Index];
+        if (Region->State != LOS_X64_PHYSICAL_FRAME_STATE_FREE)
+        {
+            continue;
+        }
+
+        RegionEnd = Region->BaseAddress + (Region->PageCount * 4096ULL);
+        if (RegionEnd <= BaseAddress || Region->BaseAddress >= EndAddress)
+        {
+            continue;
+        }
+
+        OverlapBase = BaseAddress > Region->BaseAddress ? BaseAddress : Region->BaseAddress;
+        OverlapEnd = EndAddress < RegionEnd ? EndAddress : RegionEnd;
+        if (!AppendPhysicalSpanToArray(Array, Count, OverlapBase, OverlapEnd - OverlapBase))
+        {
+            *Count = LOS_X64_MAX_PHYSICAL_FRAME_REGIONS + 1U;
+            return 0ULL;
+        }
+
+        PagesFound += GetPageCountFromLength(OverlapEnd - OverlapBase);
+    }
+
+    return PagesFound;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static BOOLEAN ReserveFreePhysicalRangeInternal(UINT64 BaseAddress, UINT64 Length, UINT32 ReservationKind, BOOLEAN RequireFullCoverage, UINT64 *PagesReserved)
+{
+    UINT64 EndAddress;
+    UINT64 FreePages;
+    UINTN SpanCount;
+    UINTN Index;
+
+    if (PagesReserved != 0)
+    {
+        *PagesReserved = 0ULL;
+    }
+
     if (Length == 0ULL)
     {
         return 0;
     }
 
-    AlignedBase = AlignDownPageBoundary(PhysicalAddress);
-    AlignedEnd = AlignUpPageBoundary(PhysicalAddress + Length);
-    if (AlignedEnd <= AlignedBase)
+    EndAddress = BaseAddress + Length;
+    if (EndAddress <= BaseAddress)
     {
         return 0;
     }
 
-    if (!IsRangeCoveredByAnyRegion(AlignedBase, AlignedEnd))
+    if (!IsRangeCoveredByAnyRegion(BaseAddress, EndAddress))
     {
         return 0;
     }
 
-    if (IsRangeCoveredByState(AlignedBase, AlignedEnd, LOS_X64_PHYSICAL_FRAME_STATE_FREE) != 0U)
+    FreePages = CollectFreePhysicalSpans(BaseAddress, EndAddress, LosPhysicalSpanScratch, &SpanCount);
+    if (SpanCount > LOS_X64_MAX_PHYSICAL_FRAME_REGIONS)
     {
-        if (!RewritePhysicalFrameRegions(AlignedBase, AlignedEnd, LOS_X64_PHYSICAL_FRAME_STATE_FREE, LOS_X64_PHYSICAL_FRAME_STATE_RESERVED, ReservationKind))
+        return 0;
+    }
+    if (RequireFullCoverage != 0U && FreePages != GetPageCountFromLength(Length))
+    {
+        return 0;
+    }
+
+    if (FreePages == 0ULL)
+    {
+        return 1;
+    }
+
+    if (LosOverlayMemoryRegionCount + SpanCount > LOS_X64_MAX_MEMORY_REGIONS)
+    {
+        return 0;
+    }
+
+    if (!RewritePhysicalFrameRegions(BaseAddress, EndAddress, LOS_X64_PHYSICAL_FRAME_STATE_FREE, LOS_X64_PHYSICAL_FRAME_STATE_RESERVED, ReservationKind))
+    {
+        return 0;
+    }
+
+    for (Index = 0U; Index < SpanCount; ++Index)
+    {
+        if (!AppendOverlayMemoryRegionRecord(LosPhysicalSpanScratch[Index].BaseAddress, LosPhysicalSpanScratch[Index].Length, ReservationKind))
         {
             return 0;
         }
-
-        if (!AddOverlayMemoryRegion(AlignedBase, AlignedEnd - AlignedBase, ReservationKind))
-        {
-            return 0;
-        }
-
-        RefreshMemoryManagerHandoff();
     }
 
-    return 1;
-}
-
-LOS_X64_BOOTSTRAP_SECTION
-BOOLEAN LosX64ClaimPhysicalPages(UINT64 PhysicalAddress, UINT64 PageCount)
-{
-    UINT64 AlignedBase;
-    UINT64 AlignedEnd;
-
-    LOS_KERNEL_ENTER();
-    if (PageCount == 0ULL)
-    {
-        return 0;
-    }
-
-    AlignedBase = AlignDownPageBoundary(PhysicalAddress);
-    AlignedEnd = AlignedBase + (PageCount * 4096ULL);
-    if (AlignedEnd < AlignedBase)
-    {
-        return 0;
-    }
-
-    if (!IsRangeCoveredByState(AlignedBase, AlignedEnd, LOS_X64_PHYSICAL_FRAME_STATE_FREE))
-    {
-        return 0;
-    }
-
-    if (!RewritePhysicalFrameRegions(AlignedBase, AlignedEnd, LOS_X64_PHYSICAL_FRAME_STATE_FREE, LOS_X64_PHYSICAL_FRAME_STATE_RESERVED, LOS_X64_PHYSICAL_FRAME_RESERVED_CLAIMED))
-    {
-        return 0;
-    }
-
-    if (!AddOverlayMemoryRegion(AlignedBase, AlignedEnd - AlignedBase, LOS_X64_PHYSICAL_FRAME_RESERVED_CLAIMED))
+    if (!RebuildPublishedMemoryRegions())
     {
         return 0;
     }
 
     RefreshMemoryManagerHandoff();
+    if (PagesReserved != 0)
+    {
+        *PagesReserved = FreePages;
+    }
     return 1;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+static BOOLEAN FindClaimableContiguousRange(UINT64 MinimumPhysicalAddress, UINT64 MaximumPhysicalAddress, UINT64 AlignmentBytes, UINT64 PageCount, UINT64 *BaseAddress)
+{
+    UINTN Index;
+    UINT64 RunBase;
+    UINT64 RunEnd;
+    UINT64 RequiredBytes;
+    BOOLEAN HaveRun;
+
+    RequiredBytes = PageCount * 4096ULL;
+    if (RequiredBytes == 0ULL || RequiredBytes / 4096ULL != PageCount)
+    {
+        return 0;
+    }
+
+    HaveRun = 0U;
+    RunBase = 0ULL;
+    RunEnd = 0ULL;
+    for (Index = 0U; Index < LosPhysicalFrameRegionCount; ++Index)
+    {
+        const LOS_X64_PHYSICAL_FRAME_REGION *Region;
+        UINT64 RegionBase;
+        UINT64 RegionEnd;
+        UINT64 CandidateBase;
+
+        Region = &LosPhysicalFrameRegions[Index];
+        if (Region->State != LOS_X64_PHYSICAL_FRAME_STATE_FREE)
+        {
+            HaveRun = 0U;
+            continue;
+        }
+
+        RegionBase = Region->BaseAddress;
+        RegionEnd = RegionBase + (Region->PageCount * 4096ULL);
+        if (RegionEnd <= MinimumPhysicalAddress || RegionBase >= MaximumPhysicalAddress)
+        {
+            continue;
+        }
+
+        if (RegionBase < MinimumPhysicalAddress)
+        {
+            RegionBase = MinimumPhysicalAddress;
+        }
+        if (RegionEnd > MaximumPhysicalAddress)
+        {
+            RegionEnd = MaximumPhysicalAddress;
+        }
+        if (RegionEnd <= RegionBase)
+        {
+            continue;
+        }
+
+        if (HaveRun == 0U || RegionBase > RunEnd)
+        {
+            RunBase = RegionBase;
+            RunEnd = RegionEnd;
+            HaveRun = 1U;
+        }
+        else if (RegionEnd > RunEnd)
+        {
+            RunEnd = RegionEnd;
+        }
+
+        CandidateBase = AlignUpToBoundary(RunBase, AlignmentBytes);
+        if (CandidateBase >= RunBase && CandidateBase <= RunEnd && RunEnd - CandidateBase >= RequiredBytes)
+        {
+            *BaseAddress = CandidateBase;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+BOOLEAN LosX64TryTranslateKernelVirtualToPhysical(UINT64 VirtualAddress, UINT64 *PhysicalAddress)
+{
+    LOS_KERNEL_ENTER();
+    if (PhysicalAddress == 0)
+    {
+        return 0;
+    }
+
+    if (VirtualAddress < LosLayout.BootstrapIdentitySize)
+    {
+        *PhysicalAddress = VirtualAddress;
+        return 1;
+    }
+
+    if (VirtualAddress >= LosLayout.HigherHalfDirectMapBase && VirtualAddress - LosLayout.HigherHalfDirectMapBase < LosLayout.HigherHalfDirectMapSize)
+    {
+        *PhysicalAddress = VirtualAddress - LosLayout.HigherHalfDirectMapBase;
+        return 1;
+    }
+
+    return TryTranslateHigherHalfPointerToPhysical(VirtualAddress, PhysicalAddress);
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+UINT64 LosX64GetCurrentPageMapLevel4PhysicalAddress(void)
+{
+    UINT64 Value;
+
+    LOS_KERNEL_ENTER();
+    __asm__ __volatile__("mov %%cr3, %0" : "=r"(Value));
+    return Value & LOS_X64_PAGE_TABLE_ADDRESS_MASK;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+void *LosX64GetDirectMapVirtualAddress(UINT64 PhysicalAddress, UINT64 Length)
+{
+    LOS_KERNEL_ENTER();
+    if (Length == 0ULL || !LosX64IsPhysicalRangeDiscovered(PhysicalAddress, Length))
+    {
+        return 0;
+    }
+
+    return (void *)(UINTN)(LosLayout.HigherHalfDirectMapBase + PhysicalAddress);
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+void LosX64QueryMemoryRegions(LOS_X64_MEMORY_REGION *Buffer, UINTN BufferRegionCapacity, LOS_X64_QUERY_MEMORY_REGIONS_RESULT *Result)
+{
+    UINTN Index;
+
+    LOS_KERNEL_ENTER();
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->Reserved = 0U;
+    Result->TotalRegionCount = (UINT64)LosMemoryRegionCount;
+    Result->RegionsWritten = 0ULL;
+    Result->RegionEntrySize = (UINT64)sizeof(LOS_X64_MEMORY_REGION);
+
+    if (Buffer == 0 && BufferRegionCapacity != 0U)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+        return;
+    }
+
+    for (Index = 0U; Index < LosMemoryRegionCount && Index < BufferRegionCapacity; ++Index)
+    {
+        Buffer[Index] = LosMemoryRegions[Index];
+        Result->RegionsWritten += 1ULL;
+    }
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+void LosX64ReserveFrames(const LOS_X64_RESERVE_FRAMES_REQUEST *Request, LOS_X64_RESERVE_FRAMES_RESULT *Result)
+{
+    UINT64 AlignedBase;
+    UINT64 AlignedEnd;
+    UINT64 PagesReserved;
+    UINT32 Owner;
+
+    LOS_KERNEL_ENTER();
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->PagesReserved = 0ULL;
+    Result->RangeBase = 0ULL;
+    Result->RangeLength = 0ULL;
+
+    if (Request == 0 || Request->Length == 0ULL)
+    {
+        return;
+    }
+
+    AlignedBase = AlignDownPageBoundary(Request->PhysicalAddress);
+    AlignedEnd = AlignUpPageBoundary(Request->PhysicalAddress + Request->Length);
+    if (AlignedEnd <= AlignedBase)
+    {
+        return;
+    }
+
+    if (!IsRangeCoveredByAnyRegion(AlignedBase, AlignedEnd))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+        return;
+    }
+
+    Owner = Request->Owner == LOS_X64_PHYSICAL_FRAME_RESERVED_NONE ? LOS_X64_PHYSICAL_FRAME_RESERVED_CLAIMED : Request->Owner;
+    if (!ReserveFreePhysicalRangeInternal(AlignedBase, AlignedEnd - AlignedBase, Owner, 0U, &PagesReserved))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->PagesReserved = PagesReserved;
+    Result->RangeBase = AlignedBase;
+    Result->RangeLength = AlignedEnd - AlignedBase;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+void LosX64ClaimFrames(const LOS_X64_CLAIM_FRAMES_REQUEST *Request, LOS_X64_CLAIM_FRAMES_RESULT *Result)
+{
+    UINT64 AlignmentBytes;
+    UINT64 MinimumPhysicalAddress;
+    UINT64 MaximumPhysicalAddress;
+    UINT64 BaseAddress;
+    UINT64 RequiredBytes;
+    UINT64 PagesReserved;
+    UINT32 Owner;
+
+    LOS_KERNEL_ENTER();
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->BaseAddress = 0ULL;
+    Result->PageCount = 0ULL;
+
+    if (Request == 0 || Request->PageCount == 0ULL)
+    {
+        return;
+    }
+
+    RequiredBytes = Request->PageCount * 4096ULL;
+    if (RequiredBytes == 0ULL || RequiredBytes / 4096ULL != Request->PageCount)
+    {
+        return;
+    }
+
+    AlignmentBytes = Request->AlignmentBytes == 0ULL ? 4096ULL : Request->AlignmentBytes;
+    if (AlignmentBytes < 4096ULL || (AlignmentBytes & 0xFFFULL) != 0ULL || !IsPowerOfTwo(AlignmentBytes))
+    {
+        return;
+    }
+
+    MinimumPhysicalAddress = AlignDownPageBoundary(Request->MinimumPhysicalAddress);
+    MaximumPhysicalAddress = Request->MaximumPhysicalAddress == 0ULL ? LosLayout.HighestDiscoveredPhysicalAddress : AlignUpPageBoundary(Request->MaximumPhysicalAddress);
+    if ((Request->Flags & LOS_X64_CLAIM_FRAMES_FLAG_BELOW_4G) != 0U && MaximumPhysicalAddress > 0x100000000ULL)
+    {
+        MaximumPhysicalAddress = 0x100000000ULL;
+    }
+    if (MaximumPhysicalAddress <= MinimumPhysicalAddress)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+        return;
+    }
+
+    Owner = Request->Owner == LOS_X64_PHYSICAL_FRAME_RESERVED_NONE ? LOS_X64_PHYSICAL_FRAME_RESERVED_CLAIMED : Request->Owner;
+    if ((Request->Flags & LOS_X64_CLAIM_FRAMES_FLAG_EXACT_ADDRESS) != 0U)
+    {
+        BaseAddress = AlignDownPageBoundary(Request->DesiredPhysicalAddress);
+        if (BaseAddress < MinimumPhysicalAddress || BaseAddress + RequiredBytes > MaximumPhysicalAddress || BaseAddress + RequiredBytes < BaseAddress)
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
+            return;
+        }
+        if (!IsRangeCoveredByState(BaseAddress, BaseAddress + RequiredBytes, LOS_X64_PHYSICAL_FRAME_STATE_FREE))
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+            return;
+        }
+    }
+    else
+    {
+        if (!FindClaimableContiguousRange(MinimumPhysicalAddress, MaximumPhysicalAddress, AlignmentBytes, Request->PageCount, &BaseAddress))
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+            return;
+        }
+    }
+
+    if (!ReserveFreePhysicalRangeInternal(BaseAddress, RequiredBytes, Owner, 1U, &PagesReserved) || PagesReserved != Request->PageCount)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->BaseAddress = BaseAddress;
+    Result->PageCount = PagesReserved;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+BOOLEAN LosX64ReservePhysicalRange(UINT64 PhysicalAddress, UINT64 Length, UINT32 ReservationKind)
+{
+    LOS_X64_RESERVE_FRAMES_REQUEST Request;
+    LOS_X64_RESERVE_FRAMES_RESULT Result;
+
+    LOS_KERNEL_ENTER();
+    Request.PhysicalAddress = PhysicalAddress;
+    Request.Length = Length;
+    Request.Owner = ReservationKind;
+    Request.Reserved = 0U;
+    LosX64ReserveFrames(&Request, &Result);
+    return Result.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+}
+
+LOS_X64_BOOTSTRAP_SECTION
+BOOLEAN LosX64ClaimPhysicalPages(UINT64 PhysicalAddress, UINT64 PageCount)
+{
+    LOS_X64_CLAIM_FRAMES_REQUEST Request;
+    LOS_X64_CLAIM_FRAMES_RESULT Result;
+
+    LOS_KERNEL_ENTER();
+    Request.DesiredPhysicalAddress = PhysicalAddress;
+    Request.MinimumPhysicalAddress = 0ULL;
+    Request.MaximumPhysicalAddress = 0ULL;
+    Request.AlignmentBytes = 4096ULL;
+    Request.PageCount = PageCount;
+    Request.Flags = LOS_X64_CLAIM_FRAMES_FLAG_EXACT_ADDRESS | LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS;
+    Request.Owner = LOS_X64_PHYSICAL_FRAME_RESERVED_CLAIMED;
+    LosX64ClaimFrames(&Request, &Result);
+    return Result.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
 }
 
 LOS_X64_BOOTSTRAP_SECTION
