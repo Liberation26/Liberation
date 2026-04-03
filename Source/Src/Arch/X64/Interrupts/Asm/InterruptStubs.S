@@ -2,7 +2,7 @@
 .section .text
 
 .global LosCommonInterruptEntry
-.extern LosX64HandleException
+.extern LosX64HandleInterrupt
 
 .macro PUSH_REGS
     push r15
@@ -47,7 +47,7 @@ LosCommonInterruptEntry:
     mov rsi, [rsp + 120]
     mov rdx, [rsp + 128]
     lea rcx, [rsp + 136]
-    call LosX64HandleException
+    call LosX64HandleInterrupt
     POP_REGS
     add rsp, 16
     iretq
@@ -99,3 +99,5 @@ ISR_NOERR 28
 ISR_ERR   29
 ISR_ERR   30
 ISR_NOERR 31
+
+ISR_NOERR 32
