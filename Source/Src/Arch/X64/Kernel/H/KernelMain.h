@@ -5,7 +5,7 @@
 
 #define LOS_BOOT_CONTEXT_TEXT_CHARACTERS 128U
 #define LOS_BOOT_CONTEXT_SIGNATURE 0x544F4F424F534F4CULL
-#define LOS_BOOT_CONTEXT_VERSION 4U
+#define LOS_BOOT_CONTEXT_VERSION 5U
 #define LOS_BOOT_CONTEXT_FLAG_MONITOR_HANDOFF_ONLY 0x0000000000000001ULL
 #define LOS_BOOT_CONTEXT_FLAG_KERNEL_SEGMENTS_VALID 0x0000000000000002ULL
 #define LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS 8U
@@ -40,6 +40,12 @@ typedef struct
     UINT64 MemoryMapDescriptorSize;
     UINT64 MemoryMapDescriptorVersion;
     UINT64 MemoryRegionCount;
+    UINT64 FrameBufferPhysicalAddress;
+    UINT64 FrameBufferSize;
+    UINT32 FrameBufferWidth;
+    UINT32 FrameBufferHeight;
+    UINT32 FrameBufferPixelsPerScanLine;
+    UINT32 FrameBufferPixelFormat;
     UINT64 KernelLoadSegmentCount;
     LOS_BOOT_CONTEXT_LOAD_SEGMENT KernelLoadSegments[LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS];
     CHAR16 BootSourceText[LOS_BOOT_CONTEXT_TEXT_CHARACTERS];
@@ -56,6 +62,9 @@ void LosKernelTraceOk(const char *Text);
 void LosKernelTraceFail(const char *Text);
 void LosKernelTraceHex64(const char *Prefix, UINT64 Value);
 void LosKernelTraceUnsigned(const char *Prefix, UINT64 Value);
+void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext);
+void LosKernelStatusScreenWriteOk(const char *Text);
+void LosKernelStatusScreenWriteFail(const char *Text);
 void LosKernelHaltForever(void);
 void LosKernelAnnounceFunction(const char *FunctionName);
 extern UINT64 LosGdt[LOS_X64_GDT_ENTRY_COUNT];

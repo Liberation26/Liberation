@@ -65,6 +65,9 @@ typedef struct EFI_SIMPLE_FILE_SYSTEM_PROTOCOL EFI_SIMPLE_FILE_SYSTEM_PROTOCOL;
 typedef struct EFI_LOADED_IMAGE_PROTOCOL EFI_LOADED_IMAGE_PROTOCOL;
 typedef struct EFI_BLOCK_IO_MEDIA EFI_BLOCK_IO_MEDIA;
 typedef struct EFI_BLOCK_IO_PROTOCOL EFI_BLOCK_IO_PROTOCOL;
+typedef struct EFI_GRAPHICS_OUTPUT_PROTOCOL EFI_GRAPHICS_OUTPUT_PROTOCOL;
+typedef struct EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE;
+typedef struct EFI_GRAPHICS_OUTPUT_MODE_INFORMATION EFI_GRAPHICS_OUTPUT_MODE_INFORMATION;
 
 typedef struct
 {
@@ -75,6 +78,51 @@ typedef struct
     UINT64 NumberOfPages;
     UINT64 Attribute;
 } EFI_MEMORY_DESCRIPTOR;
+
+typedef struct
+{
+    UINT32 RedMask;
+    UINT32 GreenMask;
+    UINT32 BlueMask;
+    UINT32 ReservedMask;
+} EFI_PIXEL_BITMASK;
+
+typedef enum
+{
+    PixelRedGreenBlueReserved8BitPerColor = 0,
+    PixelBlueGreenRedReserved8BitPerColor = 1,
+    PixelBitMask = 2,
+    PixelBltOnly = 3,
+    PixelFormatMax = 4
+} EFI_GRAPHICS_PIXEL_FORMAT;
+
+struct EFI_GRAPHICS_OUTPUT_MODE_INFORMATION
+{
+    UINT32 Version;
+    UINT32 HorizontalResolution;
+    UINT32 VerticalResolution;
+    EFI_GRAPHICS_PIXEL_FORMAT PixelFormat;
+    EFI_PIXEL_BITMASK PixelInformation;
+    UINT32 PixelsPerScanLine;
+};
+
+struct EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE
+{
+    UINT32 MaxMode;
+    UINT32 Mode;
+    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
+    UINTN SizeOfInfo;
+    UINT64 FrameBufferBase;
+    UINTN FrameBufferSize;
+};
+
+struct EFI_GRAPHICS_OUTPUT_PROTOCOL
+{
+    VOID *QueryMode;
+    VOID *SetMode;
+    VOID *Blt;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE *Mode;
+};
 
 typedef enum
 {

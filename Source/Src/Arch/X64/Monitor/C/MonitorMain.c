@@ -163,6 +163,7 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
         KernelLoadSegmentCount,
         BootInfoText,
         KernelPartitionText);
+    LosMonitorCaptureFramebufferInfo(SystemTable, BootContext);
     LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot context address: "), BootContext->BootContextAddress);
     LosMonitorTraceHex64(SystemTable, LOS_TEXT("Boot context bytes: "), BootContext->BootContextSize);
 

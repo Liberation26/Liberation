@@ -1,5 +1,57 @@
 #include "MonitorInternal.h"
 
+static EFI_GUID LosMonitorGraphicsOutputProtocolGuid =
+{
+    0x9042A9DEU,
+    0x23DCU,
+    0x4A38U,
+    {0x96U, 0xFBU, 0x7AU, 0xDEU, 0xD0U, 0x80U, 0x51U, 0x6AU}
+};
+
+typedef EFI_STATUS (EFIAPI *LOS_MONITOR_LOCATE_PROTOCOL)(
+    EFI_GUID *Protocol,
+    VOID *Registration,
+    VOID **Interface);
+
+void LosMonitorCaptureFramebufferInfo(EFI_SYSTEM_TABLE *SystemTable, LOS_BOOT_CONTEXT *BootContext)
+{
+    LOS_MONITOR_LOCATE_PROTOCOL LocateProtocol;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *GraphicsOutput;
+    EFI_STATUS Status;
+
+    if (BootContext == 0)
+    {
+        return;
+    }
+
+    BootContext->FrameBufferPhysicalAddress = 0ULL;
+    BootContext->FrameBufferSize = 0ULL;
+    BootContext->FrameBufferWidth = 0U;
+    BootContext->FrameBufferHeight = 0U;
+    BootContext->FrameBufferPixelsPerScanLine = 0U;
+    BootContext->FrameBufferPixelFormat = 0U;
+
+    if (SystemTable == 0 || SystemTable->BootServices == 0 || SystemTable->BootServices->LocateProtocol == 0)
+    {
+        return;
+    }
+
+    LocateProtocol = (LOS_MONITOR_LOCATE_PROTOCOL)SystemTable->BootServices->LocateProtocol;
+    GraphicsOutput = 0;
+    Status = LocateProtocol(&LosMonitorGraphicsOutputProtocolGuid, 0, (VOID **)&GraphicsOutput);
+    if (EFI_ERROR(Status) || GraphicsOutput == 0 || GraphicsOutput->Mode == 0 || GraphicsOutput->Mode->Info == 0)
+    {
+        return;
+    }
+
+    BootContext->FrameBufferPhysicalAddress = GraphicsOutput->Mode->FrameBufferBase;
+    BootContext->FrameBufferSize = (UINT64)GraphicsOutput->Mode->FrameBufferSize;
+    BootContext->FrameBufferWidth = GraphicsOutput->Mode->Info->HorizontalResolution;
+    BootContext->FrameBufferHeight = GraphicsOutput->Mode->Info->VerticalResolution;
+    BootContext->FrameBufferPixelsPerScanLine = GraphicsOutput->Mode->Info->PixelsPerScanLine;
+    BootContext->FrameBufferPixelFormat = (UINT32)GraphicsOutput->Mode->Info->PixelFormat;
+}
+
 void LosMonitorInitializeBootContext(LOS_BOOT_CONTEXT *BootContext, UINT64 BootContextAddress, UINT64 BootContextSize, UINT64 KernelImagePhysicalAddress, UINT64 KernelImageSize, const LOS_BOOT_CONTEXT_LOAD_SEGMENT *KernelLoadSegments, UINT64 KernelLoadSegmentCount, const CHAR16 *BootSourceText, const CHAR16 *KernelPartitionText)
 {
     if (BootContext == 0)

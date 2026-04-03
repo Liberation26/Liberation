@@ -19,7 +19,7 @@
 #define LOS_ELF_TYPE_EXEC 2U
 #define LOS_ELF_PROGRAM_TYPE_LOAD 1U
 #define LOS_BOOT_CONTEXT_SIGNATURE 0x544F4F424F534F4CULL
-#define LOS_BOOT_CONTEXT_VERSION 4U
+#define LOS_BOOT_CONTEXT_VERSION 5U
 #define LOS_BOOT_CONTEXT_FLAG_MONITOR_HANDOFF_ONLY 0x0000000000000001ULL
 #define LOS_BOOT_CONTEXT_FLAG_KERNEL_SEGMENTS_VALID 0x0000000000000002ULL
 #define LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS 8U
@@ -53,6 +53,12 @@ typedef struct
     UINT64 MemoryMapDescriptorSize;
     UINT64 MemoryMapDescriptorVersion;
     UINT64 MemoryRegionCount;
+    UINT64 FrameBufferPhysicalAddress;
+    UINT64 FrameBufferSize;
+    UINT32 FrameBufferWidth;
+    UINT32 FrameBufferHeight;
+    UINT32 FrameBufferPixelsPerScanLine;
+    UINT32 FrameBufferPixelFormat;
     UINT64 KernelLoadSegmentCount;
     LOS_BOOT_CONTEXT_LOAD_SEGMENT KernelLoadSegments[LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS];
     CHAR16 BootSourceText[LOS_BOOT_CONTEXT_TEXT_CHARACTERS];
@@ -111,6 +117,7 @@ void LosMonitorMemoryCopy(void *Destination, const void *Source, UINTN Size);
 UINT64 LosMonitorAlignDown(UINT64 Value, UINT64 Alignment);
 UINT64 LosMonitorAlignUp(UINT64 Value, UINT64 Alignment);
 void LosMonitorUtf16Copy(CHAR16 *Destination, UINTN DestinationCharacterCount, const CHAR16 *Source);
+void LosMonitorCaptureFramebufferInfo(EFI_SYSTEM_TABLE *SystemTable, LOS_BOOT_CONTEXT *BootContext);
 void LosMonitorInitializeBootContext(LOS_BOOT_CONTEXT *BootContext, UINT64 BootContextAddress, UINT64 BootContextSize, UINT64 KernelImagePhysicalAddress, UINT64 KernelImageSize, const LOS_BOOT_CONTEXT_LOAD_SEGMENT *KernelLoadSegments, UINT64 KernelLoadSegmentCount, const CHAR16 *BootSourceText, const CHAR16 *KernelPartitionText);
 EFI_STATUS LosMonitorOpenRootForHandle(EFI_SYSTEM_TABLE *SystemTable, EFI_HANDLE DeviceHandle, EFI_FILE_PROTOCOL **Root);
 EFI_STATUS LosMonitorReadFileInfo(EFI_FILE_PROTOCOL *File, EFI_FILE_INFO *FileInfo, UINTN FileInfoBufferSize);

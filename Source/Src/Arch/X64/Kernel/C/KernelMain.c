@@ -176,6 +176,7 @@ void LosKernelTrace(const char *Text)
 
 void LosKernelTraceOk(const char *Text)
 {
+    LosKernelStatusScreenWriteOk(Text);
     SerialWriteStatusTagOk();
     LosKernelSerialWriteText("[Kernel] ");
     LosKernelSerialWriteText(Text);
@@ -184,6 +185,7 @@ void LosKernelTraceOk(const char *Text)
 
 void LosKernelTraceFail(const char *Text)
 {
+    LosKernelStatusScreenWriteFail(Text);
     SerialWriteStatusTagFail();
     LosKernelSerialWriteText("[Kernel] ");
     LosKernelSerialWriteText(Text);
@@ -289,6 +291,7 @@ static UINT64 CountMemoryRegions(const LOS_BOOT_CONTEXT *BootContext)
 void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
 {
     LosKernelSerialInit();
+    LosKernelInitializeScreen(BootContext);
     LosKernelRuntimeTracingEnabled = 1ULL;
     LOS_KERNEL_ENTER();
     LosKernelSerialWriteText("Liberation Kernel\n");
