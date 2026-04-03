@@ -1,5 +1,22 @@
 #include "MonitorInternal.h"
 
+static void LosMonitorSetTextAttribute(EFI_SYSTEM_TABLE *SystemTable, UINTN Attribute)
+{
+    if (SystemTable == 0 || SystemTable->ConOut == 0 || SystemTable->ConOut->SetAttribute == 0)
+    {
+        return;
+    }
+
+    SystemTable->ConOut->SetAttribute(SystemTable->ConOut, Attribute);
+}
+
+static void LosMonitorPrintColoredPrefix(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, UINTN PrefixAttribute)
+{
+    LosMonitorSetTextAttribute(SystemTable, PrefixAttribute);
+    LosMonitorPrint(SystemTable, Prefix);
+    LosMonitorSetTextAttribute(SystemTable, EFI_TEXT_ATTR(EFI_LIGHTGRAY, EFI_BLACK));
+}
+
 void LosMonitorPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
     if (SystemTable == 0 || SystemTable->ConOut == 0 || SystemTable->ConOut->OutputString == 0)
@@ -12,14 +29,14 @@ void LosMonitorPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 
 void LosMonitorStatusOk(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
-    LosMonitorPrint(SystemTable, LOS_TEXT("[OK] "));
+    LosMonitorPrintColoredPrefix(SystemTable, LOS_TEXT("[OK] "), EFI_TEXT_ATTR(EFI_LIGHTGREEN, EFI_BLACK));
     LosMonitorPrint(SystemTable, Text);
     LosMonitorPrint(SystemTable, LOS_TEXT("\r\n"));
 }
 
 void LosMonitorStatusFail(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
-    LosMonitorPrint(SystemTable, LOS_TEXT("[FAIL] "));
+    LosMonitorPrintColoredPrefix(SystemTable, LOS_TEXT("[FAIL] "), EFI_TEXT_ATTR(EFI_LIGHTRED, EFI_BLACK));
     LosMonitorPrint(SystemTable, Text);
     LosMonitorPrint(SystemTable, LOS_TEXT("\r\n"));
 }

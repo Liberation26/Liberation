@@ -47,6 +47,24 @@ typedef struct
 #define EFI_ABORTED ((EFI_STATUS)0x8000000000000015ULL)
 #define EFI_ERROR(Status) (((Status) & 0x8000000000000000ULL) != 0)
 
+#define EFI_BLACK 0x00U
+#define EFI_BLUE 0x01U
+#define EFI_GREEN 0x02U
+#define EFI_CYAN 0x03U
+#define EFI_RED 0x04U
+#define EFI_MAGENTA 0x05U
+#define EFI_BROWN 0x06U
+#define EFI_LIGHTGRAY 0x07U
+#define EFI_BRIGHT 0x08U
+#define EFI_LIGHTBLUE (EFI_BLUE | EFI_BRIGHT)
+#define EFI_LIGHTGREEN (EFI_GREEN | EFI_BRIGHT)
+#define EFI_LIGHTCYAN (EFI_CYAN | EFI_BRIGHT)
+#define EFI_LIGHTRED (EFI_RED | EFI_BRIGHT)
+#define EFI_LIGHTMAGENTA (EFI_MAGENTA | EFI_BRIGHT)
+#define EFI_YELLOW (EFI_BROWN | EFI_BRIGHT)
+#define EFI_WHITE (EFI_LIGHTGRAY | EFI_BRIGHT)
+#define EFI_TEXT_ATTR(Foreground, Background) ((UINTN)((Foreground) | ((Background) << 4U)))
+
 typedef struct
 {
     UINT64 Signature;

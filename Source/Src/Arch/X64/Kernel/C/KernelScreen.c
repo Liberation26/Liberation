@@ -16,6 +16,7 @@ typedef struct
     UINT32 Width;
     UINT32 Height;
     UINT32 PixelsPerScanLine;
+    UINT32 PixelFormat;
     UINT32 CursorColumn;
     UINT32 CursorRow;
     UINT32 MaxColumns;
@@ -109,6 +110,31 @@ static void ClearScreen(void)
     LosKernelScreenState.CursorRow = 0U;
 }
 
+static UINT32 ComposePixelColor(UINT8 Red, UINT8 Green, UINT8 Blue)
+{
+    if (LosKernelScreenState.PixelFormat == PixelBlueGreenRedReserved8BitPerColor)
+    {
+        return ((UINT32)Blue) | ((UINT32)Green << 8U) | ((UINT32)Red << 16U);
+    }
+
+    return ((UINT32)Red) | ((UINT32)Green << 8U) | ((UINT32)Blue << 16U);
+}
+
+static UINT32 GetTextColor(void)
+{
+    return ComposePixelColor(0xFFU, 0xFFU, 0xFFU);
+}
+
+static UINT32 GetOkPrefixColor(void)
+{
+    return ComposePixelColor(0x30U, 0xD1U, 0x58U);
+}
+
+static UINT32 GetFailPrefixColor(void)
+{
+    return ComposePixelColor(0xFFU, 0x55U, 0x55U);
+}
+
 static void PutPixel(UINT32 X, UINT32 Y, UINT32 Color)
 {
     if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.FrameBuffer == 0)
@@ -133,7 +159,7 @@ static void AdvanceLine(void)
     }
 }
 
-static void PutCharacter(char Character)
+static void PutCharacterColored(char Character, UINT32 Color)
 {
     UINT32 GlyphRow;
     UINT32 GlyphColumn;
@@ -172,7 +198,7 @@ static void PutCharacter(char Character)
         {
             if ((RowBits & (UINT8)(1U << (4U - GlyphColumn))) != 0U)
             {
-                PutPixel(BaseX + GlyphColumn + 1U, BaseY + GlyphRow, 0x00FFFFFFU);
+                PutPixel(BaseX + GlyphColumn + 1U, BaseY + GlyphRow, Color);
             }
         }
     }
@@ -180,7 +206,12 @@ static void PutCharacter(char Character)
     LosKernelScreenState.CursorColumn += 1U;
 }
 
-static void PutText(const char *Text)
+static void PutCharacter(char Character)
+{
+    PutCharacterColored(Character, GetTextColor());
+}
+
+static void PutTextColored(const char *Text, UINT32 Color)
 {
     UINTN Index;
 
@@ -191,8 +222,13 @@ static void PutText(const char *Text)
 
     for (Index = 0U; Text[Index] != '\0'; ++Index)
     {
-        PutCharacter(Text[Index]);
+        PutCharacterColored(Text[Index], Color);
     }
+}
+
+static void PutText(const char *Text)
+{
+    PutTextColored(Text, GetTextColor());
 }
 
 void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
@@ -210,6 +246,7 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.Width = 0U;
     LosKernelScreenState.Height = 0U;
     LosKernelScreenState.PixelsPerScanLine = 0U;
+    LosKernelScreenState.PixelFormat = PixelRedGreenBlueReserved8BitPerColor;
     LosKernelScreenState.CursorColumn = 0U;
     LosKernelScreenState.CursorRow = 0U;
     LosKernelScreenState.MaxColumns = 0U;
@@ -250,20 +287,21 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.Width = BootContext->FrameBufferWidth;
     LosKernelScreenState.Height = BootContext->FrameBufferHeight;
     LosKernelScreenState.PixelsPerScanLine = BootContext->FrameBufferPixelsPerScanLine;
+    LosKernelScreenState.PixelFormat = BootContext->FrameBufferPixelFormat;
     LosKernelScreenState.MaxColumns = BootContext->FrameBufferWidth / LOS_KERNEL_SCREEN_CELL_WIDTH;
     LosKernelScreenState.MaxRows = BootContext->FrameBufferHeight / LOS_KERNEL_SCREEN_CELL_HEIGHT;
     LosKernelScreenState.Ready = (LosKernelScreenState.MaxColumns != 0U && LosKernelScreenState.MaxRows != 0U) ? 1U : 0U;
     ClearScreen();
 }
 
-static void WriteStatusLine(const char *Prefix, const char *Text)
+static void WriteStatusLine(const char *Prefix, UINT32 PrefixColor, const char *Text)
 {
     if (LosKernelScreenState.Ready == 0U)
     {
         return;
     }
 
-    PutText(Prefix);
+    PutTextColored(Prefix, PrefixColor);
     PutCharacter(' ');
     PutText(Text);
     PutCharacter('\n');
@@ -271,10 +309,10 @@ static void WriteStatusLine(const char *Prefix, const char *Text)
 
 void LosKernelStatusScreenWriteOk(const char *Text)
 {
-    WriteStatusLine("[OK]", Text);
+    WriteStatusLine("[OK]", GetOkPrefixColor(), Text);
 }
 
 void LosKernelStatusScreenWriteFail(const char *Text)
 {
-    WriteStatusLine("[FAIL]", Text);
+    WriteStatusLine("[FAIL]", GetFailPrefixColor(), Text);
 }

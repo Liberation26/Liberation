@@ -1,5 +1,22 @@
 #include "BootInternal.h"
 
+static void LosBootSetTextAttribute(EFI_SYSTEM_TABLE *SystemTable, UINTN Attribute)
+{
+    if (SystemTable == 0 || SystemTable->ConOut == 0 || SystemTable->ConOut->SetAttribute == 0)
+    {
+        return;
+    }
+
+    SystemTable->ConOut->SetAttribute(SystemTable->ConOut, Attribute);
+}
+
+static void LosBootPrintColoredPrefix(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, UINTN PrefixAttribute)
+{
+    LosBootSetTextAttribute(SystemTable, PrefixAttribute);
+    LosBootPrint(SystemTable, Prefix);
+    LosBootSetTextAttribute(SystemTable, EFI_TEXT_ATTR(EFI_LIGHTGRAY, EFI_BLACK));
+}
+
 void LosBootPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
     if (SystemTable == 0 || SystemTable->ConOut == 0 || SystemTable->ConOut->OutputString == 0)
@@ -12,14 +29,14 @@ void LosBootPrint(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 
 void LosBootStatusOk(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
-    LosBootPrint(SystemTable, LOS_TEXT("[OK] "));
+    LosBootPrintColoredPrefix(SystemTable, LOS_TEXT("[OK] "), EFI_TEXT_ATTR(EFI_LIGHTGREEN, EFI_BLACK));
     LosBootPrint(SystemTable, Text);
     LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
 }
 
 void LosBootStatusFail(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Text)
 {
-    LosBootPrint(SystemTable, LOS_TEXT("[FAIL] "));
+    LosBootPrintColoredPrefix(SystemTable, LOS_TEXT("[FAIL] "), EFI_TEXT_ATTR(EFI_LIGHTRED, EFI_BLACK));
     LosBootPrint(SystemTable, Text);
     LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
 }
@@ -66,6 +83,7 @@ void LosBootClear(EFI_SYSTEM_TABLE *SystemTable)
     }
 
     SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
+    LosBootSetTextAttribute(SystemTable, EFI_TEXT_ATTR(EFI_LIGHTGRAY, EFI_BLACK));
 }
 
 void LosBootPrintHex64(EFI_SYSTEM_TABLE *SystemTable, UINT64 Value)
@@ -88,7 +106,7 @@ void LosBootPrintHex64(EFI_SYSTEM_TABLE *SystemTable, UINT64 Value)
 void LosBootPrintStatusError(EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *Prefix, EFI_STATUS Status)
 {
     LOS_BOOT_ENTER(SystemTable);
-    LosBootPrint(SystemTable, LOS_TEXT("[FAIL] "));
+    LosBootPrintColoredPrefix(SystemTable, LOS_TEXT("[FAIL] "), EFI_TEXT_ATTR(EFI_LIGHTRED, EFI_BLACK));
     LosBootPrint(SystemTable, Prefix);
     LosBootPrintHex64(SystemTable, Status);
     LosBootPrint(SystemTable, LOS_TEXT("\r\n"));
