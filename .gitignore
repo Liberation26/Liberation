@@ -1,0 +1,11 @@
+
+# Build artifacts
+Build/*.img
+
+# Build artifacts
+Build/*.img
+Build/*.iso
+Build/*.bin
+Build/*.vhd
+Build/*.vdi
+Build/*.qcow2

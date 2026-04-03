@@ -1,0 +1,290 @@
+# Liberation OS
+
+## Delivery note for 0.0.74
+
+This delivery fixes a new silent post-`ExitBootServices` bootstrap failure introduced by the serial status-tag helpers. The early bootstrap `[OK]`, `[FAIL]`, and ANSI colour escape literals were being emitted from inline bootstrap helper code without being forced into bootstrap-read-only storage, so the compiler generated references into higher-half rodata before the higher-half mappings existed. That could fault before the bootstrap trap reporter was installed, which is why the log could stop immediately after the final monitor memory-map line.
+
+The bootstrap serial helper path now emits ANSI escapes and status tags character-by-character so it never dereferences higher-half string literals during the identity-mapped bootstrap phase. This keeps coloured host-terminal status tags enabled while making the earliest bootstrap logging safe again.
+
+## Delivery note for 0.0.73
+
+This delivery fixes the next post-`ExitBootServices` bootstrap page fault by removing bootstrap dependence on compiler-generated higher-half jump tables while the kernel is still running from its identity-mapped bootstrap footprint. The bootstrap memory-state path now avoids switch-based jump-table accesses in the early handoff code, and the kernel build now disables jump-table generation for the ELF kernel objects so bootstrap code does not silently reach into unmapped higher-half read-only data before the higher-half mappings are live.
+
+It also adds best-effort serial status tags for the host terminal. Key bootstrap and kernel milestone lines now emit coloured `[OK]` and `[FAIL]` tags over COM1 using ANSI escape sequences, and the QEMU run scripts now keep those colours on the terminal while stripping ANSI escapes from the saved host log files when Perl is available.
+
+# Liberation OS
+
+## Delivery note for 0.0.72
+
+This delivery fixes the physical-memory accounting model so totals are built from EFI descriptor lengths only, not from physical start addresses. EFI memory is now classified into strict buckets for usable, runtime, MMIO, ACPI/NVS, firmware-reserved, and unusable memory, while bootstrap and kernel reservations are exported as overlay records instead of being folded back into firmware-reserved totals.
+
+The memory-manager handoff region table is now shaped for the future userland memory-manager service with base, length, type, flags, owner, and source fields. The default boot log now reports total usable memory, total bootstrap-reserved memory, total firmware-reserved memory, total runtime memory, total MMIO memory, total unusable memory, total address-space gaps, and the highest usable physical address.
+
+# Liberation OS
+
+## Delivery note for 0.0.71
+
+This delivery fixes an early post-`ExitBootServices` bootstrap fault caused by reserving higher-half GDT and IDT backing through higher-half helper functions before the higher-half text mapping existed. Bootstrap memory reservation now uses direct higher-half symbol addresses for the GDT and IDT backing instead of calling into unmapped higher-half code during physical-frame database construction.
+
+The bootstrap memory-ownership path still reserves the loaded kernel image, boot context, copied EFI memory-map buffer, bootstrap page tables, bootstrap transition stack, kernel stack backing, GDT backing, and IDT backing before the userland memory-manager handoff is exposed.
+
+# Liberation OS Starter
+
+## Delivery note for 0.0.70
+
+This delivery hardens the monitor-to-kernel handoff for higher-half mapping. The monitor now records the actual loaded ELF segment layout in the boot context, and the bootstrap virtual-memory policy uses that runtime segment contract when mapping the higher-half kernel image. This avoids relying only on linked load addresses when preparing the post-ExitBootServices jump into higher-half kernel code.
+
+This delivery uses a Linux-first layout rooted at `~/Dev/Los/Src`.
+
+## Archive layout
+
+Each delivery tar contains two top-level folders:
+
+- `FullSource/`
+- `ChangedFiles/`
+
+For this restart flow:
+
+- `update.sh` finds the newest `LOS-*-*-*.tar` in `~/Downloads/`
+- if `~/Dev/Los/src/.git` or `~/Dev/Los/Src/.git` exists, it copies `ChangedFiles/` into that Git working tree, cleans build output, commits, and pushes
+- if no `.git` entry is present, it copies `FullSource/` into `~/Dev/Los/Src/`
+- if `ChangedFiles/Scripts/update.sh` contains a newer updater, the running updater replaces itself first and exits so the user can rerun it
+
+## Project root
+
+The project root is:
+
+```text
+~/Dev/Los/Src/
+```
+
+## Source layout
+
+The boot loader and the first ELF kernel stage now live under `Source/Src/` and are separated by architecture, purpose, and source type:
+
+```text
+Source/Src/
+  Arch/
+    X64/
+      Boot/
+        C/
+          BootMain.c
+        H/
+          Efi.h
+      Kernel/
+        C/
+          KernelMain.c
+        H/
+          KernelMain.h
+        Ld/
+          KernelX64.ld
+```
+
+The wider LOS source tree is scaffolded for growth:
+
+```text
+Source/
+  Include/
+    Public/
+    Internal/
+  Src/
+    Arch/
+      Common/
+      X64/
+      AArch64/
+    Kernel/
+    Monitor/
+    Drivers/
+    Services/
+    Userland/
+```
+
+## Separate run scripts
+
+From the project root:
+
+```bash
+./Scripts/RunDir.sh
+./Scripts/RunHD.sh
+./Scripts/RunISO.sh
+```
+
+These now run the three boot methods separately:
+
+- `RunDir.sh` builds `BOOTX64.EFI` and `KERNELX64.ELF`, then boots from the EFI directory tree presented to QEMU as removable USB media.
+- `RunHD.sh` builds `BOOTX64.EFI` and `KERNELX64.ELF`, creates `Build/LiberationDisk.img`, and boots from the hard disk image.
+- `RunISO.sh` builds the ISO installer `BOOTX64.EFI`, the installed-system `LOADERX64.EFI`, and `KERNELX64.ELF`, creates `Build/Liberation.iso`, creates blank install target disks at `Build/LiberationInstallTarget1.img` and `Build/LiberationInstallTarget2.img`, boots the ISO installer, lets the installer choose a writable raw disk target, partition it with GPT, format a real FAT32 ESP plus a FAT32 Liberation data partition, then relaunches QEMU from the installed disk only after the installer requests an EFI reboot. The installed loader stays on the ESP, but the installed kernel is written to the separate Liberation data partition.
+- `clean.sh` removes generated build output, installer media, logs, target disk images, and the writable OVMF vars file so the next `RunISO.sh` starts from a clean state instead of reusing stale firmware boot state.
+
+For compatibility, `BuildRun.sh` now forwards to `RunISO.sh`.
+
+## Media creation helpers
+
+From the project root:
+
+```bash
+./Scripts/MakeIso.sh
+./Scripts/MakeHardDisk.sh
+./Scripts/MakeInstallTarget.sh
+./Scripts/clean.sh
+```
+
+## Update from the latest downloaded archive
+
+From the project root:
+
+```bash
+./Scripts/update.sh
+```
+
+You can also call:
+
+```bash
+./Scripts/Update.sh
+```
+
+The updater automatically decides whether to deploy `FullSource/` or apply `ChangedFiles/` based on whether a `.git` entry exists in `~/Dev/Los/src/` or `~/Dev/Los/Src/`.
+
+## Additional packages
+
+Make sure these are installed:
+
+```bash
+sudo apt install clang lld llvm qemu-system-x86 ovmf dosfstools mtools parted xorriso
+```
+
+## Current boot flow
+
+`BOOTX64.EFI` now has two roles depending on the boot media:
+
+- when booted from the ISO, it runs an EFI installer application
+- when booted from a hard disk or directory-based EFI filesystem, it acts as the normal UEFI loader
+
+The ISO installer currently:
+
+- reads `\EFI\BOOT\LOADERX64.EFI` and `\EFI\BOOT\KERNELX64.ELF` from the ISO
+- enumerates writable raw disks and lets you choose the installation target
+- writes a GPT disk layout with a real EFI System Partition and a Liberation data partition
+- formats both partitions as FAT32 for now
+- installs `\EFI\BOOT\BOOTX64.EFI` and `\EFI\BOOT\BOOTINFO.TXT` into the new ESP, and installs `\LIBERATION\KERNELX64.ELF` into the separate Liberation data partition
+- reports step-by-step install status and prints EFI status codes on failure
+
+The installed loader then:
+
+- opens `\LIBERATION\KERNELX64.ELF` from the installed Liberation data partition, while reading boot metadata from the ESP
+- loads it into memory
+- jumps into the ELF kernel entry
+
+The current ELF kernel milestone then:
+
+- clears the screen
+- writes the OS version string from `VERSION`
+- halts
+
+## Update 0.0.20
+
+- added a separate non-EFI x64 kernel ELF image at `Source/Src/Arch/X64/Kernel/`
+- changed `BOOTX64.EFI` from a print-only EFI app into a loader that opens `\EFI\BOOT\KERNELX64.ELF`, loads it into memory, and jumps to it
+- added `KernelX64.ld` so the kernel is linked as a flat binary image
+- updated `Scripts/BuildBoot.sh` to build both `BOOTX64.EFI` and `KERNELX64.ELF`
+- updated `Scripts/MakeIso.sh` and `Scripts/MakeHardDisk.sh` so ISO and hard-disk images both include `KERNELX64.ELF`
+- updated `Scripts/update.sh` cleanup so it also removes the copied kernel ELF image from `Image/EFI/BOOT/`
+
+
+## Build Requirements
+
+- clang
+- ld.lld
+- llvm-objcopy-20 at `/usr/bin/llvm-objcopy-20` by default, or set `LLVM_OBJCOPY` to override
+
+Kernel handoff notes:
+- KERNELX64.ELF is linked for and loaded at physical address 0x00100000.
+- LosKernelMain uses EFIAPI so the loader and kernel entry agree on the x64 calling convention.
+
+
+## Update 0.0.24
+
+- added an ISO-only EFI installer path that runs instead of jumping straight into the kernel
+- added `LOADERX64.EFI` as the installed-system EFI payload carried inside the ISO
+- updated `Scripts/BuildBoot.sh` to build both the installer boot app and the installed-system loader
+- updated the installer layout so the installed ESP carries only the loader and boot info while the installed kernel lives in `\LIBERATION\KERNELX64.ELF` on the separate Liberation data partition
+- updated `Scripts/MakeHardDisk.sh` so hard-disk images use the installed-system loader rather than the ISO installer app
+- added `Scripts/MakeInstallTarget.sh` and updated `Scripts/RunISO.sh` so ISO testing has a blank EFI target disk to install onto
+- updated the EFI installer to request a real EFI reboot after installation so the QEMU ISO test can hand off into an installed-disk-only verification boot
+- updated `Scripts/RunISO.sh` to use `-action reboot=shutdown` for the installer phase and then relaunch QEMU without the ISO attached
+
+
+## Update 0.0.25
+
+- changed the ELF kernel milestone output so it prints the OS version string from `VERSION` instead of `Howdy Doody`
+- added a 10-second visible countdown at the end of the ISO EFI installer before it requests an EFI cold reboot
+- extended the minimal EFI boot services definition to include `Stall`, so the countdown uses firmware timing rather than a guessed busy loop
+
+
+## Update 0.0.27
+
+- replaced the first-match filesystem installer with a raw-disk EFI installer
+- added target disk selection in the EFI installer
+- added GPT partition creation from the installer itself
+- added a real FAT32 ESP created by the installer
+- added a FAT32 Liberation data partition created by the installer
+- added clearer step-by-step install status and EFI status-code error reporting
+- simplified `Scripts/MakeInstallTarget.sh` so it now creates a blank raw disk and leaves partitioning and formatting to the installer
+
+
+## 0.0.27 ISO installer test updates
+- QEMU ISO run now attaches two blank installer target disks so the EFI installer shows a real [1]/[2] choice.
+- The installer echoes the pressed target key and the pressed Y/N confirmation key.
+- The reboot countdown is now 5 seconds and refreshes in place on one line.
+- The installed ESP now carries BOOTINFO.TXT so the booted kernel can report which installed drive it booted from.
+- The GTK QEMU window now starts fullscreen.
+
+
+## Purpose-based source split
+
+The large X64 boot files have been split into purpose-specific modules:
+
+```text
+Source/Src/Arch/X64/Boot/C/
+  BootConsole.c
+  BootFilesystem.c
+  BootKernel.c
+  BootMonitor.c
+  BootMain.c
+Source/Src/Arch/X64/Monitor/C/
+  MonitorConsole.c
+  MonitorFile.c
+  MonitorKernel.c
+  MonitorBootContext.c
+  MonitorMain.c
+Source/Src/Arch/X64/Installer/C/
+  InstallerBase.c
+  InstallerDisk.c
+  InstallerGpt.c
+  InstallerFat32.c
+  InstallerMain.c
+```
+
+
+## 0.0.38 milestone
+
+This milestone keeps the three-binary boot chain but moves machine ownership further into the ELF kernel:
+
+- the monitor still performs the final `ExitBootServices` handoff
+- the kernel now installs a real CPU exception IDT for vectors 0-255
+- the kernel now builds and loads its own identity-mapped x64 paging hierarchy
+- the kernel now reloads `CR3`, sets `CR0.WP`, and enables `EFER.NXE`
+
+That means the kernel is no longer just accepting a safe post-UEFI handoff. It starts owning the live paging state and exception path itself.
+
+
+## Re-run helper
+
+Use `./Scripts/Rerunqemu.sh` to relaunch QEMU with the most recently created hard-disk images still attached.
+
+## Update 0.0.69
+
+- reserved the loaded kernel image, boot context, copied EFI memory-map buffer, bootstrap page-table storage, bootstrap stack state, and descriptor-table backing before exposing memory to later code
+- replaced the raw EFI-usable interpretation with a physical-frame region database and a first memory-manager handoff contract for the future userland memory-manager service
+- reduced the higher-half memory log to summary totals by default, keeping the full descriptor dump behind a debug flag
+- added page unmap plus frame reservation and frame claim primitives to the x64 bootstrap memory interface
