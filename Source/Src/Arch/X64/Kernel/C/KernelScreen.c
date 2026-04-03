@@ -273,7 +273,7 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     MapRequest.PhysicalAddress = PhysicalBase;
     MapRequest.PageCount = PageCount;
     MapRequest.PageFlags = LOS_KERNEL_PAGE_WRITABLE | LOS_KERNEL_PAGE_WRITE_THROUGH | LOS_KERNEL_PAGE_CACHE_DISABLE;
-    MapRequest.Flags = LOS_X64_MAP_PAGES_FLAG_ALLOW_REMAP;
+    MapRequest.Flags = LOS_X64_MAP_PAGES_FLAG_ALLOW_REMAP | LOS_X64_MAP_PAGES_FLAG_ALLOW_UNDISCOVERED_PHYSICAL;
     MapRequest.Reserved = 0U;
     LosX64MapPages(&MapRequest, &MapResult);
     if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)

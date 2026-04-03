@@ -332,7 +332,8 @@ static UINT32 LosX64MapSinglePageIntoAddressSpace(UINT64 PageMapLevel4PhysicalAd
         return LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
     }
 
-    if (!LosX64IsPhysicalRangeDiscovered(PhysicalAddress, 4096ULL))
+    if (!LosX64IsPhysicalRangeDiscovered(PhysicalAddress, 4096ULL) &&
+        (RequestFlags & LOS_X64_MAP_PAGES_FLAG_ALLOW_UNDISCOVERED_PHYSICAL) == 0U)
     {
         return LOS_X64_MEMORY_OPERATION_STATUS_OUT_OF_RANGE;
     }

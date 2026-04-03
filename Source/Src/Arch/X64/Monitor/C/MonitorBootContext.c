@@ -13,6 +13,21 @@ typedef EFI_STATUS (EFIAPI *LOS_MONITOR_LOCATE_PROTOCOL)(
     VOID *Registration,
     VOID **Interface);
 
+static void LosMonitorSaveFramebufferInfo(LOS_BOOT_CONTEXT *BootContext, EFI_GRAPHICS_OUTPUT_PROTOCOL *GraphicsOutput)
+{
+    if (BootContext == 0 || GraphicsOutput == 0 || GraphicsOutput->Mode == 0 || GraphicsOutput->Mode->Info == 0)
+    {
+        return;
+    }
+
+    BootContext->FrameBufferPhysicalAddress = GraphicsOutput->Mode->FrameBufferBase;
+    BootContext->FrameBufferSize = (UINT64)GraphicsOutput->Mode->FrameBufferSize;
+    BootContext->FrameBufferWidth = GraphicsOutput->Mode->Info->HorizontalResolution;
+    BootContext->FrameBufferHeight = GraphicsOutput->Mode->Info->VerticalResolution;
+    BootContext->FrameBufferPixelsPerScanLine = GraphicsOutput->Mode->Info->PixelsPerScanLine;
+    BootContext->FrameBufferPixelFormat = (UINT32)GraphicsOutput->Mode->Info->PixelFormat;
+}
+
 void LosMonitorCaptureFramebufferInfo(EFI_SYSTEM_TABLE *SystemTable, LOS_BOOT_CONTEXT *BootContext)
 {
     LOS_MONITOR_LOCATE_PROTOCOL LocateProtocol;
@@ -36,20 +51,29 @@ void LosMonitorCaptureFramebufferInfo(EFI_SYSTEM_TABLE *SystemTable, LOS_BOOT_CO
         return;
     }
 
+    GraphicsOutput = 0;
+    if (SystemTable->ConsoleOutHandle != 0 && SystemTable->BootServices->HandleProtocol != 0)
+    {
+        Status = SystemTable->BootServices->HandleProtocol(
+            SystemTable->ConsoleOutHandle,
+            &LosMonitorGraphicsOutputProtocolGuid,
+            (VOID **)&GraphicsOutput);
+        if (!EFI_ERROR(Status) && GraphicsOutput != 0)
+        {
+            LosMonitorSaveFramebufferInfo(BootContext, GraphicsOutput);
+            return;
+        }
+    }
+
     LocateProtocol = (LOS_MONITOR_LOCATE_PROTOCOL)SystemTable->BootServices->LocateProtocol;
     GraphicsOutput = 0;
     Status = LocateProtocol(&LosMonitorGraphicsOutputProtocolGuid, 0, (VOID **)&GraphicsOutput);
-    if (EFI_ERROR(Status) || GraphicsOutput == 0 || GraphicsOutput->Mode == 0 || GraphicsOutput->Mode->Info == 0)
+    if (EFI_ERROR(Status) || GraphicsOutput == 0)
     {
         return;
     }
 
-    BootContext->FrameBufferPhysicalAddress = GraphicsOutput->Mode->FrameBufferBase;
-    BootContext->FrameBufferSize = (UINT64)GraphicsOutput->Mode->FrameBufferSize;
-    BootContext->FrameBufferWidth = GraphicsOutput->Mode->Info->HorizontalResolution;
-    BootContext->FrameBufferHeight = GraphicsOutput->Mode->Info->VerticalResolution;
-    BootContext->FrameBufferPixelsPerScanLine = GraphicsOutput->Mode->Info->PixelsPerScanLine;
-    BootContext->FrameBufferPixelFormat = (UINT32)GraphicsOutput->Mode->Info->PixelFormat;
+    LosMonitorSaveFramebufferInfo(BootContext, GraphicsOutput);
 }
 
 void LosMonitorInitializeBootContext(LOS_BOOT_CONTEXT *BootContext, UINT64 BootContextAddress, UINT64 BootContextSize, UINT64 KernelImagePhysicalAddress, UINT64 KernelImageSize, const LOS_BOOT_CONTEXT_LOAD_SEGMENT *KernelLoadSegments, UINT64 KernelLoadSegmentCount, const CHAR16 *BootSourceText, const CHAR16 *KernelPartitionText)
