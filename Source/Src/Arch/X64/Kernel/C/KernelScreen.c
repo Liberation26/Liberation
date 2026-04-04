@@ -56,6 +56,8 @@ static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 #define LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS 1U
 #define LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS 8U
 
+static void ApplyLineIndent(UINT32 IndentColumns);
+
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
     return ((UINT64)PixelsPerScanLine * (UINT64)Height * 4ULL);

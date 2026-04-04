@@ -1,4 +1,4 @@
-## Delivery note for 0.1.18
+## Delivery note for 0.1.19
 
 - Added word wrap to kernel console text output so status and log lines move cleanly onto the next line instead of running through word boundaries.
 - Increased kernel console line spacing so framebuffer text is easier to read during bring-up.
@@ -343,3 +343,5 @@ Version 0.1.13 adds the first dedicated `MEMORYMGR.ELF` image to the installed i
 
 
 - 0.1.18: kernel console now starts each line with a 1-character indent and uses an 8-character indent for automatic word-wrapped continuation lines.
+
+- 0.1.19: fixed the kernel console build break by forward-declaring ApplyLineIndent before its first use.
