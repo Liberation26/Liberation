@@ -52,7 +52,9 @@ typedef struct
 static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 
 #define LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE 2U
-#define LOS_KERNEL_SCREEN_LINE_SPACING 4U
+#define LOS_KERNEL_SCREEN_LINE_SPACING 6U
+#define LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS 1U
+#define LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS 8U
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -168,6 +170,7 @@ static void ClearScreen(void)
 
     LosKernelScreenState.CursorColumn = 0U;
     LosKernelScreenState.CursorRow = 0U;
+    ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
 }
 
 static UINT32 ComposePixelColor(UINT8 Red, UINT8 Green, UINT8 Blue)
@@ -195,6 +198,27 @@ static UINT32 GetFailPrefixColor(void)
     return ComposePixelColor(0xFFU, 0x55U, 0x55U);
 }
 
+
+static void ApplyLineIndent(UINT32 IndentColumns)
+{
+    if (LosKernelScreenState.Ready == 0U)
+    {
+        return;
+    }
+
+    if (IndentColumns >= LosKernelScreenState.MaxColumns)
+    {
+        IndentColumns = LosKernelScreenState.MaxColumns > 0U
+            ? (LosKernelScreenState.MaxColumns - 1U)
+            : 0U;
+    }
+
+    if (LosKernelScreenState.CursorColumn < IndentColumns)
+    {
+        LosKernelScreenState.CursorColumn = IndentColumns;
+    }
+}
+
 static void PutPixel(UINT32 X, UINT32 Y, UINT32 Color)
 {
     if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.FrameBuffer == 0)
@@ -217,6 +241,8 @@ static void AdvanceLine(void)
     {
         ClearScreen();
     }
+
+    ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
 }
 
 static void PutScaledPixelBlock(UINT32 BaseX, UINT32 BaseY, UINT32 Scale, UINT32 Color)
@@ -420,6 +446,7 @@ static void PutTextColored(const char *Text, UINT32 Color)
         if (Text[Index] == '\n' || Text[Index] == '\r')
         {
             PutCharacterColored(Text[Index], Color);
+            ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
             Index += 1U;
             continue;
         }
@@ -452,6 +479,7 @@ static void PutTextColored(const char *Text, UINT32 Color)
         if (WordLength != 0U && WordLength <= LosKernelScreenState.MaxColumns && WordLength > RemainingColumns && LosKernelScreenState.CursorColumn != 0U)
         {
             AdvanceLine();
+            ApplyLineIndent(LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS);
         }
 
         while (Text[Index] != '\0' && Text[Index] != ' ' && Text[Index] != '\n' && Text[Index] != '\r' && Text[Index] != '\t')
@@ -667,6 +695,7 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.PixelFormat = PixelRedGreenBlueReserved8BitPerColor;
     LosKernelScreenState.CursorColumn = 0U;
     LosKernelScreenState.CursorRow = 0U;
+    ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
     LosKernelScreenState.MaxColumns = 0U;
     LosKernelScreenState.MaxRows = 0U;
     InitializeDefaultFont();
@@ -748,6 +777,10 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.MaxColumns = BootContext->FrameBufferWidth / (LosKernelScreenState.CellWidth * LosKernelScreenState.FontScale);
     LosKernelScreenState.MaxRows = BootContext->FrameBufferHeight / (LosKernelScreenState.CellHeight * LosKernelScreenState.FontScale);
     LosKernelScreenState.Ready = (LosKernelScreenState.MaxColumns != 0U && LosKernelScreenState.MaxRows != 0U) ? 1U : 0U;
+    if (LosKernelScreenState.Ready != 0U)
+    {
+        ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
+    }
     if (LosKernelScreenState.Ready == 0U)
     {
         LosKernelSerialWriteText("[KernelScreen] Screen geometry was too small for the text grid.\n");

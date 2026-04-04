@@ -1,4 +1,4 @@
-## Delivery note for 0.1.17
+## Delivery note for 0.1.18
 
 - Added word wrap to kernel console text output so status and log lines move cleanly onto the next line instead of running through word boundaries.
 - Increased kernel console line spacing so framebuffer text is easier to read during bring-up.
@@ -340,3 +340,6 @@ Version 0.1.13 adds the first dedicated `MEMORYMGR.ELF` image to the installed i
 - The monitor is back to kernel-only responsibility.
 - `MEMORYMGR.ELF` is now built as a normal service image and also embedded into a kernel-owned bootstrap package for first-service launch preparation.
 - The monitor no longer loads or validates the memory-manager image.
+
+
+- 0.1.18: kernel console now starts each line with a 1-character indent and uses an 8-character indent for automatic word-wrapped continuation lines.
