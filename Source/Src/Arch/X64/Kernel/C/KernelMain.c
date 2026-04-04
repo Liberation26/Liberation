@@ -366,11 +366,6 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelTraceOk("Dedicated kernel stack mapping is active.");
     LosInitializeMemoryManagerBootstrap(BootContext);
     LosLaunchMemoryManagerBootstrap();
-    LosDescribeMemoryManagerBootstrap();
-    LosKernelTraceOk("QueryMemoryRegions, ReserveFrames, and ClaimFrames are reachable through the memory-manager bootstrap endpoint path.");
-    LosKernelTraceOk("MapPages and UnmapPages are reachable through the memory-manager bootstrap endpoint path.");
-    LosKernelTraceOk("A first dedicated memory-manager ELF image is staged from the kernel-owned bootstrap package.");
-    LosKernelTraceOk("Memory manager remains a userland service.");
     LosKernelTraceUnsigned("Timer tick count before enabling interrupts: ", LosX64GetTimerTickCount());
     LosKernelScreenUpdateTimer(LosX64GetTimerTickCount(), 100ULL, 0U);
     LosKernelEnableInterrupts();

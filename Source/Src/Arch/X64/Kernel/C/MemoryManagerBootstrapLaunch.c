@@ -168,22 +168,6 @@ static void TraceTransferContext(
     LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
 
     State = LosMemoryManagerBootstrapState();
-    LosKernelTrace("Memory-manager task-transfer trace follows.");
-    LosKernelTraceHex64("Memory-manager transfer current CR3: ", PreviousRootPhysicalAddress);
-    LosKernelTraceHex64("Memory-manager transfer target CR3: ", TargetRootPhysicalAddress);
-    LosKernelTraceHex64("Memory-manager transfer current RSP: ", ReadRsp());
-    LosKernelTraceHex64("Memory-manager transfer current RBP: ", ReadRbp());
-    LosKernelTraceHex64("Memory-manager transfer target RSP: ", TargetStackTopVirtualAddress);
-    LosKernelTraceHex64("Memory-manager transfer target RIP: ", TargetEntryVirtualAddress);
-    LosKernelTraceHex64("Memory-manager transfer launch block physical: ", State->Info.LaunchBlockPhysicalAddress);
-    LosKernelTraceHex64("Memory-manager transfer launch block direct-map: ", LaunchBlockDirectMapAddress);
-    LosKernelTraceHex64("Memory-manager transfer stack physical: ", State->Info.ServiceStackPhysicalAddress);
-    LosKernelTraceHex64("Memory-manager transfer stack pages: ", State->Info.ServiceStackPageCount);
-    LosKernelTraceHex64("Memory-manager transfer stack top physical: ", State->LaunchBlock != 0 ? State->LaunchBlock->ServiceStackTopPhysicalAddress : 0ULL);
-    LosKernelTraceHex64("Memory-manager transfer stack top virtual: ", TargetStackTopVirtualAddress);
-    LosKernelTraceHex64("Memory-manager transfer service root object: ", State->ServiceAddressSpaceObject != 0 ? State->ServiceAddressSpaceObject->RootTablePhysicalAddress : 0ULL);
-    LosKernelTraceHex64("Memory-manager transfer task entry object: ", State->ServiceTaskObject != 0 ? State->ServiceTaskObject->EntryVirtualAddress : 0ULL);
-    LosKernelTraceHex64("Memory-manager transfer task stack object: ", State->ServiceTaskObject != 0 ? State->ServiceTaskObject->StackTopVirtualAddress : 0ULL);
 }
 
 static BOOLEAN ClaimContiguousPages(UINT64 PageCount, UINT64 *BaseAddress)
@@ -269,7 +253,6 @@ static BOOLEAN CloneCurrentRootPageMap(UINT64 *NewRootPhysicalAddress)
     {
         NewRoot[EntryIndex] = CurrentRoot[EntryIndex];
     }
-    LosKernelTrace("Memory-manager service root lower-half cleared before first service mappings.");
 
     State->ServiceAddressSpaceObject->KernelRootTablePhysicalAddress = LosX64GetCurrentPageMapLevel4PhysicalAddress();
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
@@ -472,10 +455,6 @@ static BOOLEAN StageServiceImageInPhysicalMemory(
     }
 
     ZeroMemory(ImageTarget, (UINTN)*ImageMappedBytes);
-    LosKernelTraceHex64("Memory-manager image virtual base: ", *ImageVirtualBase);
-    LosKernelTraceHex64("Memory-manager image physical base: ", *ImagePhysicalBase);
-    LosKernelTraceHex64("Memory-manager image mapped bytes: ", *ImageMappedBytes);
-    LosKernelTraceHex64("Memory-manager image page count: ", *ImagePageCount);
 
     for (ProgramHeaderIndex = 0U; ProgramHeaderIndex < Header->ProgramHeaderCount; ++ProgramHeaderIndex)
     {
@@ -503,12 +482,6 @@ static BOOLEAN StageServiceImageInPhysicalMemory(
         SegmentPhysicalBase = *ImagePhysicalBase + (SegmentVirtualBase - *ImageVirtualBase);
         SegmentTarget = (UINT8 *)ImageTarget + SegmentImageOffset;
 
-        LosKernelTraceHex64("Memory-manager segment virtual base: ", SegmentVirtualBase);
-        LosKernelTraceHex64("Memory-manager segment physical base: ", SegmentPhysicalBase);
-        LosKernelTraceHex64("Memory-manager segment file bytes: ", ProgramHeader->FileSize);
-        LosKernelTraceHex64("Memory-manager segment memory bytes: ", ProgramHeader->MemorySize);
-        LosKernelTraceHex64("Memory-manager segment page count: ", SegmentPageCount);
-        LosKernelTraceHex64("Memory-manager segment flags: ", ProgramHeader->Flags);
 
         if (ProgramHeader->FileSize != 0ULL)
         {
@@ -703,9 +676,6 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = ServiceRootPhysicalAddress;
     State->ServiceAddressSpaceObject->DirectMapBase = Layout->HigherHalfDirectMapBase;
     State->ServiceAddressSpaceObject->DirectMapSize = Layout->HigherHalfDirectMapSize;
-    LosKernelTraceHex64("Memory-manager service root physical before stack map: ", ServiceRootPhysicalAddress);
-    LosKernelTraceHex64("Memory-manager service stack physical before stack map: ", State->Info.ServiceStackPhysicalAddress);
-    LosKernelTraceHex64("Memory-manager service stack pages before stack map: ", State->Info.ServiceStackPageCount);
     if (!MapServiceStackIntoAddressSpace(
             ServiceRootPhysicalAddress,
             State->Info.ServiceStackPhysicalAddress,
@@ -720,7 +690,6 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
         LosKernelTraceFail("Memory-manager service stack top virtual address remained zero after stack map.");
         return 0;
     }
-    LosKernelTraceHex64("Memory-manager service stack top virtual after stack map: ", State->ServiceTaskObject->StackTopVirtualAddress);
     SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_PUBLISH_LAUNCH, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_MAPPED;
     State->LaunchBlock->Flags = State->Info.Flags;

@@ -1,3 +1,7 @@
+Version 0.1.48
+
+This delivery renames the live service prefix from `[Service]` to `[MemManager]`, stops the memory-manager service loop from writing heartbeat/request spam to COM1, and trims routine kernel-side bootstrap chatter so the kernel now logs only actual memory-manager request/response traffic during the normal bootstrap path. The normal kernel path no longer dumps the full memory-manager bootstrap state on success, while the kernel now emits concise `[MemManager] Kernel -> Memory Manager ...` and `[MemManager] Memory Manager -> Kernel ...` serial lines when it actually exchanges bootstrap messages with the service.
+
 Version 0.1.47
 
 This delivery fixes the first live memory-manager request-completion path. `MEMORYMGR.ELF` now retires a handled request slot after posting the response by marking the request complete, clearing the slot contents, zeroing the sequence, and advancing the request mailbox consume index. That stops the same bootstrap request from being re-read forever, which was causing repeated `[Service] Request operation=1 id=...` traces and noisy on-screen service spam after the handoff succeeded.

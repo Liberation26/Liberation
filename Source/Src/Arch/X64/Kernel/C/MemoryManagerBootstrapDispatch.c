@@ -1,5 +1,54 @@
 #include "MemoryManagerBootstrapInternal.h"
 
+static const char *OperationName(UINT32 Operation)
+{
+    switch (Operation)
+    {
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
+            return "QueryMemoryRegions";
+        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
+            return "ReserveFrames";
+        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
+            return "ClaimFrames";
+        case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
+            return "MapPages";
+        case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
+            return "UnmapPages";
+        default:
+            return "Unknown";
+    }
+}
+
+static void TraceKernelToMemoryManagerRequest(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request)
+{
+    if (Request == 0)
+    {
+        return;
+    }
+
+    LosKernelSerialWriteText("[MemManager] Kernel -> Memory Manager request=");
+    LosKernelSerialWriteText(OperationName(Request->Operation));
+    LosKernelSerialWriteText(" id=");
+    LosKernelSerialWriteHex64(Request->RequestId);
+    LosKernelSerialWriteText("\n");
+}
+
+static void TraceMemoryManagerToKernelResponse(const LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
+{
+    if (Response == 0)
+    {
+        return;
+    }
+
+    LosKernelSerialWriteText("[MemManager] Memory Manager -> Kernel response=");
+    LosKernelSerialWriteText(OperationName(Response->Operation));
+    LosKernelSerialWriteText(" id=");
+    LosKernelSerialWriteHex64(Response->RequestId);
+    LosKernelSerialWriteText(" status=");
+    LosKernelSerialWriteUnsigned(Response->Status);
+    LosKernelSerialWriteText("\n");
+}
+
 static void ZeroMemory(void *Buffer, UINTN ByteCount)
 {
     UINT8 *Bytes;
@@ -303,6 +352,7 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
 {
     InitializeResponse(Request, Response);
 
+    TraceKernelToMemoryManagerRequest(Request);
     if (!LosMemoryManagerBootstrapEnqueueRequest(Request))
     {
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
@@ -319,6 +369,8 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to dequeue a response.");
     }
+
+    TraceMemoryManagerToKernelResponse(Response);
 }
 
 void LosMemoryManagerBootstrapPublishLaunchReady(void)

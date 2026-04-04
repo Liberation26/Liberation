@@ -155,7 +155,7 @@ static void ServiceSerialWriteLine(const char *Text)
 
 static void ServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
 {
-    ServiceSerialWriteText("[Service] ");
+    ServiceSerialWriteText("[MemManager] ");
     ServiceSerialWriteText(Name);
     ServiceSerialWriteText(": ");
     ServiceSerialWriteHex64(Value);
@@ -821,12 +821,6 @@ void LosMemoryManagerServicePoll(void)
         State->TaskObject->LastRequestId = State->LastRequestId;
     }
 
-    ServiceSerialWriteText("[Service] Request operation=");
-    ServiceSerialWriteUnsigned((UINT64)Slot->Message.Operation);
-    ServiceSerialWriteText(" id=");
-    ServiceSerialWriteHex64(Slot->Message.RequestId);
-    ServiceSerialWriteText("\n");
-
     PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_READY_FOR_REQUESTS, 0U, Slot->Message.Operation, Slot->Message.RequestId);
     CompleteRequestWithStatus(State, LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED);
 }
@@ -869,7 +863,7 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1004ULL, RegisterLaunchBlockAddressRcx);
 
     ServiceSerialInit();
-    ServiceSerialWriteLine("[Service] Memory-manager bootstrap entry reached.");
+    ServiceSerialWriteLine("[MemManager] Memory-manager bootstrap entry reached.");
     ServiceSerialWriteNamedHex("Launch block", LaunchBlockAddress);
 
     if (State->Online == 0U)
@@ -877,7 +871,7 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1005ULL, RegisterLaunchBlockAddressRdx);
         if (!LosMemoryManagerServiceAttach(LaunchBlock))
         {
-            ServiceSerialWriteLine("[Service] Memory-manager attach failed. Halting in service context.");
+            ServiceSerialWriteLine("[MemManager] Memory-manager attach failed. Halting in service context.");
             RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x10FFULL, 0xFFFFFFFFFFFFFFFFULL);
             for (;; )
             {
@@ -888,12 +882,12 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         ServiceSerialWriteNamedHex("Service entry", LaunchBlock->ServiceEntryVirtualAddress);
         ServiceSerialWriteNamedHex("Service stack top virtual", LaunchBlock->ServiceStackTopVirtualAddress);
         ServiceSerialWriteNamedHex("Service root", LaunchBlock->ServicePageMapLevel4PhysicalAddress);
-        ServiceSerialWriteLine("[Service] Memory-manager attach complete.");
+        ServiceSerialWriteLine("[MemManager] Memory-manager attach complete.");
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
     }
 
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1007ULL, LaunchBlock->ServiceStackTopVirtualAddress);
-    ServiceSerialWriteLine("[Service] Entering memory-manager service loop.");
+    ServiceSerialWriteLine("[MemManager] Entering memory-manager service loop.");
     LosMemoryManagerServiceEntry();
 }
 
@@ -921,15 +915,7 @@ void LosMemoryManagerServiceEntry(void)
 
         if (State->Heartbeat == 1ULL)
         {
-            ServiceSerialWriteLine("[Service] Heartbeat started.");
-        }
-        else if ((State->Heartbeat & 0xFFFFULL) == 0ULL)
-        {
-            ServiceSerialWriteText("[Service] Heartbeat=");
-            ServiceSerialWriteUnsigned(State->Heartbeat);
-            ServiceSerialWriteText(" LastRequest=");
-            ServiceSerialWriteHex64(State->LastRequestId);
-            ServiceSerialWriteText("\n");
+            ServiceSerialWriteLine("[MemManager] Service loop online.");
         }
 
         LosMemoryManagerServicePoll();
