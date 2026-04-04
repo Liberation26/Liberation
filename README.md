@@ -1,3 +1,7 @@
+Version 0.1.39
+
+This delivery hardens memory-manager bootstrap transport staging so every direct-map translation is validated before any mailbox, endpoint, task, address-space, or launch-block object is published as ready. The transport path now fails immediately on a null direct-map translation instead of silently storing unusable bootstrap pointers.
+
 Version 0.1.38
 
 This delivery adds a dedicated assembly bootstrap task-transfer helper for the memory-manager service. The kernel now performs the temporary service handoff by switching into the staged service CR3 root and service stack inside a standalone assembly path and restoring the kernel context only if the bootstrap entry returns. This is the first real task-style switch path instead of the previous inline C-hosted entry shim.

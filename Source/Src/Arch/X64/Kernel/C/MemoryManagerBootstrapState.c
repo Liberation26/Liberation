@@ -441,9 +441,30 @@ void LosMemoryManagerBootstrapInitializeMailboxes(void)
     InitializeEventMailbox(LosMemoryManagerBootstrapGetEventMailbox(), State->Info.Endpoints.ServiceEvents);
 }
 
+static BOOLEAN MapBootstrapObject(UINT64 PhysicalAddress, UINT64 Size, void **MappedOut)
+{
+    void *Mapped;
+
+    Mapped = LosX64GetDirectMapVirtualAddress(PhysicalAddress, Size);
+    if (Mapped == 0)
+    {
+        *MappedOut = 0;
+        return 0;
+    }
+
+    *MappedOut = Mapped;
+    return 1;
+}
+
 BOOLEAN LosMemoryManagerBootstrapStageTransport(void)
 {
     LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+    LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *KernelToServiceEndpointObject;
+    LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *ServiceToKernelEndpointObject;
+    LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *ServiceEventsEndpointObject;
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *ServiceAddressSpaceObject;
+    LOS_MEMORY_MANAGER_TASK_OBJECT *ServiceTaskObject;
+    LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
     void *Mapped;
 
     State = LosMemoryManagerBootstrapState();
@@ -495,37 +516,66 @@ BOOLEAN LosMemoryManagerBootstrapStageTransport(void)
     State->Info.LaunchBlockSize = LOS_MEMORY_MANAGER_LAUNCH_BLOCK_PAGE_COUNT * 0x1000ULL;
     State->Info.ServiceStackPageCount = LOS_MEMORY_MANAGER_SERVICE_STACK_PAGE_COUNT;
 
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.RequestMailboxPhysicalAddress, State->Info.RequestMailboxSize);
-    State->RequestMailboxVirtualAddress = (UINT64)(UINTN)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.ResponseMailboxPhysicalAddress, State->Info.ResponseMailboxSize);
-    State->ResponseMailboxVirtualAddress = (UINT64)(UINTN)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.EventMailboxPhysicalAddress, State->Info.EventMailboxSize);
-    State->EventMailboxVirtualAddress = (UINT64)(UINTN)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.KernelToServiceEndpointObjectPhysicalAddress, LOS_MEMORY_MANAGER_ENDPOINT_OBJECT_PAGE_COUNT * 0x1000ULL);
-    State->KernelToServiceEndpointObject = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.ServiceToKernelEndpointObjectPhysicalAddress, LOS_MEMORY_MANAGER_ENDPOINT_OBJECT_PAGE_COUNT * 0x1000ULL);
-    State->ServiceToKernelEndpointObject = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.ServiceEventsEndpointObjectPhysicalAddress, LOS_MEMORY_MANAGER_ENDPOINT_OBJECT_PAGE_COUNT * 0x1000ULL);
-    State->ServiceEventsEndpointObject = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.ServiceAddressSpaceObjectPhysicalAddress, LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT * 0x1000ULL);
-    State->ServiceAddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.ServiceTaskObjectPhysicalAddress, LOS_MEMORY_MANAGER_TASK_OBJECT_PAGE_COUNT * 0x1000ULL);
-    State->ServiceTaskObject = (LOS_MEMORY_MANAGER_TASK_OBJECT *)Mapped;
-    Mapped = LosX64GetDirectMapVirtualAddress(State->Info.LaunchBlockPhysicalAddress, State->Info.LaunchBlockSize);
-    State->LaunchBlock = (LOS_MEMORY_MANAGER_LAUNCH_BLOCK *)Mapped;
-
-    if (State->RequestMailboxVirtualAddress == 0ULL ||
-        State->ResponseMailboxVirtualAddress == 0ULL ||
-        State->EventMailboxVirtualAddress == 0ULL ||
-        State->KernelToServiceEndpointObject == 0 ||
-        State->ServiceToKernelEndpointObject == 0 ||
-        State->ServiceEventsEndpointObject == 0 ||
-        State->ServiceAddressSpaceObject == 0 ||
-        State->ServiceTaskObject == 0 ||
-        State->LaunchBlock == 0)
+    if (!MapBootstrapObject(State->Info.RequestMailboxPhysicalAddress, State->Info.RequestMailboxSize, &Mapped))
     {
         return 0;
     }
+    State->RequestMailboxVirtualAddress = (UINT64)(UINTN)Mapped;
+
+    if (!MapBootstrapObject(State->Info.ResponseMailboxPhysicalAddress, State->Info.ResponseMailboxSize, &Mapped))
+    {
+        return 0;
+    }
+    State->ResponseMailboxVirtualAddress = (UINT64)(UINTN)Mapped;
+
+    if (!MapBootstrapObject(State->Info.EventMailboxPhysicalAddress, State->Info.EventMailboxSize, &Mapped))
+    {
+        return 0;
+    }
+    State->EventMailboxVirtualAddress = (UINT64)(UINTN)Mapped;
+
+    if (!MapBootstrapObject(State->Info.KernelToServiceEndpointObjectPhysicalAddress, LOS_MEMORY_MANAGER_ENDPOINT_OBJECT_PAGE_COUNT * 0x1000ULL, &Mapped))
+    {
+        return 0;
+    }
+    KernelToServiceEndpointObject = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)Mapped;
+
+    if (!MapBootstrapObject(State->Info.ServiceToKernelEndpointObjectPhysicalAddress, LOS_MEMORY_MANAGER_ENDPOINT_OBJECT_PAGE_COUNT * 0x1000ULL, &Mapped))
+    {
+        return 0;
+    }
+    ServiceToKernelEndpointObject = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)Mapped;
+
+    if (!MapBootstrapObject(State->Info.ServiceEventsEndpointObjectPhysicalAddress, LOS_MEMORY_MANAGER_ENDPOINT_OBJECT_PAGE_COUNT * 0x1000ULL, &Mapped))
+    {
+        return 0;
+    }
+    ServiceEventsEndpointObject = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)Mapped;
+
+    if (!MapBootstrapObject(State->Info.ServiceAddressSpaceObjectPhysicalAddress, LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT * 0x1000ULL, &Mapped))
+    {
+        return 0;
+    }
+    ServiceAddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)Mapped;
+
+    if (!MapBootstrapObject(State->Info.ServiceTaskObjectPhysicalAddress, LOS_MEMORY_MANAGER_TASK_OBJECT_PAGE_COUNT * 0x1000ULL, &Mapped))
+    {
+        return 0;
+    }
+    ServiceTaskObject = (LOS_MEMORY_MANAGER_TASK_OBJECT *)Mapped;
+
+    if (!MapBootstrapObject(State->Info.LaunchBlockPhysicalAddress, State->Info.LaunchBlockSize, &Mapped))
+    {
+        return 0;
+    }
+    LaunchBlock = (LOS_MEMORY_MANAGER_LAUNCH_BLOCK *)Mapped;
+
+    State->KernelToServiceEndpointObject = KernelToServiceEndpointObject;
+    State->ServiceToKernelEndpointObject = ServiceToKernelEndpointObject;
+    State->ServiceEventsEndpointObject = ServiceEventsEndpointObject;
+    State->ServiceAddressSpaceObject = ServiceAddressSpaceObject;
+    State->ServiceTaskObject = ServiceTaskObject;
+    State->LaunchBlock = LaunchBlock;
 
     LosMemoryManagerBootstrapInitializeMailboxes();
     InitializeEndpointObject(
