@@ -1,3 +1,7 @@
+Version 0.1.47
+
+This delivery fixes the first live memory-manager request-completion path. `MEMORYMGR.ELF` now retires a handled request slot after posting the response by marking the request complete, clearing the slot contents, zeroing the sequence, and advancing the request mailbox consume index. That stops the same bootstrap request from being re-read forever, which was causing repeated `[Service] Request operation=1 id=...` traces and noisy on-screen service spam after the handoff succeeded.
+
 Version 0.1.46
 
 This delivery adds service-side serial proof-of-life after the memory-manager task-transfer handoff. `MEMORYMGR.ELF` now writes explicit `[Service]` bootstrap-entry, attach-complete, and service-loop messages to COM1, logs periodic heartbeat updates from inside the live service context, and traces any bootstrap request that reaches the service mailbox.

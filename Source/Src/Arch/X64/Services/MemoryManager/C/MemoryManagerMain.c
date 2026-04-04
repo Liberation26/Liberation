@@ -756,6 +756,12 @@ static void CompleteRequestWithStatus(LOS_MEMORY_MANAGER_SERVICE_STATE *State, U
     ResponseSlot->Sequence = RequestSlot->Message.RequestId;
     ResponseSlot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY;
     State->ResponseMailbox->Header.ProduceIndex += 1ULL;
+
+    RequestSlot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_COMPLETE;
+    RequestSlot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_FREE;
+    RequestSlot->Sequence = 0ULL;
+    ZeroMemory(&RequestSlot->Message, sizeof(RequestSlot->Message));
+    State->RequestMailbox->Header.ConsumeIndex += 1ULL;
 }
 
 static void PostEvent(UINT32 EventType, UINT32 Status, UINT64 Value0, UINT64 Value1)
