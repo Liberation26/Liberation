@@ -36,6 +36,7 @@ BOOLEAN LosMemoryManagerBootstrapOperationSupported(UINT32 Operation)
         case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
+        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
             return 1;
         default:

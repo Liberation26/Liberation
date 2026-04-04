@@ -170,6 +170,20 @@ typedef struct
 
 typedef struct
 {
+    UINT64 PhysicalAddress;
+    UINT64 PageCount;
+} LOS_X64_FREE_FRAMES_REQUEST;
+
+typedef struct
+{
+    UINT32 Status;
+    UINT32 Reserved;
+    UINT64 BaseAddress;
+    UINT64 PageCount;
+} LOS_X64_FREE_FRAMES_RESULT;
+
+typedef struct
+{
     UINT64 PageMapLevel4PhysicalAddress;
     UINT64 VirtualAddress;
     UINT64 PhysicalAddress;

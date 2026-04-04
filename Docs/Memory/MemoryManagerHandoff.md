@@ -1,3 +1,18 @@
+## Version 0.1.61
+
+The X64 memory-manager bootstrap now has a real service-side frame allocator instead of only a service-authored memory inventory.
+
+This delivery does six concrete things:
+
+- keeps a post-attach **baseline page-frame database** owned by `MEMORYMGR.ELF`
+- records later reserve/claim operations in a **sorted dynamic-allocation list**
+- rebuilds the current live page-frame database from baseline plus those service-owned allocations
+- answers `QueryMemoryRegions`, `ReserveFrames`, and `ClaimFrames` from that service-side database
+- adds `FreeFrames` so tracked dynamic allocations can be released back to the service baseline
+- rejects overlaps and double-frees instead of quietly reusing already-owned pages
+
+That means physical-page ownership decisions after bootstrap attach are now made from the memory manager's own bookkeeping rather than from the older kernel bootstrap fallback path. The kernel still retains the lowest-level page-map execution path, but frame ownership policy and accounting now live in the service where they were always intended to live.
+
 ## Version 0.1.60
 
 The visible boot-time memory summary now comes from the live memory-manager service after bootstrap attach succeeds.

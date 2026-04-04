@@ -1,3 +1,17 @@
+Version 0.1.61
+
+This delivery builds the first real service-side frame allocator inside `MEMORYMGR.ELF`. The memory manager now keeps a deterministic post-attach baseline frame database, records later reserve/claim allocations in a sorted dynamic-allocation list, and rebuilds the live current page-frame database from that service-owned bookkeeping instead of falling back to ad hoc kernel bootstrap ownership updates.
+
+Concretely, the service now:
+- answers `QueryMemoryRegions` from its own current effective region view
+- answers `ReserveFrames` from its own frame database and rejects overlap with already-owned pages
+- answers `ClaimFrames` from its own allocator search over the current free spans
+- supports `FreeFrames` so later service-owned allocations can be released back to the post-attach baseline
+- rejects double-free attempts by requiring the freed range to be fully covered by tracked dynamic allocations
+- keeps bookkeeping deterministic by storing dynamic allocations in a sorted, coalesced list and rebuilding the live database from baseline plus overlays
+
+The kernel bootstrap bridge now requires a real service reply for region-query and physical frame ownership requests, so once attach succeeds those ownership decisions come from the memory-manager service rather than silently falling back to the kernel bootstrap path.
+
 Version 0.1.60
 
 This delivery changes the visible memory summary over to the memory-manager service's own computed view instead of the kernel's pre-attach bootstrap accounting. The kernel no longer prints the earlier physical-memory and handoff summaries before the service is online. Instead, once bootstrap attach succeeds, the memory manager returns its own totals for usable, bootstrap-reserved, firmware-reserved, runtime, MMIO, ACPI/NVS, and unusable bytes together with total/free/reserved/runtime/MMIO page counts plus descriptor and frame-database sizes. The kernel now logs that service-authored summary to serial and writes a concise on-screen memory summary from the memory manager's knowledge.

@@ -317,6 +317,7 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES);
     State->Info.ServiceImagePhysicalAddress = 0ULL;
     State->Info.ServiceImageSize = 0ULL;

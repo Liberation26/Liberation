@@ -16,6 +16,8 @@ static const char *OperationName(UINT32 Operation)
             return "MapPages";
         case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
             return "UnmapPages";
+        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+            return "FreeFrames";
         default:
             return "Unknown";
     }
@@ -336,6 +338,10 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
             LosX64ClaimFrames(&Slot->Message.Payload.ClaimFrames, &Response->Payload.ClaimFrames);
             Response->Status = Response->Payload.ClaimFrames.Status;
             break;
+        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.FreeFrames.Status = Response->Status;
+            break;
         case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
             LosX64MapPages(&Slot->Message.Payload.MapPages, &Response->Payload.MapPages);
             Response->Status = Response->Payload.MapPages.Status;
@@ -359,7 +365,17 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
 
 static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
 {
-    return Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH;
+    switch (Operation)
+    {
+        case LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH:
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
+        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+            return 1;
+        default:
+            return 0;
+    }
 }
 
 static UINT32 HostedServiceStepBudgetForOperation(UINT32 Operation)
@@ -676,6 +692,27 @@ void LosMemoryManagerSendClaimFrames(const LOS_X64_CLAIM_FRAMES_REQUEST *Request
     if (Result != 0)
     {
         CopyBytes(Result, &Response.Payload.ClaimFrames, sizeof(*Result));
+        Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendFreeFrames(const LOS_X64_FREE_FRAMES_REQUEST *RequestData, LOS_X64_FREE_FRAMES_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    ZeroMemory(&Request, sizeof(Request));
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES;
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    if (RequestData != 0)
+    {
+        CopyBytes(&Request.Payload.FreeFrames, RequestData, sizeof(*RequestData));
+    }
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.FreeFrames, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }

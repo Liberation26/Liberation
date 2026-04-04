@@ -842,6 +842,40 @@ static void InitializeServiceResponse(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *
     }
 }
 
+static BOOLEAN ServiceMayHandleOperation(const LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT32 Operation)
+{
+    if (State == 0)
+    {
+        return 0;
+    }
+
+    if (Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)
+    {
+        return 1;
+    }
+
+    if (State->AttachComplete == 0U)
+    {
+        return 0;
+    }
+
+    if ((State->NegotiatedOperations & (1ULL << Operation)) == 0ULL)
+    {
+        return 0;
+    }
+
+    switch (Operation)
+    {
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
+        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
 static BOOLEAN CompleteRequest(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
     LOS_MEMORY_MANAGER_REQUEST_SLOT *RequestSlot;
@@ -1120,24 +1154,51 @@ void LosMemoryManagerServicePoll(void)
         State->TaskObject->LastRequestId = State->LastRequestId;
     }
 
-    if (Slot->Message.Operation != LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)
+    if (!ServiceMayHandleOperation(State, Slot->Message.Operation))
     {
         return;
     }
 
-    ServiceSerialWriteText("[MemManager] Processing bootstrap attach request id=");
-    ServiceSerialWriteHex64(Slot->Message.RequestId);
-    ServiceSerialWriteText("\n");
-    PopulateBootstrapAttachResponse(State, &Slot->Message, &Response);
+    InitializeServiceResponse(&Slot->Message, &Response);
+    switch (Slot->Message.Operation)
+    {
+        case LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH:
+            ServiceSerialWriteText("[MemManager] Processing bootstrap attach request id=");
+            ServiceSerialWriteHex64(Slot->Message.RequestId);
+            ServiceSerialWriteText("\n");
+            PopulateBootstrapAttachResponse(State, &Slot->Message, &Response);
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
+            LosMemoryManagerServiceQueryMemoryRegions(State, &Slot->Message, &Response);
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
+            LosMemoryManagerServiceReserveFrames(State, &Slot->Message.Payload.ReserveFrames, &Response.Payload.ReserveFrames);
+            Response.Status = Response.Payload.ReserveFrames.Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
+            LosMemoryManagerServiceClaimFrames(State, &Slot->Message.Payload.ClaimFrames, &Response.Payload.ClaimFrames);
+            Response.Status = Response.Payload.ClaimFrames.Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+            LosMemoryManagerServiceFreeFrames(State, &Slot->Message.Payload.FreeFrames, &Response.Payload.FreeFrames);
+            Response.Status = Response.Payload.FreeFrames.Status;
+            break;
+        default:
+            return;
+    }
+
     if (CompleteRequest(State, &Response))
     {
-        ServiceSerialWriteText("[MemManager] Bootstrap attach response posted result=");
-        ServiceSerialWriteUnsigned(Response.Payload.BootstrapAttach.BootstrapResult);
-        ServiceSerialWriteText(" status=");
-        ServiceSerialWriteUnsigned(Response.Status);
-        ServiceSerialWriteText("\n");
+        if (Response.Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)
+        {
+            ServiceSerialWriteText("[MemManager] Bootstrap attach response posted result=");
+            ServiceSerialWriteUnsigned(Response.Payload.BootstrapAttach.BootstrapResult);
+            ServiceSerialWriteText(" status=");
+            ServiceSerialWriteUnsigned(Response.Status);
+            ServiceSerialWriteText("\n");
+        }
     }
-    else
+    else if (Response.Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)
     {
         ServiceSerialWriteLine("[MemManager] Bootstrap attach response could not be posted.");
     }
