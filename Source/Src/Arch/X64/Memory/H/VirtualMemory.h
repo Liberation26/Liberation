@@ -216,6 +216,7 @@ void LosX64ReserveFrames(const LOS_X64_RESERVE_FRAMES_REQUEST *Request, LOS_X64_
 void LosX64ClaimFrames(const LOS_X64_CLAIM_FRAMES_REQUEST *Request, LOS_X64_CLAIM_FRAMES_RESULT *Result);
 void LosX64MapPages(const LOS_X64_MAP_PAGES_REQUEST *Request, LOS_X64_MAP_PAGES_RESULT *Result);
 void LosX64UnmapPages(const LOS_X64_UNMAP_PAGES_REQUEST *Request, LOS_X64_UNMAP_PAGES_RESULT *Result);
+BOOLEAN LosX64TryTranslateKernelVirtualToPhysical(UINT64 VirtualAddress, UINT64 *PhysicalAddress);
 BOOLEAN LosX64MapVirtualPage(UINT64 VirtualAddress, UINT64 PhysicalAddress, UINT64 Flags);
 BOOLEAN LosX64MapVirtualRange(UINT64 VirtualAddress, UINT64 PhysicalAddress, UINTN PageCount, UINT64 Flags);
 BOOLEAN LosX64UnmapVirtualPage(UINT64 VirtualAddress);

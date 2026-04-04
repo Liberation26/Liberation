@@ -398,6 +398,9 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
     Request->Payload.BootstrapAttach.RequestMailboxPhysicalAddress = Info->RequestMailboxPhysicalAddress;
     Request->Payload.BootstrapAttach.ResponseMailboxPhysicalAddress = Info->ResponseMailboxPhysicalAddress;
     Request->Payload.BootstrapAttach.EventMailboxPhysicalAddress = Info->EventMailboxPhysicalAddress;
+    Request->Payload.BootstrapAttach.MemoryRegionTablePhysicalAddress = Info->MemoryRegionTablePhysicalAddress;
+    Request->Payload.BootstrapAttach.MemoryRegionCount = Info->MemoryRegionCount;
+    Request->Payload.BootstrapAttach.MemoryRegionEntrySize = Info->MemoryRegionEntrySize;
     ServiceRootPhysicalAddress = Info->ServicePageMapLevel4PhysicalAddress;
     Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress = Info->ServiceImagePhysicalAddress;
     Request->Payload.BootstrapAttach.ServiceImageSize = Info->ServiceImageSize;
@@ -412,6 +415,9 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
         Request->Payload.BootstrapAttach.RequestMailboxPhysicalAddress = LaunchBlock->RequestMailboxPhysicalAddress;
         Request->Payload.BootstrapAttach.ResponseMailboxPhysicalAddress = LaunchBlock->ResponseMailboxPhysicalAddress;
         Request->Payload.BootstrapAttach.EventMailboxPhysicalAddress = LaunchBlock->EventMailboxPhysicalAddress;
+        Request->Payload.BootstrapAttach.MemoryRegionTablePhysicalAddress = LaunchBlock->MemoryRegionTablePhysicalAddress;
+        Request->Payload.BootstrapAttach.MemoryRegionCount = LaunchBlock->MemoryRegionCount;
+        Request->Payload.BootstrapAttach.MemoryRegionEntrySize = LaunchBlock->MemoryRegionEntrySize;
         if (LaunchBlock->ServicePageMapLevel4PhysicalAddress != 0ULL)
         {
             ServiceRootPhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;

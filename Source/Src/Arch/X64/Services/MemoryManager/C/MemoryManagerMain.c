@@ -16,6 +16,7 @@ static LOS_MEMORY_MANAGER_SERVICE_STATE LosMemoryManagerServiceGlobalState;
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_EVENT_ENDPOINT 6ULL
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_ADDRESS_SPACE_OBJECT 7ULL
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_TASK_OBJECT 8ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_MEMORY_VIEW 9ULL
 
 #define LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE 0ULL
 #define LOS_MEMORY_MANAGER_ATTACH_DETAIL_NULL 1ULL
@@ -43,6 +44,9 @@ static LOS_MEMORY_MANAGER_SERVICE_STATE LosMemoryManagerServiceGlobalState;
 #define LOS_MEMORY_MANAGER_ATTACH_DETAIL_ADDRESS_SPACE_OBJECT_PHYSICAL_POINTER 23ULL
 #define LOS_MEMORY_MANAGER_ATTACH_DETAIL_TASK_OBJECT_PHYSICAL_POINTER 24ULL
 #define LOS_MEMORY_MANAGER_ATTACH_DETAIL_SERVICE_ROOT_PHYSICAL 25ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_MEMORY_REGION_TABLE_PHYSICAL 26ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_MEMORY_REGION_COUNT 27ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_MEMORY_REGION_ENTRY_SIZE 28ULL
 
 static void RecordAttachDiagnostic(LOS_MEMORY_MANAGER_TASK_OBJECT *TaskObject, UINT64 Stage, UINT64 Detail)
 {
@@ -159,6 +163,15 @@ static void ServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
     ServiceSerialWriteText(Name);
     ServiceSerialWriteText(": ");
     ServiceSerialWriteHex64(Value);
+    ServiceSerialWriteText("\n");
+}
+
+static void ServiceSerialWriteNamedUnsigned(const char *Name, UINT64 Value)
+{
+    ServiceSerialWriteText("[MemManager] ");
+    ServiceSerialWriteText(Name);
+    ServiceSerialWriteText(": ");
+    ServiceSerialWriteUnsigned(Value);
     ServiceSerialWriteText("\n");
 }
 
@@ -665,6 +678,33 @@ static BOOLEAN ValidateLaunchBlockDetailed(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK
         return 0;
     }
 
+    if (LaunchBlock->MemoryRegionTablePhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_MEMORY_REGION_TABLE_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->MemoryRegionCount == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_MEMORY_REGION_COUNT;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->MemoryRegionEntrySize != (UINT64)sizeof(LOS_X64_MEMORY_REGION))
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_MEMORY_REGION_ENTRY_SIZE;
+        }
+        return 0;
+    }
+
     if (LaunchBlock->ServiceEntryVirtualAddress == 0ULL)
     {
         if (Detail != 0)
@@ -719,6 +759,7 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
     State = LosMemoryManagerServiceState();
     ZeroMemory(State, sizeof(*State));
     State->LaunchBlock = (LOS_MEMORY_MANAGER_LAUNCH_BLOCK *)(UINTN)LaunchBlockAddress;
+    State->DirectMapOffset = DirectMapOffset;
     State->ReceiveEndpoint = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->KernelToServiceEndpointObjectPhysicalAddress);
     State->ReplyEndpoint = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceToKernelEndpointObjectPhysicalAddress);
     State->EventEndpoint = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceEventsEndpointObjectPhysicalAddress);
@@ -761,6 +802,11 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
     if (!ValidateTaskObjectDetailed(State->TaskObject, LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress, LaunchBlock->ServiceStackTopVirtualAddress, &Detail))
     {
         RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_TASK_OBJECT, Detail);
+        return 0;
+    }
+    if (!LosMemoryManagerServiceBuildMemoryView(State, &Detail))
+    {
+        RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_MEMORY_VIEW, Detail);
         return 0;
     }
     State->ActiveRootTablePhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;
@@ -1162,6 +1208,13 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         ServiceSerialWriteNamedHex("Service entry", LaunchBlock->ServiceEntryVirtualAddress);
         ServiceSerialWriteNamedHex("Service stack top virtual", LaunchBlock->ServiceStackTopVirtualAddress);
         ServiceSerialWriteNamedHex("Service root", LaunchBlock->ServicePageMapLevel4PhysicalAddress);
+        ServiceSerialWriteNamedHex("Normalized region table", LaunchBlock->MemoryRegionTablePhysicalAddress);
+        ServiceSerialWriteNamedUnsigned("Normalized region count", State->MemoryView.NormalizedRegionCount);
+        ServiceSerialWriteNamedUnsigned("Memory-view descriptors", (UINT64)State->MemoryView.InternalDescriptorCount);
+        ServiceSerialWriteNamedUnsigned("Page-frame DB entries", (UINT64)State->MemoryView.PageFrameDatabaseEntryCount);
+        ServiceSerialWriteNamedHex("Total usable bytes", State->MemoryView.TotalUsableBytes);
+        ServiceSerialWriteNamedHex("Reserved pages", State->MemoryView.ReservedPages);
+        ServiceSerialWriteNamedHex("Free pages", State->MemoryView.FreePages);
         ServiceSerialWriteLine("[MemManager] Memory-manager attach complete.");
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
     }

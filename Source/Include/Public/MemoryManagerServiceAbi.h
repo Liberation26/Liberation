@@ -4,7 +4,7 @@
 #include "Efi.h"
 #include "VirtualMemory.h"
 
-#define LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION 9U
+#define LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION 10U
 #define LOS_MEMORY_MANAGER_SERVICE_PATH_CHARACTERS 128U
 #define LOS_MEMORY_MANAGER_SERVICE_NAME "MemoryManager"
 
@@ -173,6 +173,9 @@ typedef struct
     UINT64 RequestMailboxPhysicalAddress;
     UINT64 ResponseMailboxPhysicalAddress;
     UINT64 EventMailboxPhysicalAddress;
+    UINT64 MemoryRegionTablePhysicalAddress;
+    UINT64 MemoryRegionCount;
+    UINT64 MemoryRegionEntrySize;
     UINT64 ServicePageMapLevel4PhysicalAddress;
     UINT64 ServiceImagePhysicalAddress;
     UINT64 ServiceImageSize;
@@ -303,6 +306,9 @@ typedef struct
     UINT64 ServiceAddressSpaceObjectPhysicalAddress;
     UINT64 ServiceTaskObjectPhysicalAddress;
     UINT64 ServicePageMapLevel4PhysicalAddress;
+    UINT64 MemoryRegionTablePhysicalAddress;
+    UINT64 MemoryRegionCount;
+    UINT64 MemoryRegionEntrySize;
     UINT64 SupportedOperations;
     UINT64 ServiceImagePhysicalAddress;
     UINT64 ServiceImageSize;
@@ -333,6 +339,9 @@ typedef struct
     UINT64 ServiceAddressSpaceObjectPhysicalAddress;
     UINT64 ServiceTaskObjectPhysicalAddress;
     UINT64 ServicePageMapLevel4PhysicalAddress;
+    UINT64 MemoryRegionTablePhysicalAddress;
+    UINT64 MemoryRegionCount;
+    UINT64 MemoryRegionEntrySize;
     UINT64 RequestMailboxPhysicalAddress;
     UINT64 RequestMailboxSize;
     UINT64 ResponseMailboxPhysicalAddress;

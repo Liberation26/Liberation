@@ -1,3 +1,7 @@
+Version 0.1.57
+
+This delivery lets the live memory-manager service ingest the kernel's normalized physical-memory region table and build its own service-side RAM view during attach. The bootstrap launch block now publishes the normalized region table physical address, region count, and entry size. `MEMORYMGR.ELF` copies that table into internal descriptors split across usable, bootstrap-reserved, firmware-reserved, runtime, MMIO, ACPI/NVS, and unusable ranges, then builds a service-side page-frame database and overlays the memory-manager's own in-use objects: service image, stack, request/response/event mailboxes, launch block, endpoint objects, address-space object, task object, and service PML4 root. The service now logs the ingested region-table address plus descriptor/page-database totals at attach time so bring-up can prove that the first userland memory authority knows what RAM exists and what is already taken.
+
 Version 0.1.49
 
 This delivery removes the current clang warning noise from the memory-manager bootstrap build. The unused `ServiceSerialWriteUnsigned` helper is removed from the memory-manager service source, and the task-transfer trace helper now explicitly marks its parameters as intentionally unused so the kernel build stays clean while preserving the current bootstrap behaviour.

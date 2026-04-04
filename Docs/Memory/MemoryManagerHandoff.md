@@ -1,3 +1,16 @@
+## 0.1.57 service-side normalized-memory ingest
+
+The first live `MEMORYMGR.ELF` bootstrap now ingests the kernel's normalized physical-memory region table instead of treating the kernel as the only authority on discovered RAM.
+
+This delivery does four concrete things:
+
+- publishes the normalized region-table physical address, region count, and entry size through the shared memory-manager launch block and bootstrap attach contract
+- has the service parse that published table into its own internal descriptors split across usable, bootstrap-reserved, firmware-reserved, runtime, MMIO, ACPI/NVS, and unusable spans
+- builds a service-side page-frame database from that normalized table
+- overlays the memory-manager service's own in-use bootstrap objects over that database: service image, stack, request/response/event mailboxes, launch block, endpoint objects, address-space object, task object, and service root page table
+
+That means the service now has its own memory inventory rather than only trusting the kernel's live bootstrap state. The next natural step is to start answering frame-allocation and region-query requests from this service-side database instead of still routing those requests to kernel-owned low-level state.
+
 ## 0.1.26 isolated first-service root
 
 The bootstrap path now gives the memory-manager service its own page-table root instead of only describing the live kernel root.

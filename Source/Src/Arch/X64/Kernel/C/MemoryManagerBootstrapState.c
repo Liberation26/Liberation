@@ -331,6 +331,9 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
     State->Info.ResponseMailboxSize = 0ULL;
     State->Info.EventMailboxPhysicalAddress = 0ULL;
     State->Info.EventMailboxSize = 0ULL;
+    State->Info.MemoryRegionTablePhysicalAddress = 0ULL;
+    State->Info.MemoryRegionCount = 0ULL;
+    State->Info.MemoryRegionEntrySize = 0ULL;
     State->Info.LaunchBlockPhysicalAddress = 0ULL;
     State->Info.LaunchBlockSize = 0ULL;
     State->ServiceImageVirtualAddress = 0ULL;
@@ -348,6 +351,18 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
     State->ServiceImageVirtualAddress = (UINT64)(UINTN)LosMemoryManagerServiceImageStart;
     State->Info.ServiceImageSize = (UINT64)((UINTN)LosMemoryManagerServiceImageEnd - (UINTN)LosMemoryManagerServiceImageStart);
     State->Info.ServiceImagePhysicalAddress = ResolveServiceImagePhysicalAddress(BootContext, State->ServiceImageVirtualAddress, State->Info.ServiceImageSize);
+    State->Info.MemoryRegionCount = (UINT64)LosX64GetMemoryRegionCount();
+    State->Info.MemoryRegionEntrySize = (UINT64)sizeof(LOS_X64_MEMORY_REGION);
+    if (State->Info.MemoryRegionCount != 0ULL)
+    {
+        UINT64 MemoryRegionTablePhysicalAddress;
+
+        MemoryRegionTablePhysicalAddress = 0ULL;
+        if (LosX64TryTranslateKernelVirtualToPhysical((UINT64)(UINTN)LosX64GetMemoryRegion(0U), &MemoryRegionTablePhysicalAddress))
+        {
+            State->Info.MemoryRegionTablePhysicalAddress = MemoryRegionTablePhysicalAddress;
+        }
+    }
 }
 
 void LosMemoryManagerBootstrapTransitionTo(UINT32 NewState)
@@ -635,6 +650,9 @@ BOOLEAN LosMemoryManagerBootstrapStageTransport(void)
     State->LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress = State->Info.ServiceAddressSpaceObjectPhysicalAddress;
     State->LaunchBlock->ServiceTaskObjectPhysicalAddress = State->Info.ServiceTaskObjectPhysicalAddress;
     State->LaunchBlock->ServicePageMapLevel4PhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
+    State->LaunchBlock->MemoryRegionTablePhysicalAddress = State->Info.MemoryRegionTablePhysicalAddress;
+    State->LaunchBlock->MemoryRegionCount = State->Info.MemoryRegionCount;
+    State->LaunchBlock->MemoryRegionEntrySize = State->Info.MemoryRegionEntrySize;
     State->LaunchBlock->RequestMailboxPhysicalAddress = State->Info.RequestMailboxPhysicalAddress;
     State->LaunchBlock->RequestMailboxSize = State->Info.RequestMailboxSize;
     State->LaunchBlock->ResponseMailboxPhysicalAddress = State->Info.ResponseMailboxPhysicalAddress;
