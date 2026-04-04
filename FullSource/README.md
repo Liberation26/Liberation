@@ -1,3 +1,9 @@
+Version 0.1.69
+
+This delivery makes the bootstrap address-space creation notification visible from the kernel side after the memory-manager attach succeeds. In addition to the memory-manager service's own serial announcement, the kernel now writes and displays `Bootstrap address space created.` and a second line showing the bootstrap address-space ID, object physical address, and root PML4 physical address.
+
+That means the first address-space creation is now visible on the framebuffer status output as well as in the kernel trace path, instead of relying only on the service-side serial log during early hosted bootstrap.
+
 Version 0.1.68
 
 This delivery adds explicit address-space creation notifications to the memory-manager service log. During bootstrap attach, `MEMORYMGR.ELF` now announces the initial service address space with its address-space ID, object physical address, and root PML4 physical address so bring-up can prove that the first live address space exists. The normal `CreateAddressSpace` request path now emits the same `Address space created` notification for newly created service-side address spaces.
