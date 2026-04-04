@@ -366,6 +366,9 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
     LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
     const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
     const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
+    UINT64 ServiceRootPhysicalAddress;
+    UINT64 ServiceEntryVirtualAddress;
+    UINT64 ServiceStackTopVirtualAddress;
 
     if (Request == 0)
     {
@@ -375,6 +378,9 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
     State = LosMemoryManagerBootstrapState();
     Info = LosGetMemoryManagerBootstrapInfo();
     LaunchBlock = LosGetMemoryManagerLaunchBlock();
+    ServiceRootPhysicalAddress = 0ULL;
+    ServiceEntryVirtualAddress = 0ULL;
+    ServiceStackTopVirtualAddress = 0ULL;
     Request->Operation = LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH;
     Request->Payload.BootstrapAttach.Version = LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION;
     Request->Payload.BootstrapAttach.LaunchBlockPhysicalAddress = Info->LaunchBlockPhysicalAddress;
@@ -386,11 +392,10 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
     Request->Payload.BootstrapAttach.RequestMailboxPhysicalAddress = Info->RequestMailboxPhysicalAddress;
     Request->Payload.BootstrapAttach.ResponseMailboxPhysicalAddress = Info->ResponseMailboxPhysicalAddress;
     Request->Payload.BootstrapAttach.EventMailboxPhysicalAddress = Info->EventMailboxPhysicalAddress;
-    Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = Info->ServicePageMapLevel4PhysicalAddress;
+    ServiceRootPhysicalAddress = Info->ServicePageMapLevel4PhysicalAddress;
     Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress = Info->ServiceImagePhysicalAddress;
     Request->Payload.BootstrapAttach.ServiceImageSize = Info->ServiceImageSize;
-    Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = Info->ServiceEntryVirtualAddress;
-    Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = 0ULL;
+    ServiceEntryVirtualAddress = Info->ServiceEntryVirtualAddress;
 
     if (LaunchBlock != 0)
     {
@@ -401,31 +406,80 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
         Request->Payload.BootstrapAttach.RequestMailboxPhysicalAddress = LaunchBlock->RequestMailboxPhysicalAddress;
         Request->Payload.BootstrapAttach.ResponseMailboxPhysicalAddress = LaunchBlock->ResponseMailboxPhysicalAddress;
         Request->Payload.BootstrapAttach.EventMailboxPhysicalAddress = LaunchBlock->EventMailboxPhysicalAddress;
-        Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;
+        if (LaunchBlock->ServicePageMapLevel4PhysicalAddress != 0ULL)
+        {
+            ServiceRootPhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;
+        }
         Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress = LaunchBlock->ServiceImagePhysicalAddress;
         Request->Payload.BootstrapAttach.ServiceImageSize = LaunchBlock->ServiceImageSize;
-        Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = LaunchBlock->ServiceEntryVirtualAddress;
-        Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = LaunchBlock->ServiceStackTopVirtualAddress;
+        if (LaunchBlock->ServiceEntryVirtualAddress != 0ULL)
+        {
+            ServiceEntryVirtualAddress = LaunchBlock->ServiceEntryVirtualAddress;
+        }
+        if (LaunchBlock->ServiceStackTopVirtualAddress != 0ULL)
+        {
+            ServiceStackTopVirtualAddress = LaunchBlock->ServiceStackTopVirtualAddress;
+        }
     }
 
     if (State != 0)
     {
         if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->RootTablePhysicalAddress != 0ULL)
         {
-            Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
+            ServiceRootPhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
         }
         if (State->ServiceTaskObject != 0)
         {
             if (State->ServiceTaskObject->EntryVirtualAddress != 0ULL)
             {
-                Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = State->ServiceTaskObject->EntryVirtualAddress;
+                ServiceEntryVirtualAddress = State->ServiceTaskObject->EntryVirtualAddress;
             }
             if (State->ServiceTaskObject->StackTopVirtualAddress != 0ULL)
             {
-                Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
+                ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
+            }
+        }
+
+        if (ServiceRootPhysicalAddress != 0ULL)
+        {
+            State->Info.ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
+            if (State->LaunchBlock != 0)
+            {
+                State->LaunchBlock->ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
+            }
+            if (State->ServiceAddressSpaceObject != 0)
+            {
+                State->ServiceAddressSpaceObject->RootTablePhysicalAddress = ServiceRootPhysicalAddress;
+            }
+        }
+        if (ServiceEntryVirtualAddress != 0ULL)
+        {
+            State->Info.ServiceEntryVirtualAddress = ServiceEntryVirtualAddress;
+            if (State->LaunchBlock != 0)
+            {
+                State->LaunchBlock->ServiceEntryVirtualAddress = ServiceEntryVirtualAddress;
+            }
+            if (State->ServiceTaskObject != 0)
+            {
+                State->ServiceTaskObject->EntryVirtualAddress = ServiceEntryVirtualAddress;
+            }
+        }
+        if (ServiceStackTopVirtualAddress != 0ULL)
+        {
+            if (State->LaunchBlock != 0)
+            {
+                State->LaunchBlock->ServiceStackTopVirtualAddress = ServiceStackTopVirtualAddress;
+            }
+            if (State->ServiceTaskObject != 0)
+            {
+                State->ServiceTaskObject->StackTopVirtualAddress = ServiceStackTopVirtualAddress;
             }
         }
     }
+
+    Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
+    Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = ServiceEntryVirtualAddress;
+    Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = ServiceStackTopVirtualAddress;
 }
 
 static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)

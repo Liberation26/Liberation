@@ -855,6 +855,7 @@ static UINT32 ValidateBootstrapAttachRequest(
     const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_REQUEST *Request)
 {
     const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
+    UINT64 RequestedServiceRootPhysicalAddress;
 
     if (State == 0 || Request == 0 || State->LaunchBlock == 0)
     {
@@ -862,6 +863,16 @@ static UINT32 ValidateBootstrapAttachRequest(
     }
 
     LaunchBlock = State->LaunchBlock;
+    RequestedServiceRootPhysicalAddress = Request->ServicePageMapLevel4PhysicalAddress;
+    if (RequestedServiceRootPhysicalAddress == 0ULL)
+    {
+        RequestedServiceRootPhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;
+    }
+    if (RequestedServiceRootPhysicalAddress == 0ULL)
+    {
+        RequestedServiceRootPhysicalAddress = State->ActiveRootTablePhysicalAddress;
+    }
+
     if (State->Online == 0U)
     {
         return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_STATE_INVALID;
@@ -894,7 +905,7 @@ static UINT32 ValidateBootstrapAttachRequest(
     {
         return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_MAILBOX_MISMATCH;
     }
-    if (Request->ServicePageMapLevel4PhysicalAddress != State->ActiveRootTablePhysicalAddress)
+    if (RequestedServiceRootPhysicalAddress != State->ActiveRootTablePhysicalAddress)
     {
         return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_ROOT_MISMATCH;
     }
