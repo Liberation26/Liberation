@@ -72,6 +72,7 @@ void LosKernelStatusScreenWriteOk(const char *Text);
 void LosKernelStatusScreenWriteFail(const char *Text);
 void LosKernelScreenUpdateSpinner(UINT64 TickCount);
 void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN InterruptsLive);
+void LosKernelScreenSetBootstrapNotification(const char *Text);
 void LosKernelHaltForever(void);
 void LosKernelEnableInterrupts(void);
 void LosKernelIdleLoop(void);

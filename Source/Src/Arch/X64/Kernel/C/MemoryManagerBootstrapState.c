@@ -42,6 +42,15 @@ static void CopyUtf16(CHAR16 *Destination, UINTN Capacity, const CHAR16 *Source)
     Destination[Index] = 0;
 }
 
+static void ReportBootstrapAddressSpaceObjectCreated(UINT64 AddressSpaceId, UINT64 AddressSpaceObjectPhysicalAddress)
+{
+    LosKernelSerialWriteText("[Kernel] Bootstrap address-space object staged id=");
+    LosKernelSerialWriteUnsigned(AddressSpaceId);
+    LosKernelSerialWriteText(" object=");
+    LosKernelSerialWriteHex64(AddressSpaceObjectPhysicalAddress);
+    LosKernelSerialWriteText("\n");
+}
+
 static void InitializeEndpointObject(
     LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint,
     UINT64 EndpointId,
@@ -91,6 +100,15 @@ static void InitializeAddressSpaceObject(
     AddressSpace->DirectMapBase = 0ULL;
     AddressSpace->DirectMapSize = 0ULL;
     AddressSpace->ServiceImagePhysicalAddress = ServiceImagePhysicalAddress;
+    AddressSpace->ServiceImageSize = 0ULL;
+    AddressSpace->ServiceImageVirtualBase = 0ULL;
+    AddressSpace->EntryVirtualAddress = 0ULL;
+    AddressSpace->StackPhysicalAddress = 0ULL;
+    AddressSpace->StackPageCount = 0ULL;
+    AddressSpace->StackBaseVirtualAddress = 0ULL;
+    AddressSpace->StackTopVirtualAddress = 0ULL;
+    AddressSpace->AddressSpaceId = 1ULL;
+    AddressSpace->ReservedVirtualRegionCount = 0U;
 }
 
 static void InitializeTaskObject(
@@ -318,7 +336,11 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES) |
-        (1ULL << LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES);
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK);
     State->Info.ServiceImagePhysicalAddress = 0ULL;
     State->Info.ServiceImageSize = 0ULL;
     State->Info.ServiceAddressSpaceObjectPhysicalAddress = 0ULL;
@@ -633,6 +655,9 @@ BOOLEAN LosMemoryManagerBootstrapStageTransport(void)
         State->Info.EventMailboxSize,
         State->Info.Endpoints.KernelToService);
     InitializeAddressSpaceObject(State->ServiceAddressSpaceObject, State->Info.ServiceImagePhysicalAddress);
+    ReportBootstrapAddressSpaceObjectCreated(
+        State->ServiceAddressSpaceObject->AddressSpaceId,
+        State->Info.ServiceAddressSpaceObjectPhysicalAddress);
     InitializeTaskObject(
         State->ServiceTaskObject,
         State->Info.ServiceAddressSpaceObjectPhysicalAddress,

@@ -387,14 +387,10 @@ static void ReportBootstrapAddressSpaceCreated(void)
     AddressSpaceId = 1ULL;
     RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
 
-    LosKernelSerialWriteText("[OK] [Kernel] Bootstrap address space created.\n");
-    LosKernelTraceOk("Bootstrap address space created.");
     LosKernelTraceUnsigned("Memory-manager bootstrap address-space id: ", AddressSpaceId);
     LosKernelTraceHex64("Memory-manager bootstrap address-space object: ", State->Info.ServiceAddressSpaceObjectPhysicalAddress);
     LosKernelTraceHex64("Memory-manager bootstrap address-space root: ", RootTablePhysicalAddress);
-    LosKernelStatusScreenWriteOk("Bootstrap address space created.");
     BuildBootstrapAddressSpaceLine(ScreenLine, sizeof(ScreenLine), State);
-    LosKernelStatusScreenWriteOk(ScreenLine);
 }
 
 static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)

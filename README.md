@@ -1,4 +1,4 @@
-Version 0.1.74
+Version 0.1.75
 
 - Fixed the bootstrap address-space notification build break by removing the kernel diagnostics dependency on AddressSpaceId inside LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT.
 - Re-added KernelMain.c to ChangedFiles so the bootstrap notification is definitely applied to an existing source tree.
