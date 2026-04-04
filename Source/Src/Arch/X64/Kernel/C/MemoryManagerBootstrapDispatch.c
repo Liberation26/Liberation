@@ -259,8 +259,6 @@ BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void)
         return 0;
     }
 
-    State->ServiceTaskObject->LastRequestId = Slot->Message.RequestId;
-    State->ServiceTaskObject->Heartbeat += 1ULL;
     LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_ONLINE);
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ONLINE;
     return 1;
@@ -351,6 +349,11 @@ static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
     return Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH;
 }
 
+static UINT32 HostedServiceStepBudgetForOperation(UINT32 Operation)
+{
+    return RequestRequiresRealServiceReply(Operation) ? 8U : 1U;
+}
+
 static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request)
 {
     const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
@@ -388,6 +391,8 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
 static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
     BOOLEAN ResponsePublishedByService;
+    UINT32 Attempt;
+    UINT32 AttemptBudget;
 
     InitializeResponse(Request, Response);
 
@@ -398,13 +403,28 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to enqueue a request.");
     }
 
-    if (!LosMemoryManagerBootstrapHostedServiceStep())
+    ResponsePublishedByService = 0;
+    AttemptBudget = HostedServiceStepBudgetForOperation(Request->Operation);
+    for (Attempt = 0U; Attempt < AttemptBudget; ++Attempt)
     {
-        Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
-        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager hosted service step failed.");
+        if (!LosMemoryManagerBootstrapHostedServiceStep())
+        {
+            if (Attempt == 0U)
+            {
+                Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+                LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager hosted service step failed.");
+            }
+
+            continue;
+        }
+
+        ResponsePublishedByService = LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response);
+        if (ResponsePublishedByService)
+        {
+            break;
+        }
     }
 
-    ResponsePublishedByService = LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response);
     if (!ResponsePublishedByService)
     {
         if (RequestRequiresRealServiceReply(Request->Operation))
@@ -420,11 +440,8 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
             LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to dequeue a response.");
         }
     }
-    else
-    {
-        LosMemoryManagerBootstrapRecordCompletion(Response->Operation, Response->Status);
-    }
 
+    LosMemoryManagerBootstrapRecordCompletion(Response->Operation, Response->Status);
     TraceMemoryManagerToKernelResponse(Response);
 }
 

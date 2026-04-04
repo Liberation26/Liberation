@@ -127,6 +127,32 @@ static void ServiceSerialWriteLine(const char *Text)
     ServiceSerialWriteText("\n");
 }
 
+static void ServiceSerialWriteUnsigned(UINT64 Value)
+{
+    char Buffer[32];
+    UINTN Index;
+
+    if (Value == 0ULL)
+    {
+        ServiceSerialWriteChar('0');
+        return;
+    }
+
+    Index = 0U;
+    while (Value != 0ULL && Index < (sizeof(Buffer) / sizeof(Buffer[0])))
+    {
+        Buffer[Index] = (char)('0' + (Value % 10ULL));
+        Value /= 10ULL;
+        ++Index;
+    }
+
+    while (Index > 0U)
+    {
+        --Index;
+        ServiceSerialWriteChar(Buffer[Index]);
+    }
+}
+
 static void ServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
 {
     ServiceSerialWriteText("[MemManager] ");
@@ -980,8 +1006,22 @@ void LosMemoryManagerServicePoll(void)
         return;
     }
 
+    ServiceSerialWriteText("[MemManager] Processing bootstrap attach request id=");
+    ServiceSerialWriteHex64(Slot->Message.RequestId);
+    ServiceSerialWriteText("\n");
     PopulateBootstrapAttachResponse(State, &Slot->Message, &Response);
-    (void)CompleteRequest(State, &Response);
+    if (CompleteRequest(State, &Response))
+    {
+        ServiceSerialWriteText("[MemManager] Bootstrap attach response posted result=");
+        ServiceSerialWriteUnsigned(Response.Payload.BootstrapAttach.BootstrapResult);
+        ServiceSerialWriteText(" status=");
+        ServiceSerialWriteUnsigned(Response.Status);
+        ServiceSerialWriteText("\n");
+    }
+    else
+    {
+        ServiceSerialWriteLine("[MemManager] Bootstrap attach response could not be posted.");
+    }
 }
 
 static void RunServiceStep(void)
