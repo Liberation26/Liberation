@@ -184,6 +184,17 @@ static BOOLEAN CloneCurrentRootPageMap(UINT64 *NewRootPhysicalAddress)
         NewRoot[EntryIndex] = CurrentRoot[EntryIndex];
     }
 
+    /* The kernel PML4[0] carries the bootstrap identity map (2 MB large pages
+     * covering [0, BootstrapIdentitySize)).  User-space segments and the
+     * service stack (LOS_X64_SERVICE_STACK_VIRTUAL_BASE = 0x800000) all fall
+     * within that window.  Leaving the large-page entry in place causes
+     * LosX64MapSinglePageIntoAddressSpace to return CONFLICT for every 4 KB
+     * mapping attempt, which collapses the entire bootstrap probe with
+     * NO_RESOURCES before the service entry is ever invoked.  Strip the entry
+     * from the service clone; kernel higher-half mappings (direct map, text,
+     * window) occupy PML4 indices well above 0 and are unaffected. */
+    NewRoot[0] = 0ULL;
+
     State->ServiceAddressSpaceObject->KernelRootTablePhysicalAddress = LosX64GetCurrentPageMapLevel4PhysicalAddress();
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
     State->Info.ServicePageMapLevel4PhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
