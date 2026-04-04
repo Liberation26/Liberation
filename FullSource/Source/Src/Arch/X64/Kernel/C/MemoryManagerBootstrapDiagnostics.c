@@ -387,20 +387,21 @@ static void ReportBootstrapAddressSpaceCreated(void)
     char ScreenLine[96];
 
     State = LosMemoryManagerBootstrapState();
-    if (State == 0 || State->ServiceAddressSpaceObject == 0)
+    if (State == 0 || State->Info.ServiceAddressSpaceObjectPhysicalAddress == 0ULL)
     {
         return;
     }
 
-    AddressSpaceId = State->ServiceAddressSpaceObject->AddressSpaceId;
-    if (AddressSpaceId == 0ULL)
+    AddressSpaceId = 1ULL;
+    if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->AddressSpaceId != 0ULL)
     {
-        AddressSpaceId = 1ULL;
+        AddressSpaceId = State->ServiceAddressSpaceObject->AddressSpaceId;
     }
-    RootTablePhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
-    if (RootTablePhysicalAddress == 0ULL)
+
+    RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
+    if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->RootTablePhysicalAddress != 0ULL)
     {
-        RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
+        RootTablePhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
     }
 
     LosKernelTraceOk("Bootstrap address space created.");
@@ -408,8 +409,11 @@ static void ReportBootstrapAddressSpaceCreated(void)
     LosKernelTraceHex64("Memory-manager bootstrap address-space object: ", State->Info.ServiceAddressSpaceObjectPhysicalAddress);
     LosKernelTraceHex64("Memory-manager bootstrap address-space root: ", RootTablePhysicalAddress);
     LosKernelStatusScreenWriteOk("Bootstrap address space created.");
-    BuildBootstrapAddressSpaceLine(ScreenLine, sizeof(ScreenLine), State);
-    LosKernelStatusScreenWriteOk(ScreenLine);
+    if (State->ServiceAddressSpaceObject != 0)
+    {
+        BuildBootstrapAddressSpaceLine(ScreenLine, sizeof(ScreenLine), State);
+        LosKernelStatusScreenWriteOk(ScreenLine);
+    }
 }
 
 static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)

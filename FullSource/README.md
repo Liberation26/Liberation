@@ -1,3 +1,9 @@
+Version 0.1.70
+
+This delivery fixes the bootstrap address-space creation notification so it no longer depends on the mapped service-side address-space pointer already being live at the later attach-diagnostics stage. The kernel now announces the bootstrap address-space object immediately when it is staged during transport setup, writing the notification through the normal kernel trace and framebuffer status paths with the address-space ID and object physical address.
+
+The later post-attach diagnostics were also hardened to fall back to the published bootstrap metadata even if the live mapped address-space object pointer is not yet available, so the serial log and on-screen status both keep a visible `Bootstrap address space created.` announcement instead of silently skipping it.
+
 Version 0.1.69
 
 This delivery makes the bootstrap address-space creation notification visible from the kernel side after the memory-manager attach succeeds. In addition to the memory-manager service's own serial announcement, the kernel now writes and displays `Bootstrap address space created.` and a second line showing the bootstrap address-space ID, object physical address, and root PML4 physical address.

@@ -42,6 +42,14 @@ static void CopyUtf16(CHAR16 *Destination, UINTN Capacity, const CHAR16 *Source)
     Destination[Index] = 0;
 }
 
+static void ReportBootstrapAddressSpaceObjectCreated(UINT64 AddressSpaceId, UINT64 AddressSpaceObjectPhysicalAddress)
+{
+    LosKernelTraceOk("Bootstrap address space created.");
+    LosKernelTraceUnsigned("Memory-manager bootstrap address-space id: ", AddressSpaceId);
+    LosKernelTraceHex64("Memory-manager bootstrap address-space object: ", AddressSpaceObjectPhysicalAddress);
+    LosKernelStatusScreenWriteOk("Bootstrap address space created.");
+}
+
 static void InitializeEndpointObject(
     LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint,
     UINT64 EndpointId,
@@ -646,6 +654,9 @@ BOOLEAN LosMemoryManagerBootstrapStageTransport(void)
         State->Info.EventMailboxSize,
         State->Info.Endpoints.KernelToService);
     InitializeAddressSpaceObject(State->ServiceAddressSpaceObject, State->Info.ServiceImagePhysicalAddress);
+    ReportBootstrapAddressSpaceObjectCreated(
+        State->ServiceAddressSpaceObject->AddressSpaceId,
+        State->Info.ServiceAddressSpaceObjectPhysicalAddress);
     InitializeTaskObject(
         State->ServiceTaskObject,
         State->Info.ServiceAddressSpaceObjectPhysicalAddress,
