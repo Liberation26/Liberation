@@ -63,6 +63,8 @@ static void ApplyLineIndent(UINT32 IndentColumns);
 static UINT32 GetWritableColumnLimit(void);
 static void ClearRow(UINT32 Row);
 static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color);
+static void DrawStaticScreenDecorations(void);
+static void ResetLogCursor(void);
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -266,13 +268,29 @@ static void ClearRow(UINT32 Row)
     }
 }
 
-static void AdvanceLine(void)
+static void ResetLogCursor(void)
 {
     LosKernelScreenState.CursorColumn = 0U;
+    LosKernelScreenState.CursorRow = LOS_KERNEL_SCREEN_FIRST_LOG_ROW;
+    ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
+}
+
+static void AdvanceLine(void)
+{
+    UINT32 LastWritableLogRow;
+
+    LosKernelScreenState.CursorColumn = 0U;
     LosKernelScreenState.CursorRow += 1U;
-    if (LosKernelScreenState.CursorRow >= LosKernelScreenState.MaxRows)
+
+    LastWritableLogRow = LosKernelScreenState.MaxRows > 0U
+        ? (LosKernelScreenState.MaxRows - 1U)
+        : 0U;
+    if (LosKernelScreenState.CursorRow >= LastWritableLogRow)
     {
         ClearScreen();
+        DrawStaticScreenDecorations();
+        ResetLogCursor();
+        return;
     }
 
     ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
@@ -432,21 +450,30 @@ static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color)
 
 static void DrawCharacterAt(UINT32 Column, UINT32 Row, char Character, UINT32 Color)
 {
-    UINT32 SavedColumn;
-    UINT32 SavedRow;
+    UINT32 BaseX;
+    UINT32 BaseY;
 
     if (LosKernelScreenState.Ready == 0U)
     {
         return;
     }
+    if (Column >= LosKernelScreenState.MaxColumns || Row >= LosKernelScreenState.MaxRows)
+    {
+        return;
+    }
 
-    SavedColumn = LosKernelScreenState.CursorColumn;
-    SavedRow = LosKernelScreenState.CursorRow;
-    LosKernelScreenState.CursorColumn = Column;
-    LosKernelScreenState.CursorRow = Row;
-    PutCharacterColored(Character, Color);
-    LosKernelScreenState.CursorColumn = SavedColumn;
-    LosKernelScreenState.CursorRow = SavedRow;
+    FillCellBackground(Column, Row, 0x00000000U);
+    BaseX = Column * LosKernelScreenState.CellWidth * LosKernelScreenState.FontScale;
+    BaseY = Row * LosKernelScreenState.CellHeight * LosKernelScreenState.FontScale;
+
+    if (LosKernelScreenState.FontLoaded != 0U)
+    {
+        RenderPsfGlyph((UINT8)Character, BaseX, BaseY, Color);
+    }
+    else
+    {
+        RenderFallbackGlyph(Character, BaseX, BaseY, Color);
+    }
 }
 
 static UINT32 GetWordLength(const char *Text)
@@ -569,6 +596,97 @@ static void DrawUnsignedAt(UINT32 Column, UINT32 Row, UINT64 Value, UINT32 Digit
     DrawTextAt(Column, Row, Buffer, Color);
 }
 
+static UINT32 FormatUnsignedDecimal(UINT64 Value, char *Buffer, UINT32 BufferSize)
+{
+    char ReverseBuffer[21];
+    UINT32 Length;
+    UINT32 Index;
+
+    if (Buffer == 0 || BufferSize == 0U)
+    {
+        return 0U;
+    }
+
+    if (Value == 0ULL)
+    {
+        Buffer[0] = '0';
+        if (BufferSize > 1U)
+        {
+            Buffer[1] = '\0';
+        }
+        return 1U;
+    }
+
+    Length = 0U;
+    while (Value != 0ULL && Length < (UINT32)(sizeof(ReverseBuffer)))
+    {
+        ReverseBuffer[Length] = (char)('0' + (Value % 10ULL));
+        Value /= 10ULL;
+        Length += 1U;
+    }
+
+    if (Length >= BufferSize)
+    {
+        Length = BufferSize - 1U;
+    }
+
+    for (Index = 0U; Index < Length; ++Index)
+    {
+        Buffer[Index] = ReverseBuffer[Length - 1U - Index];
+    }
+
+    Buffer[Length] = '\0';
+    return Length;
+}
+
+static void DrawStaticScreenDecorations(void)
+{
+    UINT32 LastColumn;
+    UINT32 LastRow;
+    UINT32 StatusColor;
+    UINT32 TextColor;
+    char WidthBuffer[21];
+    char HeightBuffer[21];
+    char ColumnBuffer[21];
+    char RowBuffer[21];
+
+    if (LosKernelScreenState.Ready == 0U ||
+        LosKernelScreenState.MaxColumns == 0U ||
+        LosKernelScreenState.MaxRows == 0U)
+    {
+        return;
+    }
+
+    LastColumn = LosKernelScreenState.MaxColumns - 1U;
+    LastRow = LosKernelScreenState.MaxRows - 1U;
+    StatusColor = GetOkPrefixColor();
+    TextColor = GetTextColor();
+
+    ClearRow(0U);
+    ClearRow(LastRow);
+
+    DrawCharacterAt(0U, 0U, 'Q', StatusColor);
+    DrawCharacterAt(LastColumn, 0U, 'Q', StatusColor);
+    DrawTextAt(2U, 0U, "LIBERATION KERNEL SCREEN ONLINE", TextColor);
+
+    DrawCharacterAt(0U, LastRow, 'Q', StatusColor);
+    DrawCharacterAt(LastColumn, LastRow, 'Q', StatusColor);
+
+    FormatUnsignedDecimal((UINT64)LosKernelScreenState.Width, WidthBuffer, (UINT32)sizeof(WidthBuffer));
+    FormatUnsignedDecimal((UINT64)LosKernelScreenState.Height, HeightBuffer, (UINT32)sizeof(HeightBuffer));
+    FormatUnsignedDecimal((UINT64)LosKernelScreenState.MaxColumns, ColumnBuffer, (UINT32)sizeof(ColumnBuffer));
+    FormatUnsignedDecimal((UINT64)LosKernelScreenState.MaxRows, RowBuffer, (UINT32)sizeof(RowBuffer));
+
+    DrawTextAt(2U, LastRow, "SCREEN ", TextColor);
+    DrawTextAt(9U, LastRow, WidthBuffer, TextColor);
+    DrawTextAt(9U + GetWordLength(WidthBuffer), LastRow, "X", TextColor);
+    DrawTextAt(10U + GetWordLength(WidthBuffer), LastRow, HeightBuffer, TextColor);
+    DrawTextAt(12U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer), LastRow, " GRID ", TextColor);
+    DrawTextAt(18U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer), LastRow, ColumnBuffer, TextColor);
+    DrawTextAt(18U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer) + GetWordLength(ColumnBuffer), LastRow, "X", TextColor);
+    DrawTextAt(19U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer) + GetWordLength(ColumnBuffer), LastRow, RowBuffer, TextColor);
+}
+
 static void DrawInitializationProbe(void)
 {
     UINT32 X;
@@ -676,14 +794,15 @@ void LosKernelScreenUpdateSpinner(UINT64 TickCount)
     UINT32 SpinnerColumn;
     char SpinnerCharacter;
 
-    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.MaxColumns == 0U)
+    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.MaxColumns < 4U)
     {
         return;
     }
 
-    SpinnerColumn = LosKernelScreenState.MaxColumns - 1U;
+    SpinnerColumn = LosKernelScreenState.MaxColumns - 3U;
     SpinnerCharacter = LosSpinnerFrames[(UINTN)(TickCount & 0x3ULL)];
-    FillCellBackground(SpinnerColumn, 0U, 0x00000000U);
+    DrawCharacterAt(SpinnerColumn, 0U, SpinnerCharacter, GetOkPrefixColor());
+    DrawStaticScreenDecorations();
     DrawCharacterAt(SpinnerColumn, 0U, SpinnerCharacter, GetOkPrefixColor());
 }
 
@@ -707,6 +826,7 @@ void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN Inter
     DrawUnsignedAt(19U, Row, TargetHz, 3U, GetTextColor());
     DrawTextAt(24U, Row, "TICKS ", GetTextColor());
     DrawUnsignedAt(30U, Row, TickCount, 10U, GetTextColor());
+    DrawStaticScreenDecorations();
 }
 
 void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
@@ -829,10 +949,8 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
 
     ClearScreen();
     DrawInitializationProbe();
-    PutText("LIBERATION KERNEL SCREEN ONLINE\n");
-    LosKernelScreenState.CursorColumn = 0U;
-    LosKernelScreenState.CursorRow = LOS_KERNEL_SCREEN_FIRST_LOG_ROW;
-    ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
+    DrawStaticScreenDecorations();
+    ResetLogCursor();
     LosKernelSerialWriteText("[KernelScreen] Screen path initialized.\n");
 }
 

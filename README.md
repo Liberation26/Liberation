@@ -1,3 +1,13 @@
+Version 0.1.64
+
+This delivery hardens the kernel-screen overlay so the title-row wait spinner is rendered directly into a fixed cell instead of going through the cursor/write path. That removes any remaining wrap-side effects from the spinner draw itself. It also adds visible screen diagnostics on the framebuffer output: a `Q` marker is now drawn in all four text-grid corners, and the bottom row shows the current framebuffer pixel dimensions together with the active text-grid column and row count.
+
+The top title row is now treated as a fixed decoration row, the bottom row is reserved for the geometry readout, and log wrap clears the screen back to those anchored decorations before continuing. This makes it easier to see whether the computed text geometry matches what QEMU is actually presenting when comparing `RunISO`, `RunHD`, and `RunDir`.
+
+Version 0.1.63
+
+This delivery fixes the kernel-screen timer spinner placement. The rotating wait/live indicator is no longer drawn in the final physical column, which was causing the character write path to wrap onto the next row and reappear at the start of the timer line. The spinner is now drawn at the last writable column inside the right margin, so it stays visually anchored at the end of the title row while the timer row remains intact.
+
 Version 0.1.62
 
 This delivery makes the direct hard-disk and directory QEMU launch scripts use the same zoom-to-fit GTK display behaviour as the ISO path so all three bash launch routes present the same smaller on-screen text scale by default. `RunHD.sh` and `RunDir.sh` now also publish explicit QEMU window names and use the same maximize helper pattern as the ISO launcher.
