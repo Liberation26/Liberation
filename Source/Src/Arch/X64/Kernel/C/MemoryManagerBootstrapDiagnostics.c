@@ -252,6 +252,20 @@ static void AppendUnsigned(char *Buffer, UINTN Capacity, UINTN *Length, UINT64 V
     }
 }
 
+static void AppendHex64(char *Buffer, UINTN Capacity, UINTN *Length, UINT64 Value)
+{
+    UINTN Index;
+
+    AppendText(Buffer, Capacity, Length, "0x");
+    for (Index = 0U; Index < 16U; ++Index)
+    {
+        UINT8 Nibble;
+
+        Nibble = (UINT8)((Value >> ((15U - Index) * 4U)) & 0x0FULL);
+        AppendCharacter(Buffer, Capacity, Length, (char)(Nibble < 10U ? ('0' + Nibble) : ('A' + (Nibble - 10U))));
+    }
+}
+
 static void AppendMiBValue(char *Buffer, UINTN Capacity, UINTN *Length, UINT64 Bytes)
 {
     AppendUnsigned(Buffer, Capacity, Length, Bytes / (1024ULL * 1024ULL));
@@ -331,6 +345,76 @@ static void BuildMemoryManagerKnowledgeLine3(char *Buffer, UINTN Capacity, const
     AppendUnsigned(Buffer, Capacity, &Length, Result->InternalDescriptorCount);
     AppendText(Buffer, Capacity, &Length, " frame-ranges ");
     AppendUnsigned(Buffer, Capacity, &Length, Result->PageFrameDatabaseEntryCount);
+}
+
+static void BuildBootstrapAddressSpaceLine(char *Buffer, UINTN Capacity, const LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State)
+{
+    UINTN Length;
+    UINT64 AddressSpaceId;
+    UINT64 RootTablePhysicalAddress;
+
+    if (Buffer == 0 || Capacity == 0U || State == 0 || State->ServiceAddressSpaceObject == 0)
+    {
+        return;
+    }
+
+    AddressSpaceId = State->ServiceAddressSpaceObject->AddressSpaceId;
+    if (AddressSpaceId == 0ULL)
+    {
+        AddressSpaceId = 1ULL;
+    }
+    RootTablePhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
+    if (RootTablePhysicalAddress == 0ULL)
+    {
+        RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
+    }
+
+    Buffer[0] = '\0';
+    Length = 0U;
+    AppendText(Buffer, Capacity, &Length, "MM as " );
+    AppendUnsigned(Buffer, Capacity, &Length, AddressSpaceId);
+    AppendText(Buffer, Capacity, &Length, " obj " );
+    AppendHex64(Buffer, Capacity, &Length, State->Info.ServiceAddressSpaceObjectPhysicalAddress);
+    AppendText(Buffer, Capacity, &Length, " root " );
+    AppendHex64(Buffer, Capacity, &Length, RootTablePhysicalAddress);
+}
+
+static void ReportBootstrapAddressSpaceCreated(void)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+    UINT64 AddressSpaceId;
+    UINT64 RootTablePhysicalAddress;
+    char ScreenLine[96];
+
+    State = LosMemoryManagerBootstrapState();
+    if (State == 0 || State->Info.ServiceAddressSpaceObjectPhysicalAddress == 0ULL)
+    {
+        return;
+    }
+
+    AddressSpaceId = 1ULL;
+    if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->AddressSpaceId != 0ULL)
+    {
+        AddressSpaceId = State->ServiceAddressSpaceObject->AddressSpaceId;
+    }
+
+    RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
+    if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->RootTablePhysicalAddress != 0ULL)
+    {
+        RootTablePhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
+    }
+
+    LosKernelSerialWriteText("[OK] [Kernel] Bootstrap address space created.\n");
+    LosKernelTraceOk("Bootstrap address space created.");
+    LosKernelTraceUnsigned("Memory-manager bootstrap address-space id: ", AddressSpaceId);
+    LosKernelTraceHex64("Memory-manager bootstrap address-space object: ", State->Info.ServiceAddressSpaceObjectPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager bootstrap address-space root: ", RootTablePhysicalAddress);
+    LosKernelStatusScreenWriteOk("Bootstrap address space created.");
+    if (State->ServiceAddressSpaceObject != 0)
+    {
+        BuildBootstrapAddressSpaceLine(ScreenLine, sizeof(ScreenLine), State);
+        LosKernelStatusScreenWriteOk(ScreenLine);
+    }
 }
 
 static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
@@ -486,6 +570,7 @@ void LosMemoryManagerBootstrapRunProbe(void)
         LosKernelTraceOk("Memory-manager bootstrap attach succeeded.");
         LosKernelTraceUnsigned("Memory-manager bootstrap result: ", Result.BootstrapResult);
         LosKernelTraceUnsigned("Memory-manager bootstrap reply state: ", Result.BootstrapState);
+        ReportBootstrapAddressSpaceCreated();
         ReportMemoryManagerKnowledge(&Result);
         LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_READY);
     }

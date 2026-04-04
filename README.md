@@ -1,3 +1,45 @@
+Version 0.1.73
+
+This delivery fixes the missing visible bootstrap address-space notification in two ways. First, the kernel bootstrap diagnostics now emit a raw serial line `[OK] [Kernel] Bootstrap address space created.` before the structured trace lines, so the notification is directly grepable in the serial capture even if you only search for the human-facing message. Second, this archive corrects the `ChangedFiles` layout so updates land at the repository root (`Source/...`, `README.md`, `VERSION`) instead of being nested under an extra `FullSource/` directory during update.
+
+That means applying this tar should finally replace the live kernel source that runs during boot, and the address-space creation notification should now appear in the serial log and on the status screen during the memory-manager bootstrap success path.
+
+Version 0.1.72
+
+This delivery removes the last conditional guard around the visible bootstrap address-space notification in `KernelMain.c`. The kernel now prints `Bootstrap address space created.` unconditionally as soon as `LosLaunchMemoryManagerBootstrap()` returns, because that function only returns on a successful bootstrap path. The address-space ID line is also emitted unconditionally, and the object/root fields are printed either from the published bootstrap info or as explicit zero values if the info pointer were ever unavailable.
+
+That means the notification can no longer disappear merely because the ready-state check or bootstrap-info lookup behaved differently than expected at runtime. If the kernel reaches the later timer and idle-loop lines, the `Bootstrap address space created.` notification must now have already been written to both the screen status path and the serial log.
+
+Version 0.1.71
+
+This delivery moves the visible bootstrap address-space notification into `KernelMain.c` immediately after `LosLaunchMemoryManagerBootstrap()` returns ready. That makes the message impossible to miss in the normal kernel bring-up flow: once the memory-manager bootstrap succeeds, the kernel now always emits `Bootstrap address space created.` through the standard trace path that writes to both the framebuffer status output and the serial log, followed by the bootstrap address-space object and root PML4 physical addresses.
+
+This avoids relying on earlier staging-time diagnostics or later attach-report helpers that can be easy to miss during rapid bring-up output. The notification now sits directly between successful memory-manager bootstrap and the final timer/idle transition, so it should remain visible near the end of the boot log on screen as well as in the serial capture.
+
+Version 0.1.70
+
+This delivery fixes the bootstrap address-space creation notification so it no longer depends on the mapped service-side address-space pointer already being live at the later attach-diagnostics stage. The kernel now announces the bootstrap address-space object immediately when it is staged during transport setup, writing the notification through the normal kernel trace and framebuffer status paths with the address-space ID and object physical address.
+
+The later post-attach diagnostics were also hardened to fall back to the published bootstrap metadata even if the live mapped address-space object pointer is not yet available, so the serial log and on-screen status both keep a visible `Bootstrap address space created.` announcement instead of silently skipping it.
+
+Version 0.1.69
+
+This delivery makes the bootstrap address-space creation notification visible from the kernel side after the memory-manager attach succeeds. In addition to the memory-manager service's own serial announcement, the kernel now writes and displays `Bootstrap address space created.` and a second line showing the bootstrap address-space ID, object physical address, and root PML4 physical address.
+
+That means the first address-space creation is now visible on the framebuffer status output as well as in the kernel trace path, instead of relying only on the service-side serial log during early hosted bootstrap.
+
+Version 0.1.68
+
+This delivery adds explicit address-space creation notifications to the memory-manager service log. During bootstrap attach, `MEMORYMGR.ELF` now announces the initial service address space with its address-space ID, object physical address, and root PML4 physical address so bring-up can prove that the first live address space exists. The normal `CreateAddressSpace` request path now emits the same `Address space created` notification for newly created service-side address spaces.
+
+Version 0.1.67
+
+This delivery introduces a proper service-side address-space object model inside `MEMORYMGR.ELF`. The memory manager can now create and destroy address-space objects, attach a staged ELF image into an address space, allocate a stack inside an address space, track the root PML4 physical address, and keep an in-object list of reserved virtual regions for the attached image and stack.
+
+The shared memory-manager ABI now carries explicit request/response messages for those address-space operations, and the kernel bootstrap bridge advertises and forwards them through the normal memory-manager mailbox path. The bootstrap-owned first service address space is also populated with image/stack geometry and reserved-region metadata so later launches can follow the same contract.
+
+The goal of this step is to move service/process launch preparation toward a single memory-manager authority: future launch code can ask the memory manager for an address space, attach an image, allocate a stack, and consume the published root/table metadata instead of open-coding those details inside custom kernel launch paths.
+
 Version 0.1.66
 
 This delivery adds an explicit frame-allocator readiness announcement once the memory-manager service has finished building its service-owned page-frame database and current memory view. `MEMORYMGR.ELF` now writes `[MemManager] Frame allocator ready.` to the serial log during attach, and the kernel now prints and displays `Frame allocator ready.` on the status screen after the bootstrap attach succeeds and the service-authored memory view is accepted.

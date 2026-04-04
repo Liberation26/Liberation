@@ -1,12 +1,4 @@
-dave@liberation:~/Dev/Los/Src$ ./Scripts/update.sh
-[Liberation] Using archive: /home/dave/Downloads/LOS-0-1-71.tar
-[Liberation] Extracting archive...
-[Liberation] Git repository detected in /home/dave/Dev/Los/Src.
-[Liberation] Copying ChangedFiles into /home/dave/Dev/Los/Src/
-[Liberation] Cleaning build output...
-[Liberation] Staging changes...
-[Liberation] Creating commit: Update from LOS-0-1-71.tar
-[main 528f02b] Update from LOS-0-1-71.tar
+x[main 8c7735e] Update from LOS-0-1-72.tar
 [OK] Liberation OS
 [OK] BOOTX64.EFI Loader
 [OK] Running From Directory
