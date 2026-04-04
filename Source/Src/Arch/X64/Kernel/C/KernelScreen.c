@@ -44,11 +44,14 @@ typedef struct
     UINT32 FontBytesPerGlyph;
     UINT32 FontRowStride;
     const UINT8 *FontGlyphs;
+    UINT32 FontScale;
     BOOLEAN FontLoaded;
     BOOLEAN Ready;
 } LOS_KERNEL_SCREEN_STATE;
 
 static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
+
+#define LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE 2U
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -215,10 +218,32 @@ static void AdvanceLine(void)
     }
 }
 
+static void PutScaledPixelBlock(UINT32 BaseX, UINT32 BaseY, UINT32 Scale, UINT32 Color)
+{
+    UINT32 ScaleX;
+    UINT32 ScaleY;
+
+    if (Scale == 0U)
+    {
+        Scale = 1U;
+    }
+
+    for (ScaleY = 0U; ScaleY < Scale; ++ScaleY)
+    {
+        for (ScaleX = 0U; ScaleX < Scale; ++ScaleX)
+        {
+            PutPixel(BaseX + ScaleX, BaseY + ScaleY, Color);
+        }
+    }
+}
+
 static void RenderFallbackGlyph(char Character, UINT32 BaseX, UINT32 BaseY, UINT32 Color)
 {
     UINT32 GlyphRow;
     UINT32 GlyphColumn;
+    UINT32 Scale;
+
+    Scale = LosKernelScreenState.FontScale == 0U ? 1U : LosKernelScreenState.FontScale;
 
     for (GlyphRow = 0U; GlyphRow < LOS_KERNEL_SCREEN_DEFAULT_GLYPH_HEIGHT; ++GlyphRow)
     {
@@ -228,7 +253,7 @@ static void RenderFallbackGlyph(char Character, UINT32 BaseX, UINT32 BaseY, UINT
         {
             if ((RowBits & (UINT8)(1U << (4U - GlyphColumn))) != 0U)
             {
-                PutPixel(BaseX + GlyphColumn + 1U, BaseY + GlyphRow, Color);
+                PutScaledPixelBlock(BaseX + ((GlyphColumn + 1U) * Scale), BaseY + (GlyphRow * Scale), Scale, Color);
             }
         }
     }
@@ -239,6 +264,7 @@ static void RenderPsfGlyph(UINT8 Character, UINT32 BaseX, UINT32 BaseY, UINT32 C
     const UINT8 *Glyph;
     UINT32 Row;
     UINT32 Column;
+    UINT32 Scale;
 
     if (LosKernelScreenState.FontLoaded == 0U || LosKernelScreenState.FontGlyphs == 0)
     {
@@ -249,6 +275,8 @@ static void RenderPsfGlyph(UINT8 Character, UINT32 BaseX, UINT32 BaseY, UINT32 C
     {
         Character = (UINT8)'?';
     }
+
+    Scale = LosKernelScreenState.FontScale == 0U ? 1U : LosKernelScreenState.FontScale;
 
     Glyph = LosKernelScreenState.FontGlyphs + ((UINT32)Character * LosKernelScreenState.FontBytesPerGlyph);
     for (Row = 0U; Row < LosKernelScreenState.GlyphHeight; ++Row)
@@ -263,7 +291,7 @@ static void RenderPsfGlyph(UINT8 Character, UINT32 BaseX, UINT32 BaseY, UINT32 C
             BitMask = (UINT8)(0x80U >> (Column & 7U));
             if ((ByteValue & BitMask) != 0U)
             {
-                PutPixel(BaseX + Column, BaseY + Row, Color);
+                PutScaledPixelBlock(BaseX + (Column * Scale), BaseY + (Row * Scale), Scale, Color);
             }
         }
     }
@@ -295,8 +323,8 @@ static void PutCharacterColored(char Character, UINT32 Color)
         AdvanceLine();
     }
 
-    BaseX = LosKernelScreenState.CursorColumn * LosKernelScreenState.CellWidth;
-    BaseY = LosKernelScreenState.CursorRow * LosKernelScreenState.CellHeight;
+    BaseX = LosKernelScreenState.CursorColumn * LosKernelScreenState.CellWidth * LosKernelScreenState.FontScale;
+    BaseY = LosKernelScreenState.CursorRow * LosKernelScreenState.CellHeight * LosKernelScreenState.FontScale;
 
     if (LosKernelScreenState.FontLoaded != 0U)
     {
@@ -331,11 +359,11 @@ static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color)
         return;
     }
 
-    StartX = Column * LosKernelScreenState.CellWidth;
-    StartY = Row * LosKernelScreenState.CellHeight;
-    for (Y = 0U; Y < LosKernelScreenState.CellHeight; ++Y)
+    StartX = Column * LosKernelScreenState.CellWidth * LosKernelScreenState.FontScale;
+    StartY = Row * LosKernelScreenState.CellHeight * LosKernelScreenState.FontScale;
+    for (Y = 0U; Y < (LosKernelScreenState.CellHeight * LosKernelScreenState.FontScale); ++Y)
     {
-        for (X = 0U; X < LosKernelScreenState.CellWidth; ++X)
+        for (X = 0U; X < (LosKernelScreenState.CellWidth * LosKernelScreenState.FontScale); ++X)
         {
             PutPixel(StartX + X, StartY + Y, Color);
         }
@@ -460,6 +488,7 @@ static void InitializeDefaultFont(void)
     LosKernelScreenState.FontBytesPerGlyph = 0U;
     LosKernelScreenState.FontRowStride = 0U;
     LosKernelScreenState.FontGlyphs = 0;
+    LosKernelScreenState.FontScale = LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE;
     LosKernelScreenState.FontLoaded = 0U;
 }
 
@@ -657,8 +686,13 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelScreenState.PixelsPerScanLine = BootContext->FrameBufferPixelsPerScanLine;
     LosKernelScreenState.PixelFormat = BootContext->FrameBufferPixelFormat;
     TryInitializePsfFont(BootContext);
-    LosKernelScreenState.MaxColumns = BootContext->FrameBufferWidth / LosKernelScreenState.CellWidth;
-    LosKernelScreenState.MaxRows = BootContext->FrameBufferHeight / LosKernelScreenState.CellHeight;
+    if (LosKernelScreenState.FontScale == 0U)
+    {
+        LosKernelScreenState.FontScale = 1U;
+    }
+
+    LosKernelScreenState.MaxColumns = BootContext->FrameBufferWidth / (LosKernelScreenState.CellWidth * LosKernelScreenState.FontScale);
+    LosKernelScreenState.MaxRows = BootContext->FrameBufferHeight / (LosKernelScreenState.CellHeight * LosKernelScreenState.FontScale);
     LosKernelScreenState.Ready = (LosKernelScreenState.MaxColumns != 0U && LosKernelScreenState.MaxRows != 0U) ? 1U : 0U;
     if (LosKernelScreenState.Ready == 0U)
     {
@@ -668,6 +702,7 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
 
     TraceScreenInitValue("[KernelScreen] Text cell width: ", (UINT64)LosKernelScreenState.CellWidth);
     TraceScreenInitValue("[KernelScreen] Text cell height: ", (UINT64)LosKernelScreenState.CellHeight);
+    TraceScreenInitValue("[KernelScreen] Font scale: ", (UINT64)LosKernelScreenState.FontScale);
     TraceScreenInitValue("[KernelScreen] Max columns: ", (UINT64)LosKernelScreenState.MaxColumns);
     TraceScreenInitValue("[KernelScreen] Max rows: ", (UINT64)LosKernelScreenState.MaxRows);
 

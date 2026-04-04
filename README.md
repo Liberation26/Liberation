@@ -1,3 +1,9 @@
+## Delivery note for 0.1.16
+
+- Fixed kernel text-cell positioning so framebuffer text now advances and clears using the active font scale.
+- This corrects the compressed tiny-on-screen appearance seen with the scaled PSF kernel font.
+- Source tar excludes build output binaries.
+
 # Liberation OS
 
 ## Delivery note for 0.1.11
