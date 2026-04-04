@@ -107,32 +107,6 @@ static void ServiceSerialWriteText(const char *Text)
     }
 }
 
-static void ServiceSerialWriteUnsigned(UINT64 Value)
-{
-    char Buffer[32];
-    UINTN Index;
-
-    if (Value == 0ULL)
-    {
-        ServiceSerialWriteChar('0');
-        return;
-    }
-
-    Index = 0U;
-    while (Value > 0ULL && Index < sizeof(Buffer))
-    {
-        Buffer[Index] = (char)('0' + (Value % 10ULL));
-        Value /= 10ULL;
-        ++Index;
-    }
-
-    while (Index > 0U)
-    {
-        --Index;
-        ServiceSerialWriteChar(Buffer[Index]);
-    }
-}
-
 static void ServiceSerialWriteHex64(UINT64 Value)
 {
     UINTN Shift;

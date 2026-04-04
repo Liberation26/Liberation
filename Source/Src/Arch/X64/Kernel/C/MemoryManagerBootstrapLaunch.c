@@ -142,22 +142,6 @@ static void WriteCr3(UINT64 Value)
     __asm__ __volatile__("mov %0, %%cr3" : : "r"(Value) : "memory");
 }
 
-static UINT64 ReadRsp(void)
-{
-    UINT64 Value;
-
-    __asm__ __volatile__("mov %%rsp, %0" : "=r"(Value));
-    return Value;
-}
-
-static UINT64 ReadRbp(void)
-{
-    UINT64 Value;
-
-    __asm__ __volatile__("mov %%rbp, %0" : "=r"(Value));
-    return Value;
-}
-
 static void TraceTransferContext(
     UINT64 PreviousRootPhysicalAddress,
     UINT64 TargetRootPhysicalAddress,
@@ -165,9 +149,11 @@ static void TraceTransferContext(
     UINT64 TargetEntryVirtualAddress,
     UINT64 TargetStackTopVirtualAddress)
 {
-    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
-
-    State = LosMemoryManagerBootstrapState();
+    (void)PreviousRootPhysicalAddress;
+    (void)TargetRootPhysicalAddress;
+    (void)LaunchBlockDirectMapAddress;
+    (void)TargetEntryVirtualAddress;
+    (void)TargetStackTopVirtualAddress;
 }
 
 static BOOLEAN ClaimContiguousPages(UINT64 PageCount, UINT64 *BaseAddress)
@@ -462,7 +448,6 @@ static BOOLEAN StageServiceImageInPhysicalMemory(
         UINT64 SegmentVirtualBase;
         UINT64 SegmentMappedBytes;
         UINT64 SegmentPageCount;
-        UINT64 SegmentPhysicalBase;
         UINT64 SegmentImageOffset;
         void *SegmentTarget;
         const void *SegmentSource;
@@ -479,7 +464,6 @@ static BOOLEAN StageServiceImageInPhysicalMemory(
         }
 
         SegmentImageOffset = ProgramHeader->VirtualAddress - *ImageVirtualBase;
-        SegmentPhysicalBase = *ImagePhysicalBase + (SegmentVirtualBase - *ImageVirtualBase);
         SegmentTarget = (UINT8 *)ImageTarget + SegmentImageOffset;
 
 

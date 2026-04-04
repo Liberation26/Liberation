@@ -1,3 +1,7 @@
+Version 0.1.49
+
+This delivery removes the current clang warning noise from the memory-manager bootstrap build. The unused `ServiceSerialWriteUnsigned` helper is removed from the memory-manager service source, and the task-transfer trace helper now explicitly marks its parameters as intentionally unused so the kernel build stays clean while preserving the current bootstrap behaviour.
+
 Version 0.1.48
 
 This delivery renames the live service prefix from `[Service]` to `[MemManager]`, stops the memory-manager service loop from writing heartbeat/request spam to COM1, and trims routine kernel-side bootstrap chatter so the kernel now logs only actual memory-manager request/response traffic during the normal bootstrap path. The normal kernel path no longer dumps the full memory-manager bootstrap state on success, while the kernel now emits concise `[MemManager] Kernel -> Memory Manager ...` and `[MemManager] Memory Manager -> Kernel ...` serial lines when it actually exchanges bootstrap messages with the service.
