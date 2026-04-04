@@ -353,29 +353,21 @@ static void BuildBootstrapAddressSpaceLine(char *Buffer, UINTN Capacity, const L
     UINT64 AddressSpaceId;
     UINT64 RootTablePhysicalAddress;
 
-    if (Buffer == 0 || Capacity == 0U || State == 0 || State->ServiceAddressSpaceObject == 0)
+    if (Buffer == 0 || Capacity == 0U || State == 0 || State->Info.ServiceAddressSpaceObjectPhysicalAddress == 0ULL)
     {
         return;
     }
 
-    AddressSpaceId = State->ServiceAddressSpaceObject->AddressSpaceId;
-    if (AddressSpaceId == 0ULL)
-    {
-        AddressSpaceId = 1ULL;
-    }
-    RootTablePhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
-    if (RootTablePhysicalAddress == 0ULL)
-    {
-        RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
-    }
+    AddressSpaceId = 1ULL;
+    RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
 
     Buffer[0] = '\0';
     Length = 0U;
-    AppendText(Buffer, Capacity, &Length, "MM as " );
+    AppendText(Buffer, Capacity, &Length, "MM as ");
     AppendUnsigned(Buffer, Capacity, &Length, AddressSpaceId);
-    AppendText(Buffer, Capacity, &Length, " obj " );
+    AppendText(Buffer, Capacity, &Length, " obj ");
     AppendHex64(Buffer, Capacity, &Length, State->Info.ServiceAddressSpaceObjectPhysicalAddress);
-    AppendText(Buffer, Capacity, &Length, " root " );
+    AppendText(Buffer, Capacity, &Length, " root ");
     AppendHex64(Buffer, Capacity, &Length, RootTablePhysicalAddress);
 }
 
@@ -393,16 +385,7 @@ static void ReportBootstrapAddressSpaceCreated(void)
     }
 
     AddressSpaceId = 1ULL;
-    if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->AddressSpaceId != 0ULL)
-    {
-        AddressSpaceId = State->ServiceAddressSpaceObject->AddressSpaceId;
-    }
-
     RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
-    if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->RootTablePhysicalAddress != 0ULL)
-    {
-        RootTablePhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
-    }
 
     LosKernelSerialWriteText("[OK] [Kernel] Bootstrap address space created.\n");
     LosKernelTraceOk("Bootstrap address space created.");
@@ -410,11 +393,8 @@ static void ReportBootstrapAddressSpaceCreated(void)
     LosKernelTraceHex64("Memory-manager bootstrap address-space object: ", State->Info.ServiceAddressSpaceObjectPhysicalAddress);
     LosKernelTraceHex64("Memory-manager bootstrap address-space root: ", RootTablePhysicalAddress);
     LosKernelStatusScreenWriteOk("Bootstrap address space created.");
-    if (State->ServiceAddressSpaceObject != 0)
-    {
-        BuildBootstrapAddressSpaceLine(ScreenLine, sizeof(ScreenLine), State);
-        LosKernelStatusScreenWriteOk(ScreenLine);
-    }
+    BuildBootstrapAddressSpaceLine(ScreenLine, sizeof(ScreenLine), State);
+    LosKernelStatusScreenWriteOk(ScreenLine);
 }
 
 static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)

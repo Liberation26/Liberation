@@ -364,6 +364,23 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelTraceOk("Dedicated kernel stack mapping is active.");
     LosInitializeMemoryManagerBootstrap(BootContext);
     LosLaunchMemoryManagerBootstrap();
+    {
+        const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *MemoryManagerBootstrapInfo;
+
+        MemoryManagerBootstrapInfo = LosGetMemoryManagerBootstrapInfo();
+        LosKernelTraceOk("Bootstrap address space created.");
+        LosKernelTraceUnsigned("Memory-manager bootstrap address-space id: ", 1ULL);
+        if (MemoryManagerBootstrapInfo != 0)
+        {
+            LosKernelTraceHex64("Memory-manager bootstrap address-space object: ", MemoryManagerBootstrapInfo->ServiceAddressSpaceObjectPhysicalAddress);
+            LosKernelTraceHex64("Memory-manager bootstrap address-space root: ", MemoryManagerBootstrapInfo->ServicePageMapLevel4PhysicalAddress);
+        }
+        else
+        {
+            LosKernelTraceHex64("Memory-manager bootstrap address-space object: ", 0ULL);
+            LosKernelTraceHex64("Memory-manager bootstrap address-space root: ", 0ULL);
+        }
+    }
     LosKernelTraceUnsigned("Timer tick count before enabling interrupts: ", LosX64GetTimerTickCount());
     LosKernelScreenUpdateTimer(LosX64GetTimerTickCount(), 100ULL, 0U);
     LosKernelEnableInterrupts();

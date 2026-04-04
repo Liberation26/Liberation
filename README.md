@@ -1,3 +1,8 @@
+Version 0.1.74
+
+- Fixed the bootstrap address-space notification build break by removing the kernel diagnostics dependency on AddressSpaceId inside LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT.
+- Re-added KernelMain.c to ChangedFiles so the bootstrap notification is definitely applied to an existing source tree.
+
 Version 0.1.73
 
 This delivery fixes the missing visible bootstrap address-space notification in two ways. First, the kernel bootstrap diagnostics now emit a raw serial line `[OK] [Kernel] Bootstrap address space created.` before the structured trace lines, so the notification is directly grepable in the serial capture even if you only search for the human-facing message. Second, this archive corrects the `ChangedFiles` layout so updates land at the repository root (`Source/...`, `README.md`, `VERSION`) instead of being nested under an extra `FullSource/` directory during update.
