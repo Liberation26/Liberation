@@ -1,3 +1,9 @@
+Version 0.1.43
+
+This delivery fixes the first isolated memory-manager service root so it no longer clones the bootstrap lower-half identity mappings into the service page-map. The new service root now copies only the higher-half kernel/direct-map entries and leaves the lower half clear for the service ELF and stack mappings at 0x00400000 and 0x00800000, avoiding map-page conflicts during first entry preparation.
+
+It also adds kernel-side entry-preparation breadcrumbs and map failure traces so attach diagnostics now report the exact preparation phase instead of falling back to unset when the service has not executed yet.
+
 Version 0.1.41
 
 This delivery hardens the memory-manager bootstrap path into fatal report-and-halt mode. Bootstrap image validation, transport staging, launch-block translation, service-entry preparation, hosted request dispatch failures, and any unexpected service-entry return now report diagnostics and halt immediately instead of silently falling back or continuing. The dedicated service stack must now map successfully into the service address space; bootstrap no longer falls back to a best-effort direct-map stack view.

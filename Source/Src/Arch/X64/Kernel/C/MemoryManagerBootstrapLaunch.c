@@ -17,6 +17,26 @@
 #define LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_MAPPED 0x0000000000002000ULL
 #define LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ENTRY_INVOKED 0x0000000000004000ULL
 
+#define LOS_MEMORY_MANAGER_PREP_STAGE_CLONE_ROOT 100ULL
+#define LOS_MEMORY_MANAGER_PREP_STAGE_VALIDATE_ELF 101ULL
+#define LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT 102ULL
+#define LOS_MEMORY_MANAGER_PREP_STAGE_MAP_STACK 103ULL
+#define LOS_MEMORY_MANAGER_PREP_STAGE_PUBLISH_LAUNCH 104ULL
+#define LOS_MEMORY_MANAGER_PREP_STAGE_VERIFY_CONTEXT 105ULL
+
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN 100ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_CLAIM_ROOT_PAGE 101ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_DIRECT_MAP_ROOT 102ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_COPY_HIGHER_HALF 103ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_INVALID_ELF 104ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_FRAME_CLAIM 105ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS 106ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_DIRECT_MAP 107ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_STACK_MAP_STATUS 108ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_STACK_TOP_ZERO 109ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_ENTRY_ZERO 110ULL
+#define LOS_MEMORY_MANAGER_PREP_DETAIL_ROOT_ZERO 111ULL
+
 #define LOS_X64_SERVICE_STACK_VIRTUAL_BASE 0x0000000000800000ULL
 
 typedef struct __attribute__((packed))
@@ -83,6 +103,20 @@ static void CopyMemory(void *Destination, const void *Source, UINTN ByteCount)
     {
         DestinationBytes[Index] = SourceBytes[Index];
     }
+}
+
+static void SetKernelPrepareDiagnostic(UINT64 Stage, UINT64 Detail)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+
+    State = LosMemoryManagerBootstrapState();
+    if (State->ServiceTaskObject == 0)
+    {
+        return;
+    }
+
+    State->ServiceTaskObject->LastRequestId = Stage;
+    State->ServiceTaskObject->Heartbeat = Detail;
 }
 
 static UINT64 AlignDown(UINT64 Value, UINT64 Alignment)
@@ -211,11 +245,13 @@ static BOOLEAN CloneCurrentRootPageMap(UINT64 *NewRootPhysicalAddress)
         return 1;
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_CLONE_ROOT, LOS_MEMORY_MANAGER_PREP_DETAIL_CLAIM_ROOT_PAGE);
     if (!ClaimContiguousPages(1ULL, &State->Info.ServicePageMapLevel4PhysicalAddress))
     {
         return 0;
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_CLONE_ROOT, LOS_MEMORY_MANAGER_PREP_DETAIL_DIRECT_MAP_ROOT);
     NewRoot = (UINT64 *)(UINTN)LosX64GetDirectMapVirtualAddress(State->Info.ServicePageMapLevel4PhysicalAddress, 0x1000ULL);
     CurrentRoot = LosX64GetPageMapLevel4();
     if (NewRoot == 0 || CurrentRoot == 0)
@@ -225,8 +261,15 @@ static BOOLEAN CloneCurrentRootPageMap(UINT64 *NewRootPhysicalAddress)
 
     for (EntryIndex = 0U; EntryIndex < 512U; ++EntryIndex)
     {
+        NewRoot[EntryIndex] = 0ULL;
+    }
+
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_CLONE_ROOT, LOS_MEMORY_MANAGER_PREP_DETAIL_COPY_HIGHER_HALF);
+    for (EntryIndex = 256U; EntryIndex < 512U; ++EntryIndex)
+    {
         NewRoot[EntryIndex] = CurrentRoot[EntryIndex];
     }
+    LosKernelTrace("Memory-manager service root lower-half cleared before first service mappings.");
 
     State->ServiceAddressSpaceObject->KernelRootTablePhysicalAddress = LosX64GetCurrentPageMapLevel4PhysicalAddress();
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = State->Info.ServicePageMapLevel4PhysicalAddress;
@@ -258,15 +301,24 @@ static BOOLEAN MapSegmentIntoAddressSpace(
         return 0;
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     SegmentVirtualBase = AlignDown(ProgramHeader->VirtualAddress, 0x1000ULL);
     OffsetIntoFirstPage = ProgramHeader->VirtualAddress - SegmentVirtualBase;
     SegmentMappedBytes = AlignUp(ProgramHeader->MemorySize + OffsetIntoFirstPage, 0x1000ULL);
     SegmentPageCount = SegmentMappedBytes / 0x1000ULL;
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_FRAME_CLAIM);
     if (!ClaimContiguousPages(SegmentPageCount, &SegmentPhysicalBase))
     {
         return 0;
     }
+
+    LosKernelTraceHex64("Memory-manager segment virtual base: ", SegmentVirtualBase);
+    LosKernelTraceHex64("Memory-manager segment physical base: ", SegmentPhysicalBase);
+    LosKernelTraceHex64("Memory-manager segment file bytes: ", ProgramHeader->FileSize);
+    LosKernelTraceHex64("Memory-manager segment memory bytes: ", ProgramHeader->MemorySize);
+    LosKernelTraceHex64("Memory-manager segment page count: ", SegmentPageCount);
+    LosKernelTraceHex64("Memory-manager segment flags: ", ProgramHeader->Flags);
 
     ZeroMemory(&MapRequest, sizeof(MapRequest));
     ZeroMemory(&MapResult, sizeof(MapResult));
@@ -279,12 +331,17 @@ static BOOLEAN MapSegmentIntoAddressSpace(
     LosX64MapPages(&MapRequest, &MapResult);
     if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || MapResult.PagesProcessed != SegmentPageCount)
     {
+        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS);
+        LosKernelTraceUnsigned("Memory-manager segment map status: ", MapResult.Status);
+        LosKernelTraceHex64("Memory-manager segment map pages processed: ", MapResult.PagesProcessed);
+        LosKernelTraceHex64("Memory-manager segment map requested pages: ", SegmentPageCount);
         return 0;
     }
 
     SegmentTarget = LosX64GetDirectMapVirtualAddress(SegmentPhysicalBase, SegmentMappedBytes);
     if (SegmentTarget == 0)
     {
+        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_DIRECT_MAP);
         return 0;
     }
 
@@ -314,6 +371,7 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
         return 0;
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_STACK, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     *StackTopVirtualAddress = 0ULL;
 
     ZeroMemory(&MapRequest, sizeof(MapRequest));
@@ -331,6 +389,10 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
         return 1;
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_STACK, LOS_MEMORY_MANAGER_PREP_DETAIL_STACK_MAP_STATUS);
+    LosKernelTraceUnsigned("Memory-manager stack map status: ", MapResult.Status);
+    LosKernelTraceHex64("Memory-manager stack map pages processed: ", MapResult.PagesProcessed);
+    LosKernelTraceHex64("Memory-manager stack map requested pages: ", StackPageCount);
     return 0;
 }
 
@@ -354,11 +416,13 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
         return 1;
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_CLONE_ROOT, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     if (!CloneCurrentRootPageMap(&ServiceRootPhysicalAddress))
     {
         return 0;
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_VALIDATE_ELF, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)(UINTN)State->ServiceImageVirtualAddress;
     if (Header == 0)
     {
@@ -374,6 +438,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
         Header->Machine != LOS_ELF_MACHINE_X86_64 ||
         Header->Type != LOS_ELF_TYPE_EXEC)
     {
+        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_VALIDATE_ELF, LOS_MEMORY_MANAGER_PREP_DETAIL_INVALID_ELF);
         return 0;
     }
 
@@ -416,6 +481,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
         return 0;
     }
     LosKernelTraceHex64("Memory-manager service stack top virtual after stack map: ", State->ServiceTaskObject->StackTopVirtualAddress);
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_PUBLISH_LAUNCH, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_MAPPED;
     State->LaunchBlock->Flags = State->Info.Flags;
     State->LaunchBlock->ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
@@ -448,9 +514,11 @@ BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void)
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager launch block direct-map translation failed.");
     }
 
+    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_VERIFY_CONTEXT, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
     if (ServiceStackTopVirtualAddress == 0ULL)
     {
+        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_VERIFY_CONTEXT, LOS_MEMORY_MANAGER_PREP_DETAIL_STACK_TOP_ZERO);
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service stack top virtual address is zero.");
     }
 
@@ -469,10 +537,12 @@ BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void)
     State->LaunchBlock->Flags = State->Info.Flags;
     if (State->ServiceAddressSpaceObject->RootTablePhysicalAddress == 0ULL)
     {
+        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_VERIFY_CONTEXT, LOS_MEMORY_MANAGER_PREP_DETAIL_ROOT_ZERO);
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service root physical address is zero.");
     }
     if (State->Info.ServiceEntryVirtualAddress == 0ULL)
     {
+        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_VERIFY_CONTEXT, LOS_MEMORY_MANAGER_PREP_DETAIL_ENTRY_ZERO);
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service entry virtual address is zero.");
     }
     LosKernelTrace("Memory-manager task-transfer handoff executing now.");

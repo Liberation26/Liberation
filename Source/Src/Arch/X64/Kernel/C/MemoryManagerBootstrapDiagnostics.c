@@ -20,6 +20,18 @@ static const char *AttachStageName(UINT64 Stage)
             return "address-space-object";
         case 8ULL:
             return "task-object";
+        case 100ULL:
+            return "clone-root";
+        case 101ULL:
+            return "validate-elf";
+        case 102ULL:
+            return "map-segment";
+        case 103ULL:
+            return "map-stack";
+        case 104ULL:
+            return "publish-launch";
+        case 105ULL:
+            return "verify-context";
         default:
             return "none";
     }
@@ -79,6 +91,30 @@ static const char *AttachDetailName(UINT64 Detail)
             return "task-object-pointer";
         case 25ULL:
             return "service-root-physical";
+        case 100ULL:
+            return "begin";
+        case 101ULL:
+            return "claim-root-page";
+        case 102ULL:
+            return "direct-map-root";
+        case 103ULL:
+            return "copy-higher-half";
+        case 104ULL:
+            return "invalid-elf";
+        case 105ULL:
+            return "segment-frame-claim";
+        case 106ULL:
+            return "segment-map-status";
+        case 107ULL:
+            return "segment-direct-map";
+        case 108ULL:
+            return "stack-map-status";
+        case 109ULL:
+            return "stack-top-zero";
+        case 110ULL:
+            return "entry-zero";
+        case 111ULL:
+            return "root-zero";
         default:
             return "none";
     }
