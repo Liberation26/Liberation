@@ -108,6 +108,50 @@ static void WriteCr3(UINT64 Value)
     __asm__ __volatile__("mov %0, %%cr3" : : "r"(Value) : "memory");
 }
 
+static UINT64 ReadRsp(void)
+{
+    UINT64 Value;
+
+    __asm__ __volatile__("mov %%rsp, %0" : "=r"(Value));
+    return Value;
+}
+
+static UINT64 ReadRbp(void)
+{
+    UINT64 Value;
+
+    __asm__ __volatile__("mov %%rbp, %0" : "=r"(Value));
+    return Value;
+}
+
+static void TraceTransferContext(
+    UINT64 PreviousRootPhysicalAddress,
+    UINT64 TargetRootPhysicalAddress,
+    UINT64 LaunchBlockDirectMapAddress,
+    UINT64 TargetEntryVirtualAddress,
+    UINT64 TargetStackTopVirtualAddress)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+
+    State = LosMemoryManagerBootstrapState();
+    LosKernelTrace("Memory-manager task-transfer trace follows.");
+    LosKernelTraceHex64("Memory-manager transfer current CR3: ", PreviousRootPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager transfer target CR3: ", TargetRootPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager transfer current RSP: ", ReadRsp());
+    LosKernelTraceHex64("Memory-manager transfer current RBP: ", ReadRbp());
+    LosKernelTraceHex64("Memory-manager transfer target RSP: ", TargetStackTopVirtualAddress);
+    LosKernelTraceHex64("Memory-manager transfer target RIP: ", TargetEntryVirtualAddress);
+    LosKernelTraceHex64("Memory-manager transfer launch block physical: ", State->Info.LaunchBlockPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager transfer launch block direct-map: ", LaunchBlockDirectMapAddress);
+    LosKernelTraceHex64("Memory-manager transfer stack physical: ", State->Info.ServiceStackPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager transfer stack pages: ", State->Info.ServiceStackPageCount);
+    LosKernelTraceHex64("Memory-manager transfer stack top physical: ", State->LaunchBlock != 0 ? State->LaunchBlock->ServiceStackTopPhysicalAddress : 0ULL);
+    LosKernelTraceHex64("Memory-manager transfer stack top virtual: ", TargetStackTopVirtualAddress);
+    LosKernelTraceHex64("Memory-manager transfer service root object: ", State->ServiceAddressSpaceObject != 0 ? State->ServiceAddressSpaceObject->RootTablePhysicalAddress : 0ULL);
+    LosKernelTraceHex64("Memory-manager transfer task entry object: ", State->ServiceTaskObject != 0 ? State->ServiceTaskObject->EntryVirtualAddress : 0ULL);
+    LosKernelTraceHex64("Memory-manager transfer task stack object: ", State->ServiceTaskObject != 0 ? State->ServiceTaskObject->StackTopVirtualAddress : 0ULL);
+}
+
 static BOOLEAN ClaimContiguousPages(UINT64 PageCount, UINT64 *BaseAddress)
 {
     LOS_X64_CLAIM_FRAMES_REQUEST Request;
@@ -262,8 +306,6 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
 {
     LOS_X64_MAP_PAGES_REQUEST MapRequest;
     LOS_X64_MAP_PAGES_RESULT MapResult;
-    UINT64 DirectMapStackTopVirtualAddress;
-
     if (PageMapLevel4PhysicalAddress == 0ULL ||
         StackPhysicalAddress == 0ULL ||
         StackPageCount == 0ULL ||
@@ -273,13 +315,6 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
     }
 
     *StackTopVirtualAddress = 0ULL;
-    DirectMapStackTopVirtualAddress = (UINT64)(UINTN)LosX64GetDirectMapVirtualAddress(
-        StackPhysicalAddress,
-        StackPageCount * 0x1000ULL);
-    if (DirectMapStackTopVirtualAddress != 0ULL)
-    {
-        DirectMapStackTopVirtualAddress += (StackPageCount * 0x1000ULL);
-    }
 
     ZeroMemory(&MapRequest, sizeof(MapRequest));
     ZeroMemory(&MapResult, sizeof(MapResult));
@@ -293,12 +328,6 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
     if (MapResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS && MapResult.PagesProcessed == StackPageCount)
     {
         *StackTopVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE + (StackPageCount * 0x1000ULL);
-        return 1;
-    }
-
-    if (DirectMapStackTopVirtualAddress != 0ULL)
-    {
-        *StackTopVirtualAddress = DirectMapStackTopVirtualAddress;
         return 1;
     }
 
@@ -369,18 +398,24 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = ServiceRootPhysicalAddress;
     State->ServiceAddressSpaceObject->DirectMapBase = Layout->HigherHalfDirectMapBase;
     State->ServiceAddressSpaceObject->DirectMapSize = Layout->HigherHalfDirectMapSize;
+    LosKernelTraceHex64("Memory-manager service root physical before stack map: ", ServiceRootPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager service stack physical before stack map: ", State->Info.ServiceStackPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager service stack pages before stack map: ", State->Info.ServiceStackPageCount);
     if (!MapServiceStackIntoAddressSpace(
             ServiceRootPhysicalAddress,
             State->Info.ServiceStackPhysicalAddress,
             State->Info.ServiceStackPageCount,
             &State->ServiceTaskObject->StackTopVirtualAddress))
     {
+        LosKernelTraceFail("Memory-manager service stack map into service root failed.");
         return 0;
     }
     if (State->ServiceTaskObject->StackTopVirtualAddress == 0ULL)
     {
+        LosKernelTraceFail("Memory-manager service stack top virtual address remained zero after stack map.");
         return 0;
     }
+    LosKernelTraceHex64("Memory-manager service stack top virtual after stack map: ", State->ServiceTaskObject->StackTopVirtualAddress);
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_MAPPED;
     State->LaunchBlock->Flags = State->Info.Flags;
     State->LaunchBlock->ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
@@ -404,35 +439,54 @@ BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void)
     State = LosMemoryManagerBootstrapState();
     if (!LosMemoryManagerBootstrapEnsureServiceEntryReady())
     {
-        return 0;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service entry preparation failed.");
     }
 
     LaunchBlockDirectMapAddress = (UINT64)(UINTN)LosX64GetDirectMapVirtualAddress(State->Info.LaunchBlockPhysicalAddress, State->Info.LaunchBlockSize);
     if (LaunchBlockDirectMapAddress == 0ULL)
     {
-        return 0;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager launch block direct-map translation failed.");
     }
 
     ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
     if (ServiceStackTopVirtualAddress == 0ULL)
     {
-        return 0;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service stack top virtual address is zero.");
     }
 
     PreviousRootPhysicalAddress = ReadCr3();
+    TraceTransferContext(
+        PreviousRootPhysicalAddress,
+        State->ServiceAddressSpaceObject->RootTablePhysicalAddress,
+        LaunchBlockDirectMapAddress,
+        State->Info.ServiceEntryVirtualAddress,
+        ServiceStackTopVirtualAddress);
+    State->ServiceTaskObject->LastRequestId = 0x2001ULL;
+    State->ServiceTaskObject->Heartbeat = LaunchBlockDirectMapAddress;
     State->ServiceAddressSpaceObject->State = LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_ACTIVE;
     State->ServiceTaskObject->State = LOS_MEMORY_MANAGER_TASK_STATE_RUNNING;
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_CONTEXT_SWITCHED;
     State->LaunchBlock->Flags = State->Info.Flags;
+    if (State->ServiceAddressSpaceObject->RootTablePhysicalAddress == 0ULL)
+    {
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service root physical address is zero.");
+    }
+    if (State->Info.ServiceEntryVirtualAddress == 0ULL)
+    {
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service entry virtual address is zero.");
+    }
+    LosKernelTrace("Memory-manager task-transfer handoff executing now.");
     LosMemoryManagerBootstrapTransferToServiceTask(
         State->ServiceAddressSpaceObject->RootTablePhysicalAddress,
         State->Info.ServiceEntryVirtualAddress,
         ServiceStackTopVirtualAddress,
         LaunchBlockDirectMapAddress);
+    LosKernelTrace("Memory-manager task-transfer helper returned to kernel context.");
     WriteCr3(PreviousRootPhysicalAddress);
     State->ServiceTaskObject->State = LOS_MEMORY_MANAGER_TASK_STATE_ONLINE;
     State->ServiceTaskObject->Flags &= ~LOS_MEMORY_MANAGER_TASK_FLAG_BOOTSTRAP_HOSTED;
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ENTRY_INVOKED;
     State->LaunchBlock->Flags = State->Info.Flags;
-    return 1;
+    LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service entry returned unexpectedly.");
+    return 0;
 }

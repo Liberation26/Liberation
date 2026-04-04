@@ -1,3 +1,7 @@
+Version 0.1.41
+
+This delivery hardens the memory-manager bootstrap path into fatal report-and-halt mode. Bootstrap image validation, transport staging, launch-block translation, service-entry preparation, hosted request dispatch failures, and any unexpected service-entry return now report diagnostics and halt immediately instead of silently falling back or continuing. The dedicated service stack must now map successfully into the service address space; bootstrap no longer falls back to a best-effort direct-map stack view.
+
 Version 0.1.39
 
 This delivery hardens memory-manager bootstrap transport staging so every direct-map translation is validated before any mailbox, endpoint, task, address-space, or launch-block object is published as ready. The transport path now fails immediately on a null direct-map translation instead of silently storing unusable bootstrap pointers.
@@ -440,3 +444,9 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 - 0.1.38 maps the first memory-manager bootstrap stack into the service address space at a dedicated virtual range instead of using the higher-half direct-map stack address, and now prints both stack-top physical and virtual values during bootstrap diagnostics.
 
 - 0.1.40 hardens the first memory-manager service stack handoff by refusing a zero stack-top virtual address and by falling back to the cloned direct-map stack view if the dedicated service-stack mapping is not yet available.
+
+
+## 0.1.42
+- Added deep memory-manager bootstrap transfer tracing for CR3, RSP, RIP, launch-block, and stack handoff values.
+- Added early service-entry breadcrumbs so failed first-task entry can be narrowed before attach logic runs.
+- Updated kernel diagnostics to report raw service-entry breadcrumb values when present.

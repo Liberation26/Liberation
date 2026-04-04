@@ -306,17 +306,18 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
     if (!LosMemoryManagerBootstrapEnqueueRequest(Request))
     {
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
-        return;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to enqueue a request.");
     }
 
     if (!LosMemoryManagerBootstrapHostedServiceStep())
     {
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
-        return;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager hosted service step failed.");
     }
     if (!LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response))
     {
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to dequeue a response.");
     }
 }
 

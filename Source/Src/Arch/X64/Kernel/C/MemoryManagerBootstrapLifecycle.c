@@ -14,16 +14,14 @@ void LosLaunchMemoryManagerBootstrap(void)
 
     if (!LosMemoryManagerBootstrapValidateServiceImage())
     {
-        LosKernelTraceFail("Memory-manager service ELF image validation failed.");
-        return;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service ELF image validation failed.");
     }
 
     LosKernelTraceOk("Memory-manager service ELF image validated for first userland launch.");
 
     if (!LosMemoryManagerBootstrapStageTransport())
     {
-        LosKernelTraceFail("Memory-manager bootstrap transport staging failed.");
-        return;
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap transport staging failed.");
     }
 
     LosKernelTraceOk("Memory-manager transport mailboxes and launch block staged.");

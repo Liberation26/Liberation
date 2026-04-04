@@ -103,6 +103,15 @@ static void TraceAttachFailureDetails(void)
         LosKernelTrace("unset");
         LosKernelTrace("Memory-manager service entry did not publish attach diagnostics before the probe failed.");
     }
+    else if (State->ServiceTaskObject->LastRequestId >= 0x1000ULL)
+    {
+        LosKernelTrace("Memory-manager attach stage:");
+        LosKernelTrace("service-entry-breadcrumb");
+        LosKernelTrace("Memory-manager attach detail:");
+        LosKernelTrace("raw-value");
+        LosKernelTraceHex64("Memory-manager service breadcrumb stage: ", State->ServiceTaskObject->LastRequestId);
+        LosKernelTraceHex64("Memory-manager service breadcrumb value: ", State->ServiceTaskObject->Heartbeat);
+    }
     else
     {
         LosKernelTrace("Memory-manager attach stage:");
@@ -193,6 +202,28 @@ void LosDescribeMemoryManagerBootstrap(void)
     LosMemoryManagerBootstrapDescribeState();
 }
 
+
+void LosMemoryManagerBootstrapReportFailureAndHalt(const char *Reason)
+{
+    if (Reason != 0)
+    {
+        LosKernelTraceFail(Reason);
+    }
+    TraceAttachFailureDetails();
+    LosMemoryManagerBootstrapDescribeState();
+    LosKernelTraceFail("Memory-manager bootstrap entered fatal halt.");
+    LosKernelHaltForever();
+}
+
+void LosMemoryManagerBootstrapReportFailureValueAndHalt(const char *Reason, const char *Prefix, UINT64 Value)
+{
+    if (Prefix != 0)
+    {
+        LosKernelTraceHex64(Prefix, Value);
+    }
+    LosMemoryManagerBootstrapReportFailureAndHalt(Reason);
+}
+
 void LosMemoryManagerBootstrapRunProbe(void)
 {
     LOS_X64_QUERY_MEMORY_REGIONS_RESULT Result;
@@ -207,8 +238,7 @@ void LosMemoryManagerBootstrapRunProbe(void)
     }
     else
     {
-        LosKernelTraceFail("Memory-manager endpoint bootstrap probe failed.");
         LosKernelTraceUnsigned("Memory-manager bootstrap status: ", Result.Status);
-        TraceAttachFailureDetails();
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager endpoint bootstrap probe failed.");
     }
 }

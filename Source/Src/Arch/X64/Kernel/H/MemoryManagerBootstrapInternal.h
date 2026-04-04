@@ -56,5 +56,7 @@ BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void);
 BOOLEAN LosMemoryManagerBootstrapEnsureServiceEntryReady(void);
 void LosMemoryManagerBootstrapTransferToServiceTask(UINT64 ServiceRootPhysicalAddress, UINT64 EntryVirtualAddress, UINT64 StackTopVirtualAddress, UINT64 LaunchBlockAddress);
 BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void);
+void LosMemoryManagerBootstrapReportFailureAndHalt(const char *Reason);
+void LosMemoryManagerBootstrapReportFailureValueAndHalt(const char *Reason, const char *Prefix, UINT64 Value);
 
 #endif

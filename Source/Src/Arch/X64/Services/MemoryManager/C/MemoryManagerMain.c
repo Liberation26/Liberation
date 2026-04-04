@@ -90,6 +90,40 @@ static void *TranslateBootstrapAddress(UINT64 DirectMapOffset, UINT64 PhysicalAd
     return (void *)(UINTN)(DirectMapOffset + PhysicalAddress);
 }
 
+
+static void RecordEntryBreadcrumbFromLaunchBlock(UINT64 LaunchBlockAddress, UINT64 Stage, UINT64 Value)
+{
+    const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
+    UINT64 DirectMapOffset;
+    LOS_MEMORY_MANAGER_TASK_OBJECT *TaskObject;
+
+    if (LaunchBlockAddress == 0ULL)
+    {
+        return;
+    }
+
+    LaunchBlock = (const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *)(UINTN)LaunchBlockAddress;
+    if (LaunchBlock == 0)
+    {
+        return;
+    }
+
+    DirectMapOffset = ResolveDirectMapOffset(LaunchBlock, LaunchBlockAddress);
+    if (DirectMapOffset == 0ULL)
+    {
+        return;
+    }
+
+    TaskObject = (LOS_MEMORY_MANAGER_TASK_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceTaskObjectPhysicalAddress);
+    if (TaskObject == 0)
+    {
+        return;
+    }
+
+    TaskObject->LastRequestId = Stage;
+    TaskObject->Heartbeat = Value;
+}
+
 static BOOLEAN ValidateEndpointObjectDetailed(
     const LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint,
     UINT64 EndpointId,
@@ -685,6 +719,7 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
     LOS_MEMORY_MANAGER_SERVICE_STATE *State;
 
     __asm__ __volatile__("" : "=D"(RegisterLaunchBlockAddressRdi), "=S"(RegisterLaunchBlockAddressRsi), "=c"(RegisterLaunchBlockAddressRcx), "=d"(RegisterLaunchBlockAddressRdx));
+    RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1001ULL, LaunchBlockAddress);
     if (LaunchBlockAddress == 0ULL)
     {
         if (RegisterLaunchBlockAddressRdi != 0ULL)
@@ -705,17 +740,24 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         }
     }
 
+    RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1002ULL, RegisterLaunchBlockAddressRdi);
     LaunchBlock = (const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *)(UINTN)LaunchBlockAddress;
+    RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1003ULL, RegisterLaunchBlockAddressRsi);
     State = LosMemoryManagerServiceState();
+    RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1004ULL, RegisterLaunchBlockAddressRcx);
     if (State->Online == 0U)
     {
+        RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1005ULL, RegisterLaunchBlockAddressRdx);
         if (!LosMemoryManagerServiceAttach(LaunchBlock))
         {
+            RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x10FFULL, 0xFFFFFFFFFFFFFFFFULL);
             return;
         }
+        RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1006ULL, LaunchBlock->ServiceEntryVirtualAddress);
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
     }
 
+    RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1007ULL, LaunchBlock->ServiceStackTopVirtualAddress);
     LosMemoryManagerServiceHeartbeat += 1ULL;
     State->Heartbeat = LosMemoryManagerServiceHeartbeat;
     LosMemoryManagerServicePoll();
