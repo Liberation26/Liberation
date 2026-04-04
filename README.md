@@ -1,4 +1,45 @@
-## Delivery note for 0.1.19
+## Delivery note for 0.1.26
+
+- Added a distinct bootstrap-owned **memory-manager PML4 root** so the first service image is no longer mapped only into the live kernel root. The service address-space object now carries both the new service root and the original kernel root.
+- The kernel now clones the current higher-half/direct-map root into a dedicated memory-manager page-map, maps `MEMORYMGR.ELF` into that root, and records the service root physical address in the shared launch block.
+- The hosted bootstrap invocation now performs a real **CR3 switch into the service root** before calling the mapped `MEMORYMGR.ELF` entry, then restores the previous kernel root on return.
+- The task object and launch block now publish the service stack top virtual address as well as the physical stack top, so the service can verify the runnable context it was launched with.
+- Source tar excludes build output binaries.
+
+## Delivery note for 0.1.25
+
+- Added a real bootstrap **service-image launch preparation** step for `MEMORYMGR.ELF`: the kernel now parses the service ELF program headers, claims backing frames, maps the loadable segments into the active page tables, and maps a dedicated service stack virtual range.
+- The first memory-manager address-space object is now populated with the live root page-table physical address plus the higher-half direct-map layout, so the bootstrap contract describes a real runnable address-space view instead of a placeholder object.
+- The hosted bootstrap path now invokes the mapped ELF entry for `MEMORYMGR.ELF` on the staged service stack before falling back to the in-kernel low-level primitive bridge, so the service image is now genuinely in the request path even though isolation and a true scheduler context switch still come next.
+- The service ELF entry was changed to a one-step bootstrap entry that attaches to the published launch block, posts online/ready events, and can complete a request slot, while the kernel still retains the lowest-level frame and page-table primitives exactly as intended.
+- Source tar excludes build output binaries.
+
+## Delivery note for 0.1.24
+
+- Added concrete bootstrap-owned memory-manager **address-space** and **task** objects alongside the existing receive, reply, and event endpoint objects.
+- The kernel now claims and initializes dedicated object pages for the first memory-manager address space and first memory-manager task, then publishes both object addresses through the shared launch block.
+- Bootstrap request execution now goes through a hosted **first-task step** which marks the first task and address space active before consuming mailbox traffic, rather than treating dispatch as a purely anonymous in-kernel bridge.
+- `MEMORYMGR.ELF` attach validation now checks endpoint objects, the address-space object, and the task object so the future real context-switch launch path already has a stable bootstrap contract.
+- Source tar excludes build output binaries.
+
+## Delivery note for 0.1.23
+
+- Converted the memory-manager bootstrap transport from bare mailbox identifiers into three concrete kernel-managed endpoint objects: receive, reply, and event.
+- The kernel now claims, initializes, and publishes dedicated endpoint-object pages alongside the existing request, response, and event mailboxes.
+- The launch block now hands the service both mailbox addresses and endpoint-object addresses, so the service attach path validates and binds the real endpoint objects before going online.
+- Bootstrap request enqueue/dequeue and response posting now check endpoint role, state, and mailbox attachment before using the transport.
+- Source tar excludes build output binaries.
+
+## Delivery note for 0.1.22
+
+- Moved the memory-manager bootstrap contract into a shared ABI header so the kernel bootstrap path and `MEMORYMGR.ELF` now consume the same endpoint, mailbox, launch-block, and event definitions.
+- Fixed the launch sequencing bug so the memory-manager ELF entry address is validated and published before the launch block is staged.
+- Added a dedicated service-event mailbox type and a launch-prepared state so the first real userland memory-manager entry now has a concrete attach contract instead of a bare heartbeat loop.
+- Source tar excludes build output binaries.
+
+# Liberation OS
+
+## Delivery note for 0.1.20
 
 - Added word wrap to kernel console text output so status and log lines move cleanly onto the next line instead of running through word boundaries.
 - Increased kernel console line spacing so framebuffer text is easier to read during bring-up.
@@ -344,4 +385,4 @@ Version 0.1.13 adds the first dedicated `MEMORYMGR.ELF` image to the installed i
 
 - 0.1.18: kernel console now starts each line with a 1-character indent and uses an 8-character indent for automatic word-wrapped continuation lines.
 
-- 0.1.19: fixed the kernel console build break by forward-declaring ApplyLineIndent before its first use.
+- 0.1.20: fixed the kernel console build break by forward-declaring ApplyLineIndent before its first use.

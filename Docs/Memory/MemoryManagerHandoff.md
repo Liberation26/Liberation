@@ -1,4 +1,44 @@
+## 0.1.26 isolated first-service root
+
+The bootstrap path now gives the memory-manager service its own page-table root instead of only describing the live kernel root.
+
+This delivery does four concrete things:
+
+- claims a dedicated bootstrap page for the first memory-manager PML4 root
+- clones the current higher-half/direct-map kernel root into that service root
+- maps the `MEMORYMGR.ELF` loadable segments into the service root rather than only into the active kernel root
+- switches CR3 to that service root for the hosted bootstrap call into the service entry, then restores the previous kernel root afterward
+
+That means the bootstrap contract is now materially closer to the intended architecture:
+
+1. the kernel still owns the lowest-level frame and page-table primitives
+2. the memory-manager service now has its own published root page table
+3. the service is entered with its own active CR3 instead of only being called inside the kernel root
+4. the launch block now carries the service root physical address and the service stack top virtual address for attach-time verification
+
+What is still missing is the final scheduler-owned user transition. The hosted bootstrap call still runs without a real ring transition or long-lived scheduler task context, but the address-space separation step is now in place.
+
 # X64 Memory-Manager Handoff
+
+## 0.1.22 service-bootstrap contract
+
+The memory-manager path now has a shared bootstrap ABI between the kernel and `MEMORYMGR.ELF`.
+
+This delivery does four concrete things:
+
+- moves the endpoint, mailbox, event-mailbox, and launch-block structures into one shared public header
+- fixes the launch ordering so the validated ELF entry address is present in the staged launch block
+- gives the service image a real launch-block attach path instead of only a standalone heartbeat loop
+- introduces an explicit service-prepared bootstrap state and dedicated service-event mailbox shape
+
+That means the first real userland launch contract is now materially closer to the intended design:
+
+1. the kernel validates `MEMORYMGR.ELF`
+2. the kernel stages mailbox pages, the launch block, and the initial stack
+3. the launch block already contains the service entry address and mailbox physical addresses
+4. the service image can attach to that launch block and publish service events when the first real user task bootstrap is wired in
+
+What is still missing is the actual scheduler-owned user task creation and address-space switch. The kernel still performs the low-level memory operations during bootstrap, but the service-side bootstrap contract is now defined by the same ABI that the future userland launch will consume.
 
 ## 0.1.11 update
 
