@@ -1,3 +1,4 @@
+map -r
 if exist fs0:\EFI\BOOT\BOOTX64.EFI then
   fs0:\EFI\BOOT\BOOTX64.EFI
 endif

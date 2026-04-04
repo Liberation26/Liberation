@@ -325,23 +325,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     return 1;
 }
 
-static void InvokeServiceEntry(UINT64 EntryVirtualAddress, UINT64 StackTopVirtualAddress, UINT64 LaunchBlockAddress)
-{
-    __asm__ __volatile__(
-        "mov %%rsp, %%r11\n"
-        "mov %0, %%rsp\n"
-        "and $-16, %%rsp\n"
-        "sub $8, %%rsp\n"
-        "mov %2, %%rdi\n"
-        "mov %2, %%rsi\n"
-        "mov %2, %%rcx\n"
-        "mov %2, %%rdx\n"
-        "call *%1\n"
-        "mov %%r11, %%rsp\n"
-        :
-        : "r"(StackTopVirtualAddress), "r"(EntryVirtualAddress), "r"(LaunchBlockAddress)
-        : "r11", "rdi", "rsi", "rcx", "rdx", "memory");
-}
+/* Dedicated assembly bootstrap task-transfer helper declared in MemoryManagerBootstrapInternal.h. */
 
 BOOLEAN LosMemoryManagerBootstrapEnsureServiceEntryReady(void)
 {
@@ -376,10 +360,13 @@ BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void)
     PreviousRootPhysicalAddress = ReadCr3();
     State->ServiceAddressSpaceObject->State = LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_ACTIVE;
     State->ServiceTaskObject->State = LOS_MEMORY_MANAGER_TASK_STATE_RUNNING;
-    WriteCr3(State->ServiceAddressSpaceObject->RootTablePhysicalAddress);
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_CONTEXT_SWITCHED;
     State->LaunchBlock->Flags = State->Info.Flags;
-    InvokeServiceEntry(State->Info.ServiceEntryVirtualAddress, ServiceStackTopVirtualAddress, LaunchBlockDirectMapAddress);
+    LosMemoryManagerBootstrapTransferToServiceTask(
+        State->ServiceAddressSpaceObject->RootTablePhysicalAddress,
+        State->Info.ServiceEntryVirtualAddress,
+        ServiceStackTopVirtualAddress,
+        LaunchBlockDirectMapAddress);
     WriteCr3(PreviousRootPhysicalAddress);
     State->ServiceTaskObject->State = LOS_MEMORY_MANAGER_TASK_STATE_ONLINE;
     State->ServiceTaskObject->Flags &= ~LOS_MEMORY_MANAGER_TASK_FLAG_BOOTSTRAP_HOSTED;

@@ -54,6 +54,7 @@ BOOLEAN LosMemoryManagerBootstrapEndpointsReady(void);
 void LosMemoryManagerBootstrapSetEndpointState(LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint, UINT32 State);
 BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void);
 BOOLEAN LosMemoryManagerBootstrapEnsureServiceEntryReady(void);
+void LosMemoryManagerBootstrapTransferToServiceTask(UINT64 ServiceRootPhysicalAddress, UINT64 EntryVirtualAddress, UINT64 StackTopVirtualAddress, UINT64 LaunchBlockAddress);
 BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void);
 
 #endif

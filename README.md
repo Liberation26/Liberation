@@ -1,3 +1,7 @@
+Version 0.1.37
+
+This delivery adds a dedicated assembly bootstrap task-transfer helper for the memory-manager service. The kernel now performs the temporary service handoff by switching into the staged service CR3 root and service stack inside a standalone assembly path and restoring the kernel context only if the bootstrap entry returns. This is the first real task-style switch path instead of the previous inline C-hosted entry shim.
+
 Version 0.1.36
 
 This delivery corrects the packaging omission in 0.1.35 by restoring the `ChangedFiles` folder. The `ChangedFiles` tree now includes the RunDir/RunHD staging fixes, the hard-disk image staging updates, the cleanup updates, and the version/readme files so a ChangedFiles-only apply picks up the intended boot-path changes.
