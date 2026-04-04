@@ -1,3 +1,10 @@
+## Delivery note for 0.1.29
+
+- Added explicit memory-manager attach diagnostics so bootstrap probe failures now record the exact failing stage and detail code through the shared task object before the kernel falls back.
+- The memory-manager service now validates the launch block, each endpoint object, the address-space object, and the task object with per-check failure reporting instead of returning a single undifferentiated attach failure.
+- Kernel bootstrap diagnostics now print the attach stage name, detail name, numeric codes, and object state snapshots when the endpoint bootstrap probe fails.
+- Source tar excludes build output binaries.
+
 ## Delivery note for 0.1.27
 
 - Packaging fix: `Scripts/BuildBoot.sh` is now included in `ChangedFiles` so ChangedFiles-only updates pick up the public include path needed for `MemoryManagerServiceAbi.h`.

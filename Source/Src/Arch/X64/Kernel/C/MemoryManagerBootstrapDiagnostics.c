@@ -1,5 +1,125 @@
 #include "MemoryManagerBootstrapInternal.h"
 
+static const char *AttachStageName(UINT64 Stage)
+{
+    switch (Stage)
+    {
+        case 1ULL:
+            return "launch-block";
+        case 2ULL:
+            return "direct-map-offset";
+        case 3ULL:
+            return "task-object-translation";
+        case 4ULL:
+            return "receive-endpoint";
+        case 5ULL:
+            return "reply-endpoint";
+        case 6ULL:
+            return "event-endpoint";
+        case 7ULL:
+            return "address-space-object";
+        case 8ULL:
+            return "task-object";
+        default:
+            return "none";
+    }
+}
+
+static const char *AttachDetailName(UINT64 Detail)
+{
+    switch (Detail)
+    {
+        case 1ULL:
+            return "null";
+        case 2ULL:
+            return "signature";
+        case 3ULL:
+            return "version";
+        case 4ULL:
+            return "endpoint-id";
+        case 5ULL:
+            return "role";
+        case 6ULL:
+            return "mailbox-physical";
+        case 7ULL:
+            return "mailbox-flag";
+        case 8ULL:
+            return "state";
+        case 9ULL:
+            return "service-image-physical";
+        case 10ULL:
+            return "root-table-physical";
+        case 11ULL:
+            return "kernel-root-physical";
+        case 12ULL:
+            return "address-space-object-physical";
+        case 13ULL:
+            return "entry-virtual";
+        case 14ULL:
+            return "stack-top-physical";
+        case 15ULL:
+            return "stack-top-virtual";
+        case 16ULL:
+            return "launch-block-physical";
+        case 17ULL:
+            return "request-mailbox-physical";
+        case 18ULL:
+            return "response-mailbox-physical";
+        case 19ULL:
+            return "event-mailbox-physical";
+        case 20ULL:
+            return "receive-endpoint-physical";
+        case 21ULL:
+            return "reply-endpoint-physical";
+        case 22ULL:
+            return "event-endpoint-physical";
+        case 23ULL:
+            return "address-space-object-pointer";
+        case 24ULL:
+            return "task-object-pointer";
+        case 25ULL:
+            return "service-root-physical";
+        default:
+            return "none";
+    }
+}
+
+static void TraceAttachFailureDetails(void)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+
+    State = LosMemoryManagerBootstrapState();
+    if (State->ServiceTaskObject == 0)
+    {
+        return;
+    }
+
+    LosKernelTrace("Memory-manager attach failure diagnostics follow.");
+    LosKernelTrace("Memory-manager attach stage:");
+    LosKernelTrace(AttachStageName(State->ServiceTaskObject->LastRequestId));
+    LosKernelTrace("Memory-manager attach detail:");
+    LosKernelTrace(AttachDetailName(State->ServiceTaskObject->Heartbeat));
+    LosKernelTraceUnsigned("Memory-manager attach stage code: ", State->ServiceTaskObject->LastRequestId);
+    LosKernelTraceUnsigned("Memory-manager attach detail code: ", State->ServiceTaskObject->Heartbeat);
+    if (State->KernelToServiceEndpointObject != 0)
+    {
+        LosKernelTraceUnsigned("Memory-manager receive endpoint state snapshot: ", State->KernelToServiceEndpointObject->State);
+    }
+    if (State->ServiceToKernelEndpointObject != 0)
+    {
+        LosKernelTraceUnsigned("Memory-manager reply endpoint state snapshot: ", State->ServiceToKernelEndpointObject->State);
+    }
+    if (State->ServiceEventsEndpointObject != 0)
+    {
+        LosKernelTraceUnsigned("Memory-manager event endpoint state snapshot: ", State->ServiceEventsEndpointObject->State);
+    }
+    if (State->ServiceAddressSpaceObject != 0)
+    {
+        LosKernelTraceUnsigned("Memory-manager address-space state snapshot: ", State->ServiceAddressSpaceObject->State);
+        LosKernelTraceHex64("Memory-manager service root snapshot: ", State->ServiceAddressSpaceObject->RootTablePhysicalAddress);
+    }
+}
+
 static void TraceEndpoint(const char *Prefix, UINT64 Value)
 {
     LosKernelTraceHex64(Prefix, Value);
@@ -77,5 +197,6 @@ void LosMemoryManagerBootstrapRunProbe(void)
     {
         LosKernelTraceFail("Memory-manager endpoint bootstrap probe failed.");
         LosKernelTraceUnsigned("Memory-manager bootstrap status: ", Result.Status);
+        TraceAttachFailureDetails();
     }
 }

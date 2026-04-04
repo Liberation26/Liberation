@@ -5,6 +5,54 @@ const char LosMemoryManagerServiceBanner[] = "Liberation Memory Manager Service"
 
 static LOS_MEMORY_MANAGER_SERVICE_STATE LosMemoryManagerServiceGlobalState;
 
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_NONE 0ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_LAUNCH_BLOCK 1ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_DIRECT_MAP_OFFSET 2ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_TASK_OBJECT_TRANSLATION 3ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_RECEIVE_ENDPOINT 4ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_REPLY_ENDPOINT 5ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_EVENT_ENDPOINT 6ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_ADDRESS_SPACE_OBJECT 7ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_TASK_OBJECT 8ULL
+
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE 0ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_NULL 1ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_SIGNATURE 2ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_VERSION 3ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_ENDPOINT_ID 4ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_ROLE 5ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_MAILBOX_PHYSICAL 6ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_MAILBOX_FLAG 7ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_STATE 8ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_SERVICE_IMAGE_PHYSICAL 9ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_ROOT_TABLE_PHYSICAL 10ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_KERNEL_ROOT_PHYSICAL 11ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_ADDRESS_SPACE_OBJECT_PHYSICAL 12ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_ENTRY_VIRTUAL 13ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_STACK_TOP_PHYSICAL 14ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_STACK_TOP_VIRTUAL 15ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_LAUNCH_BLOCK_PHYSICAL 16ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_REQUEST_MAILBOX_PHYSICAL 17ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_RESPONSE_MAILBOX_PHYSICAL 18ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_EVENT_MAILBOX_PHYSICAL 19ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_RECEIVE_ENDPOINT_PHYSICAL 20ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_REPLY_ENDPOINT_PHYSICAL 21ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_EVENT_ENDPOINT_PHYSICAL 22ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_ADDRESS_SPACE_OBJECT_PHYSICAL_POINTER 23ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_TASK_OBJECT_PHYSICAL_POINTER 24ULL
+#define LOS_MEMORY_MANAGER_ATTACH_DETAIL_SERVICE_ROOT_PHYSICAL 25ULL
+
+static void RecordAttachDiagnostic(LOS_MEMORY_MANAGER_TASK_OBJECT *TaskObject, UINT64 Stage, UINT64 Detail)
+{
+    if (TaskObject == 0)
+    {
+        return;
+    }
+
+    TaskObject->LastRequestId = Stage;
+    TaskObject->Heartbeat = Detail;
+}
+
 static void ZeroMemory(void *Buffer, UINTN ByteCount)
 {
     UINT8 *Bytes;
@@ -42,74 +90,369 @@ static void *TranslateBootstrapAddress(UINT64 DirectMapOffset, UINT64 PhysicalAd
     return (void *)(UINTN)(DirectMapOffset + PhysicalAddress);
 }
 
-static BOOLEAN ValidateEndpointObject(
+static BOOLEAN ValidateEndpointObjectDetailed(
     const LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint,
     UINT64 EndpointId,
     UINT32 Role,
-    UINT64 MailboxPhysicalAddress)
+    UINT64 MailboxPhysicalAddress,
+    UINT64 *Detail)
 {
+    if (Detail != 0)
+    {
+        *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE;
+    }
+
     if (Endpoint == 0)
     {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NULL;
+        }
         return 0;
     }
 
-    return Endpoint->Version == LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION &&
-           Endpoint->EndpointId == EndpointId &&
-           Endpoint->Role == Role &&
-           Endpoint->MailboxPhysicalAddress == MailboxPhysicalAddress &&
-           (Endpoint->Flags & LOS_MEMORY_MANAGER_ENDPOINT_FLAG_MAILBOX_ATTACHED) != 0ULL;
+    if (Endpoint->Signature != LOS_MEMORY_MANAGER_BOOTSTRAP_SIGNATURE)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_SIGNATURE;
+        }
+        return 0;
+    }
+
+    if (Endpoint->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_VERSION;
+        }
+        return 0;
+    }
+
+    if (Endpoint->EndpointId != EndpointId)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_ENDPOINT_ID;
+        }
+        return 0;
+    }
+
+    if (Endpoint->Role != Role)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_ROLE;
+        }
+        return 0;
+    }
+
+    if (Endpoint->MailboxPhysicalAddress != MailboxPhysicalAddress)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_MAILBOX_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if ((Endpoint->Flags & LOS_MEMORY_MANAGER_ENDPOINT_FLAG_MAILBOX_ATTACHED) == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_MAILBOX_FLAG;
+        }
+        return 0;
+    }
+
+    return 1;
 }
 
-static BOOLEAN ValidateAddressSpaceObject(const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject, UINT64 ServiceImagePhysicalAddress, UINT64 ServiceRootTablePhysicalAddress)
+static BOOLEAN ValidateAddressSpaceObjectDetailed(const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject, UINT64 ServiceImagePhysicalAddress, UINT64 ServiceRootTablePhysicalAddress, UINT64 *Detail)
 {
+    if (Detail != 0)
+    {
+        *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE;
+    }
+
     if (AddressSpaceObject == 0)
     {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NULL;
+        }
         return 0;
     }
 
-    return AddressSpaceObject->Version == LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION &&
-           AddressSpaceObject->State >= LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY &&
-           AddressSpaceObject->ServiceImagePhysicalAddress == ServiceImagePhysicalAddress &&
-           AddressSpaceObject->RootTablePhysicalAddress == ServiceRootTablePhysicalAddress &&
-           AddressSpaceObject->KernelRootTablePhysicalAddress != 0ULL;
+    if (AddressSpaceObject->Signature != LOS_MEMORY_MANAGER_BOOTSTRAP_SIGNATURE)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_SIGNATURE;
+        }
+        return 0;
+    }
+
+    if (AddressSpaceObject->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_VERSION;
+        }
+        return 0;
+    }
+
+    if (AddressSpaceObject->State < LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_STATE;
+        }
+        return 0;
+    }
+
+    if (AddressSpaceObject->ServiceImagePhysicalAddress != ServiceImagePhysicalAddress)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_SERVICE_IMAGE_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (AddressSpaceObject->RootTablePhysicalAddress != ServiceRootTablePhysicalAddress)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_ROOT_TABLE_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (AddressSpaceObject->KernelRootTablePhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_KERNEL_ROOT_PHYSICAL;
+        }
+        return 0;
+    }
+
+    return 1;
 }
 
-static BOOLEAN ValidateTaskObject(const LOS_MEMORY_MANAGER_TASK_OBJECT *TaskObject, UINT64 AddressSpaceObjectPhysicalAddress, UINT64 EntryVirtualAddress, UINT64 StackTopPhysicalAddress, UINT64 StackTopVirtualAddress)
+static BOOLEAN ValidateTaskObjectDetailed(const LOS_MEMORY_MANAGER_TASK_OBJECT *TaskObject, UINT64 AddressSpaceObjectPhysicalAddress, UINT64 EntryVirtualAddress, UINT64 StackTopPhysicalAddress, UINT64 StackTopVirtualAddress, UINT64 *Detail)
 {
+    if (Detail != 0)
+    {
+        *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE;
+    }
+
     if (TaskObject == 0)
     {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NULL;
+        }
         return 0;
     }
 
-    return TaskObject->Version == LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION &&
-           TaskObject->AddressSpaceObjectPhysicalAddress == AddressSpaceObjectPhysicalAddress &&
-           TaskObject->EntryVirtualAddress == EntryVirtualAddress &&
-           TaskObject->StackTopPhysicalAddress == StackTopPhysicalAddress &&
-           TaskObject->StackTopVirtualAddress == StackTopVirtualAddress;
+    if (TaskObject->Signature != LOS_MEMORY_MANAGER_BOOTSTRAP_SIGNATURE)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_SIGNATURE;
+        }
+        return 0;
+    }
+
+    if (TaskObject->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_VERSION;
+        }
+        return 0;
+    }
+
+    if (TaskObject->AddressSpaceObjectPhysicalAddress != AddressSpaceObjectPhysicalAddress)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_ADDRESS_SPACE_OBJECT_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (TaskObject->EntryVirtualAddress != EntryVirtualAddress)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_ENTRY_VIRTUAL;
+        }
+        return 0;
+    }
+
+    if (TaskObject->StackTopPhysicalAddress != StackTopPhysicalAddress)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_STACK_TOP_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (TaskObject->StackTopVirtualAddress != StackTopVirtualAddress)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_STACK_TOP_VIRTUAL;
+        }
+        return 0;
+    }
+
+    return 1;
 }
 
-static BOOLEAN ValidateLaunchBlock(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock)
+static BOOLEAN ValidateLaunchBlockDetailed(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock, UINT64 *Detail)
 {
+    if (Detail != 0)
+    {
+        *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE;
+    }
+
     if (LaunchBlock == 0)
     {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NULL;
+        }
         return 0;
     }
 
-    if (LaunchBlock->Signature != LOS_MEMORY_MANAGER_LAUNCH_BLOCK_SIGNATURE ||
-        LaunchBlock->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION ||
-        LaunchBlock->RequestMailboxPhysicalAddress == 0ULL ||
-        LaunchBlock->ResponseMailboxPhysicalAddress == 0ULL ||
-        LaunchBlock->EventMailboxPhysicalAddress == 0ULL ||
-        LaunchBlock->LaunchBlockPhysicalAddress == 0ULL ||
-        LaunchBlock->KernelToServiceEndpointObjectPhysicalAddress == 0ULL ||
-        LaunchBlock->ServiceToKernelEndpointObjectPhysicalAddress == 0ULL ||
-        LaunchBlock->ServiceEventsEndpointObjectPhysicalAddress == 0ULL ||
-        LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress == 0ULL ||
-        LaunchBlock->ServiceTaskObjectPhysicalAddress == 0ULL ||
-        LaunchBlock->ServicePageMapLevel4PhysicalAddress == 0ULL ||
-        LaunchBlock->ServiceEntryVirtualAddress == 0ULL ||
-        LaunchBlock->ServiceStackTopVirtualAddress == 0ULL)
+    if (LaunchBlock->Signature != LOS_MEMORY_MANAGER_LAUNCH_BLOCK_SIGNATURE)
     {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_SIGNATURE;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_VERSION;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->RequestMailboxPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_REQUEST_MAILBOX_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ResponseMailboxPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_RESPONSE_MAILBOX_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->EventMailboxPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_EVENT_MAILBOX_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->LaunchBlockPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_LAUNCH_BLOCK_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->KernelToServiceEndpointObjectPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_RECEIVE_ENDPOINT_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ServiceToKernelEndpointObjectPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_REPLY_ENDPOINT_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ServiceEventsEndpointObjectPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_EVENT_ENDPOINT_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_ADDRESS_SPACE_OBJECT_PHYSICAL_POINTER;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ServiceTaskObjectPhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_TASK_OBJECT_PHYSICAL_POINTER;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ServicePageMapLevel4PhysicalAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_SERVICE_ROOT_PHYSICAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ServiceEntryVirtualAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_ENTRY_VIRTUAL;
+        }
+        return 0;
+    }
+
+    if (LaunchBlock->ServiceStackTopVirtualAddress == 0ULL)
+    {
+        if (Detail != 0)
+        {
+            *Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_STACK_TOP_VIRTUAL;
+        }
         return 0;
     }
 
@@ -125,8 +468,10 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
 {
     LOS_MEMORY_MANAGER_SERVICE_STATE *State;
     UINT64 DirectMapOffset;
+    UINT64 Detail;
 
-    if (!ValidateLaunchBlock(LaunchBlock))
+    Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE;
+    if (!ValidateLaunchBlockDetailed(LaunchBlock, &Detail))
     {
         return 0;
     }
@@ -148,12 +493,40 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
     State->EventMailbox = (LOS_MEMORY_MANAGER_EVENT_MAILBOX *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->EventMailboxPhysicalAddress);
     State->AddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress);
     State->TaskObject = (LOS_MEMORY_MANAGER_TASK_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceTaskObjectPhysicalAddress);
-    if (!ValidateEndpointObject(State->ReceiveEndpoint, LaunchBlock->Endpoints.KernelToService, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_RECEIVE, LaunchBlock->RequestMailboxPhysicalAddress) ||
-        !ValidateEndpointObject(State->ReplyEndpoint, LaunchBlock->Endpoints.ServiceToKernel, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_REPLY, LaunchBlock->ResponseMailboxPhysicalAddress) ||
-        !ValidateEndpointObject(State->EventEndpoint, LaunchBlock->Endpoints.ServiceEvents, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_EVENT, LaunchBlock->EventMailboxPhysicalAddress) ||
-        !ValidateAddressSpaceObject(State->AddressSpaceObject, LaunchBlock->ServiceImagePhysicalAddress, LaunchBlock->ServicePageMapLevel4PhysicalAddress) ||
-        !ValidateTaskObject(State->TaskObject, LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress, LaunchBlock->ServiceStackTopVirtualAddress))
+    if (State->TaskObject == 0)
     {
+        return 0;
+    }
+
+    RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_NONE, LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE);
+
+    if (!ValidateEndpointObjectDetailed(State->ReceiveEndpoint, LaunchBlock->Endpoints.KernelToService, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_RECEIVE, LaunchBlock->RequestMailboxPhysicalAddress, &Detail))
+    {
+        RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_RECEIVE_ENDPOINT, Detail);
+        return 0;
+    }
+
+    if (!ValidateEndpointObjectDetailed(State->ReplyEndpoint, LaunchBlock->Endpoints.ServiceToKernel, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_REPLY, LaunchBlock->ResponseMailboxPhysicalAddress, &Detail))
+    {
+        RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_REPLY_ENDPOINT, Detail);
+        return 0;
+    }
+
+    if (!ValidateEndpointObjectDetailed(State->EventEndpoint, LaunchBlock->Endpoints.ServiceEvents, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_EVENT, LaunchBlock->EventMailboxPhysicalAddress, &Detail))
+    {
+        RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_EVENT_ENDPOINT, Detail);
+        return 0;
+    }
+
+    if (!ValidateAddressSpaceObjectDetailed(State->AddressSpaceObject, LaunchBlock->ServiceImagePhysicalAddress, LaunchBlock->ServicePageMapLevel4PhysicalAddress, &Detail))
+    {
+        RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_ADDRESS_SPACE_OBJECT, Detail);
+        return 0;
+    }
+
+    if (!ValidateTaskObjectDetailed(State->TaskObject, LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress, LaunchBlock->ServiceStackTopVirtualAddress, &Detail))
+    {
+        RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_TASK_OBJECT, Detail);
         return 0;
     }
     State->ActiveRootTablePhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;
