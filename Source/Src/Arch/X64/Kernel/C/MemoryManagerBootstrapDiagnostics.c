@@ -209,6 +209,8 @@ void LosMemoryManagerBootstrapDescribeState(void)
     TraceEndpoint("Memory-manager endpoint service->kernel: ", Info->Endpoints.ServiceToKernel);
     TraceEndpoint("Memory-manager endpoint service-events: ", Info->Endpoints.ServiceEvents);
     LosKernelTraceUnsigned("Memory-manager bootstrap state: ", Info->State);
+    LosKernelTraceUnsigned("Memory-manager bootstrap transition count: ", State->StateTransitionCount);
+    LosKernelTraceUnsigned("Memory-manager bootstrap result code: ", State->BootstrapResultCode);
     LosKernelTraceHex64("Memory-manager request mailbox physical: ", Info->RequestMailboxPhysicalAddress);
     LosKernelTraceHex64("Memory-manager response mailbox physical: ", Info->ResponseMailboxPhysicalAddress);
     LosKernelTraceHex64("Memory-manager event mailbox physical: ", Info->EventMailboxPhysicalAddress);
@@ -262,19 +264,23 @@ void LosMemoryManagerBootstrapReportFailureValueAndHalt(const char *Reason, cons
 
 void LosMemoryManagerBootstrapRunProbe(void)
 {
-    LOS_X64_QUERY_MEMORY_REGIONS_RESULT Result;
+    LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT Result;
 
-    LosMemoryManagerSendQueryMemoryRegions(0, 0U, &Result);
-    if (Result.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+    LosMemoryManagerSendBootstrapAttach(&Result);
+    if (Result.BootstrapResult == LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY)
     {
         LosMemoryManagerBootstrapSetFlag(LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_PROBE_COMPLETE);
-        LosKernelTraceOk("Memory-manager endpoint bootstrap probe succeeded.");
-        LosKernelTraceUnsigned("Memory-manager published regions: ", Result.TotalRegionCount);
-        LosMemoryManagerBootstrapUpdateState(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_READY);
+        LosMemoryManagerBootstrapSetFlag(LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_ATTACH_COMPLETE);
+        LosKernelTraceOk("Memory-manager bootstrap attach succeeded.");
+        LosKernelTraceUnsigned("Memory-manager bootstrap result: ", Result.BootstrapResult);
+        LosKernelTraceUnsigned("Memory-manager bootstrap reply state: ", Result.BootstrapState);
+        LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_READY);
     }
     else
     {
-        LosKernelTraceUnsigned("Memory-manager bootstrap status: ", Result.Status);
-        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager endpoint bootstrap probe failed.");
+        LosKernelTraceUnsigned("Memory-manager bootstrap result: ", Result.BootstrapResult);
+        LosKernelTraceUnsigned("Memory-manager bootstrap reply state: ", Result.BootstrapState);
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap attach failed.");
     }
 }
+

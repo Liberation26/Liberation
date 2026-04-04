@@ -312,6 +312,7 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
     State->Info.ServiceToKernelEndpointObjectPhysicalAddress = 0ULL;
     State->Info.ServiceEventsEndpointObjectPhysicalAddress = 0ULL;
     State->Info.SupportedOperations =
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES) |
@@ -334,6 +335,9 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
     State->Info.LaunchBlockSize = 0ULL;
     State->ServiceImageVirtualAddress = 0ULL;
     State->NextRequestId = 1ULL;
+    State->BootstrapAttachRequestId = 0ULL;
+    State->BootstrapResultCode = LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST;
+    State->StateTransitionCount = 0ULL;
     CopyUtf16(State->Info.ServicePath, LOS_MEMORY_MANAGER_SERVICE_PATH_CHARACTERS, L"\\LIBERATION\\SERVICES\\MEMORYMGR.ELF");
 
     if (BootContext != 0)
@@ -346,12 +350,20 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
     State->Info.ServiceImagePhysicalAddress = ResolveServiceImagePhysicalAddress(BootContext, State->ServiceImageVirtualAddress, State->Info.ServiceImageSize);
 }
 
-void LosMemoryManagerBootstrapUpdateState(UINT32 NewState)
+void LosMemoryManagerBootstrapTransitionTo(UINT32 NewState)
 {
     LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
 
     State = LosMemoryManagerBootstrapState();
+    if (State->Info.State != NewState)
+    {
+        State->StateTransitionCount += 1ULL;
+    }
     State->Info.State = NewState;
+    if (State->LaunchBlock != 0)
+    {
+        State->LaunchBlock->State = NewState;
+    }
 }
 
 void LosMemoryManagerBootstrapSetFlag(UINT64 Flag)
@@ -390,6 +402,11 @@ void LosMemoryManagerBootstrapRecordCompletion(UINT32 Operation, UINT32 Status)
     State->MessagesCompleted += 1ULL;
     State->LastOperation = (UINT64)Operation;
     State->LastStatus = (UINT64)Status;
+}
+
+void LosMemoryManagerBootstrapRecordBootstrapResult(UINT32 ResultCode)
+{
+    LosMemoryManagerBootstrapState()->BootstrapResultCode = ResultCode;
 }
 
 const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *LosGetMemoryManagerBootstrapInfo(void)
@@ -609,6 +626,7 @@ BOOLEAN LosMemoryManagerBootstrapStageTransport(void)
     ZeroMemory(State->LaunchBlock, sizeof(*State->LaunchBlock));
     State->LaunchBlock->Signature = LOS_MEMORY_MANAGER_LAUNCH_BLOCK_SIGNATURE;
     State->LaunchBlock->Version = LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION;
+    State->LaunchBlock->State = State->Info.State;
     State->LaunchBlock->Flags = State->Info.Flags;
     State->LaunchBlock->Endpoints = State->Info.Endpoints;
     State->LaunchBlock->KernelToServiceEndpointObjectPhysicalAddress = State->Info.KernelToServiceEndpointObjectPhysicalAddress;
@@ -636,6 +654,6 @@ BOOLEAN LosMemoryManagerBootstrapStageTransport(void)
     LosMemoryManagerBootstrapSetFlag(LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_TRANSPORT_READY);
     LosMemoryManagerBootstrapSetFlag(LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_LAUNCH_BLOCK_READY);
     LosMemoryManagerBootstrapSetFlag(LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_STACK_READY);
-    LosMemoryManagerBootstrapUpdateState(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_STAGED);
+    LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_STAGED);
     return 1;
 }

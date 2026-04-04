@@ -7,7 +7,7 @@ void LosInitializeMemoryManagerBootstrap(const LOS_BOOT_CONTEXT *BootContext)
 
 void LosLaunchMemoryManagerBootstrap(void)
 {
-    LosMemoryManagerBootstrapUpdateState(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_LAUNCHED);
+    LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_LAUNCHED);
     if (!LosMemoryManagerBootstrapValidateServiceImage())
     {
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service ELF image validation failed.");

@@ -6,7 +6,7 @@
 
 typedef struct
 {
-    const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
+    LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
     LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *ReceiveEndpoint;
     LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *ReplyEndpoint;
     LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *EventEndpoint;
@@ -19,7 +19,11 @@ typedef struct
     UINT64 LastRequestId;
     UINT64 ActiveRootTablePhysicalAddress;
     UINT64 KernelRootTablePhysicalAddress;
+    UINT64 NegotiatedOperations;
     UINT32 Online;
+    UINT32 AttachComplete;
+    UINT32 BootstrapResultCode;
+    UINT32 Reserved0;
 } LOS_MEMORY_MANAGER_SERVICE_STATE;
 
 void LosMemoryManagerServiceEntry(void);

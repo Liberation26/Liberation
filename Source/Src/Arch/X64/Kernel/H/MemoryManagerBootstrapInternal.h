@@ -6,7 +6,6 @@
 extern const UINT8 LosMemoryManagerServiceImageStart[];
 extern const UINT8 LosMemoryManagerServiceImageEnd[];
 
-
 typedef struct
 {
     LOS_MEMORY_MANAGER_BOOTSTRAP_INFO Info;
@@ -25,15 +24,20 @@ typedef struct
     UINT64 ResponseMailboxVirtualAddress;
     UINT64 EventMailboxVirtualAddress;
     UINT64 ServiceImageVirtualAddress;
+    UINT64 BootstrapAttachRequestId;
+    UINT64 StateTransitionCount;
+    UINT32 BootstrapResultCode;
+    UINT32 Reserved0;
 } LOS_MEMORY_MANAGER_BOOTSTRAP_STATE;
 
 LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *LosMemoryManagerBootstrapState(void);
 void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext);
-void LosMemoryManagerBootstrapUpdateState(UINT32 State);
+void LosMemoryManagerBootstrapTransitionTo(UINT32 State);
 void LosMemoryManagerBootstrapSetFlag(UINT64 Flag);
 UINT64 LosMemoryManagerBootstrapAllocateRequestId(void);
 void LosMemoryManagerBootstrapRecordRequest(UINT32 Operation);
 void LosMemoryManagerBootstrapRecordCompletion(UINT32 Operation, UINT32 Status);
+void LosMemoryManagerBootstrapRecordBootstrapResult(UINT32 ResultCode);
 BOOLEAN LosMemoryManagerBootstrapOperationSupported(UINT32 Operation);
 void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response);
 void LosMemoryManagerBootstrapRunProbe(void);

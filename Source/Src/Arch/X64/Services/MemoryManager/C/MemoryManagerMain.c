@@ -153,6 +153,25 @@ static void ZeroMemory(void *Buffer, UINTN ByteCount)
     }
 }
 
+static void CopyBytes(void *Destination, const void *Source, UINTN ByteCount)
+{
+    UINT8 *DestinationBytes;
+    const UINT8 *SourceBytes;
+    UINTN Index;
+
+    if (Destination == 0 || Source == 0)
+    {
+        return;
+    }
+
+    DestinationBytes = (UINT8 *)Destination;
+    SourceBytes = (const UINT8 *)Source;
+    for (Index = 0U; Index < ByteCount; ++Index)
+    {
+        DestinationBytes[Index] = SourceBytes[Index];
+    }
+}
+
 static UINT64 ResolveDirectMapOffset(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock, UINT64 LaunchBlockAddress)
 {
     if (LaunchBlock == 0 || LaunchBlock->LaunchBlockPhysicalAddress == 0ULL || LaunchBlockAddress < LaunchBlock->LaunchBlockPhysicalAddress)
@@ -638,7 +657,7 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
 
     State = LosMemoryManagerServiceState();
     ZeroMemory(State, sizeof(*State));
-    State->LaunchBlock = LaunchBlock;
+    State->LaunchBlock = (LOS_MEMORY_MANAGER_LAUNCH_BLOCK *)(UINTN)LaunchBlockAddress;
     State->ReceiveEndpoint = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->KernelToServiceEndpointObjectPhysicalAddress);
     State->ReplyEndpoint = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceToKernelEndpointObjectPhysicalAddress);
     State->EventEndpoint = (LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceEventsEndpointObjectPhysicalAddress);
@@ -690,44 +709,60 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
     State->EventEndpoint->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
     State->AddressSpaceObject->State = LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_ACTIVE;
     State->TaskObject->State = LOS_MEMORY_MANAGER_TASK_STATE_ONLINE;
-    State->TaskObject->Flags |= LOS_MEMORY_MANAGER_TASK_FLAG_SERVICE_READY;
+    State->NegotiatedOperations = 0ULL;
+    State->AttachComplete = 0U;
+    State->BootstrapResultCode = LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST;
     State->Online = 1U;
     return 1;
 }
 
 
 
-static void CompleteRequestWithStatus(LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT32 Status)
+static void PostEvent(UINT32 EventType, UINT32 Status, UINT64 Value0, UINT64 Value1);
+
+static void InitializeServiceResponse(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
+{
+    if (Response == 0)
+    {
+        return;
+    }
+
+    ZeroMemory(Response, sizeof(*Response));
+    if (Request != 0)
+    {
+        Response->Operation = Request->Operation;
+        Response->RequestId = Request->RequestId;
+    }
+}
+
+static BOOLEAN CompleteRequest(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
     LOS_MEMORY_MANAGER_REQUEST_SLOT *RequestSlot;
     LOS_MEMORY_MANAGER_RESPONSE_SLOT *ResponseSlot;
     UINT64 RequestIndex;
     UINT64 ResponseIndex;
 
-    if (State == 0 || State->RequestMailbox == 0 || State->ResponseMailbox == 0)
+    if (State == 0 || State->RequestMailbox == 0 || State->ResponseMailbox == 0 || Response == 0)
     {
-        return;
+        return 0;
     }
 
     RequestIndex = State->RequestMailbox->Header.ConsumeIndex % State->RequestMailbox->Header.SlotCount;
     RequestSlot = &State->RequestMailbox->Slots[RequestIndex];
     if (RequestSlot->SlotState != LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY)
     {
-        return;
+        return 0;
     }
 
     ResponseIndex = State->ResponseMailbox->Header.ProduceIndex % State->ResponseMailbox->Header.SlotCount;
     ResponseSlot = &State->ResponseMailbox->Slots[ResponseIndex];
     if (ResponseSlot->SlotState == LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY)
     {
-        return;
+        return 0;
     }
 
-    ZeroMemory(&ResponseSlot->Message, sizeof(ResponseSlot->Message));
-    ResponseSlot->Message.Operation = RequestSlot->Message.Operation;
-    ResponseSlot->Message.RequestId = RequestSlot->Message.RequestId;
-    ResponseSlot->Message.Status = Status;
-    ResponseSlot->Sequence = RequestSlot->Message.RequestId;
+    CopyBytes(&ResponseSlot->Message, Response, sizeof(*Response));
+    ResponseSlot->Sequence = Response->RequestId;
     ResponseSlot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY;
     State->ResponseMailbox->Header.ProduceIndex += 1ULL;
 
@@ -736,6 +771,150 @@ static void CompleteRequestWithStatus(LOS_MEMORY_MANAGER_SERVICE_STATE *State, U
     RequestSlot->Sequence = 0ULL;
     ZeroMemory(&RequestSlot->Message, sizeof(RequestSlot->Message));
     State->RequestMailbox->Header.ConsumeIndex += 1ULL;
+    return 1;
+}
+
+static UINT32 BootstrapAttachStatusFromResult(UINT32 BootstrapResult)
+{
+    switch (BootstrapResult)
+    {
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY:
+            return LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ALREADY_ATTACHED:
+            return LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_STATE_INVALID:
+            return LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        default:
+            return LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    }
+}
+
+static UINT32 ValidateBootstrapAttachRequest(
+    const LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_REQUEST *Request)
+{
+    const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
+
+    if (State == 0 || Request == 0 || State->LaunchBlock == 0)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_STATE_INVALID;
+    }
+
+    LaunchBlock = State->LaunchBlock;
+    if (State->Online == 0U)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_STATE_INVALID;
+    }
+    if (State->AttachComplete != 0U)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ALREADY_ATTACHED;
+    }
+    if (Request->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_VERSION_MISMATCH;
+    }
+    if ((Request->OfferedOperations & (1ULL << LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)) == 0ULL)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_OPERATION_SET_INVALID;
+    }
+    if (Request->LaunchBlockPhysicalAddress != LaunchBlock->LaunchBlockPhysicalAddress)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_LAUNCH_BLOCK_MISMATCH;
+    }
+    if (Request->KernelToServiceEndpointId != LaunchBlock->Endpoints.KernelToService ||
+        Request->ServiceToKernelEndpointId != LaunchBlock->Endpoints.ServiceToKernel ||
+        Request->ServiceEventsEndpointId != LaunchBlock->Endpoints.ServiceEvents)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ENDPOINT_MISMATCH;
+    }
+    if (Request->RequestMailboxPhysicalAddress != LaunchBlock->RequestMailboxPhysicalAddress ||
+        Request->ResponseMailboxPhysicalAddress != LaunchBlock->ResponseMailboxPhysicalAddress ||
+        Request->EventMailboxPhysicalAddress != LaunchBlock->EventMailboxPhysicalAddress)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_MAILBOX_MISMATCH;
+    }
+    if (Request->ServicePageMapLevel4PhysicalAddress != State->ActiveRootTablePhysicalAddress)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_ROOT_MISMATCH;
+    }
+    if (Request->ServiceImagePhysicalAddress != LaunchBlock->ServiceImagePhysicalAddress ||
+        Request->ServiceImageSize != LaunchBlock->ServiceImageSize)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_IMAGE_MISMATCH;
+    }
+    if (Request->ServiceEntryVirtualAddress != LaunchBlock->ServiceEntryVirtualAddress)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ENTRY_MISMATCH;
+    }
+    if (Request->ServiceStackTopVirtualAddress != LaunchBlock->ServiceStackTopVirtualAddress)
+    {
+        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_STACK_TOP_MISMATCH;
+    }
+
+    return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY;
+}
+
+static void PopulateBootstrapAttachResponse(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request,
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
+{
+    UINT32 BootstrapResult;
+    UINT64 BootstrapFlags;
+
+    InitializeServiceResponse(Request, Response);
+    if (State == 0 || Request == 0 || Response == 0)
+    {
+        return;
+    }
+
+    BootstrapResult = ValidateBootstrapAttachRequest(State, &Request->Payload.BootstrapAttach);
+    BootstrapFlags = 0ULL;
+    if (State->LaunchBlock != 0)
+    {
+        BootstrapFlags = State->LaunchBlock->Flags;
+    }
+
+    if (BootstrapResult == LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY)
+    {
+        State->AttachComplete = 1U;
+        State->BootstrapResultCode = BootstrapResult;
+        State->NegotiatedOperations = Request->Payload.BootstrapAttach.OfferedOperations;
+        if (State->TaskObject != 0)
+        {
+            State->TaskObject->Flags |= LOS_MEMORY_MANAGER_TASK_FLAG_SERVICE_READY;
+        }
+        BootstrapFlags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_ATTACH_COMPLETE;
+        if (State->LaunchBlock != 0)
+        {
+            State->LaunchBlock->Flags = BootstrapFlags;
+        }
+        PostEvent(
+            LOS_MEMORY_MANAGER_EVENT_SERVICE_READY_FOR_REQUESTS,
+            BootstrapResult,
+            Request->RequestId,
+            State->NegotiatedOperations);
+    }
+    else
+    {
+        State->BootstrapResultCode = BootstrapResult;
+    }
+
+    Response->Status = BootstrapAttachStatusFromResult(BootstrapResult);
+    Response->Payload.BootstrapAttach.BootstrapResult = BootstrapResult;
+    Response->Payload.BootstrapAttach.BootstrapState =
+        (BootstrapResult == LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY)
+            ? LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_READY
+            : LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_ONLINE;
+    Response->Payload.BootstrapAttach.NegotiatedOperations =
+        (BootstrapResult == LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY)
+            ? State->NegotiatedOperations
+            : 0ULL;
+    Response->Payload.BootstrapAttach.BootstrapFlags = BootstrapFlags;
+    Response->Payload.BootstrapAttach.ActiveRootTablePhysicalAddress = State->ActiveRootTablePhysicalAddress;
+    Response->Payload.BootstrapAttach.KernelRootTablePhysicalAddress = State->KernelRootTablePhysicalAddress;
+    Response->Payload.BootstrapAttach.ServiceHeartbeat = State->Heartbeat;
+    Response->Payload.BootstrapAttach.LastProcessedRequestId = Request->RequestId;
 }
 
 static void PostEvent(UINT32 EventType, UINT32 Status, UINT64 Value0, UINT64 Value1)
@@ -773,6 +952,7 @@ void LosMemoryManagerServicePoll(void)
 {
     LOS_MEMORY_MANAGER_SERVICE_STATE *State;
     LOS_MEMORY_MANAGER_REQUEST_SLOT *Slot;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
     UINT64 Index;
 
     State = LosMemoryManagerServiceState();
@@ -795,8 +975,36 @@ void LosMemoryManagerServicePoll(void)
         State->TaskObject->LastRequestId = State->LastRequestId;
     }
 
-    PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_READY_FOR_REQUESTS, 0U, Slot->Message.Operation, Slot->Message.RequestId);
-    CompleteRequestWithStatus(State, LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED);
+    if (Slot->Message.Operation != LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)
+    {
+        return;
+    }
+
+    PopulateBootstrapAttachResponse(State, &Slot->Message, &Response);
+    (void)CompleteRequest(State, &Response);
+}
+
+static void RunServiceStep(void)
+{
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State;
+
+    State = LosMemoryManagerServiceState();
+    LosMemoryManagerServiceHeartbeat += 1ULL;
+    State->Heartbeat = LosMemoryManagerServiceHeartbeat;
+    if (State->TaskObject != 0)
+    {
+        if (State->LastRequestId == 0ULL)
+        {
+            State->TaskObject->LastRequestId = 0x1008ULL;
+        }
+        else
+        {
+            State->TaskObject->LastRequestId = State->LastRequestId;
+        }
+        State->TaskObject->Heartbeat = State->Heartbeat;
+    }
+
+    LosMemoryManagerServicePoll();
 }
 
 void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
@@ -837,11 +1045,10 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1004ULL, RegisterLaunchBlockAddressRcx);
 
     ServiceSerialInit();
-    ServiceSerialWriteLine("[MemManager] Memory-manager bootstrap entry reached.");
-    ServiceSerialWriteNamedHex("Launch block", LaunchBlockAddress);
-
     if (State->Online == 0U)
     {
+        ServiceSerialWriteLine("[MemManager] Memory-manager bootstrap entry reached.");
+        ServiceSerialWriteNamedHex("Launch block", LaunchBlockAddress);
         RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1005ULL, RegisterLaunchBlockAddressRdx);
         if (!LosMemoryManagerServiceAttach(LaunchBlock))
         {
@@ -861,38 +1068,14 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
     }
 
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1007ULL, LaunchBlock->ServiceStackTopVirtualAddress);
-    ServiceSerialWriteLine("[MemManager] Entering memory-manager service loop.");
-    LosMemoryManagerServiceEntry();
+    RunServiceStep();
 }
 
 void LosMemoryManagerServiceEntry(void)
 {
-    LOS_MEMORY_MANAGER_SERVICE_STATE *State;
-
-    State = LosMemoryManagerServiceState();
     for (;; )
     {
-        LosMemoryManagerServiceHeartbeat += 1ULL;
-        State->Heartbeat = LosMemoryManagerServiceHeartbeat;
-        if (State->TaskObject != 0)
-        {
-            if (State->LastRequestId == 0ULL)
-            {
-                State->TaskObject->LastRequestId = 0x1008ULL;
-            }
-            else
-            {
-                State->TaskObject->LastRequestId = State->LastRequestId;
-            }
-            State->TaskObject->Heartbeat = State->Heartbeat;
-        }
-
-        if (State->Heartbeat == 1ULL)
-        {
-            ServiceSerialWriteLine("[MemManager] Service loop online.");
-        }
-
-        LosMemoryManagerServicePoll();
+        RunServiceStep();
         __asm__ __volatile__("pause" : : : "memory");
     }
 }

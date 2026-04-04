@@ -31,6 +31,7 @@ BOOLEAN LosMemoryManagerBootstrapOperationSupported(UINT32 Operation)
 {
     switch (Operation)
     {
+        case LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH:
         case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
         case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
@@ -69,6 +70,6 @@ BOOLEAN LosMemoryManagerBootstrapValidateServiceImage(void)
 
     State->Info.ServiceEntryVirtualAddress = Header->Entry;
     LosMemoryManagerBootstrapSetFlag(LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_READY);
-    LosMemoryManagerBootstrapUpdateState(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_IMAGE_READY);
+    LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_IMAGE_READY);
     return 1;
 }

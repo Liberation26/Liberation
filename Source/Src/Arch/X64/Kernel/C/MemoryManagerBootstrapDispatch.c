@@ -4,6 +4,8 @@ static const char *OperationName(UINT32 Operation)
 {
     switch (Operation)
     {
+        case LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH:
+            return "BootstrapAttach";
         case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
             return "QueryMemoryRegions";
         case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
@@ -46,6 +48,11 @@ static void TraceMemoryManagerToKernelResponse(const LOS_MEMORY_MANAGER_RESPONSE
     LosKernelSerialWriteHex64(Response->RequestId);
     LosKernelSerialWriteText(" status=");
     LosKernelSerialWriteUnsigned(Response->Status);
+    if (Response->Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)
+    {
+        LosKernelSerialWriteText(" bootstrap=");
+        LosKernelSerialWriteUnsigned(Response->Payload.BootstrapAttach.BootstrapResult);
+    }
     LosKernelSerialWriteText("\n");
 }
 
@@ -63,6 +70,25 @@ static void ZeroMemory(void *Buffer, UINTN ByteCount)
     for (Index = 0U; Index < ByteCount; ++Index)
     {
         Bytes[Index] = 0U;
+    }
+}
+
+static void CopyBytes(void *Destination, const void *Source, UINTN ByteCount)
+{
+    UINT8 *DestinationBytes;
+    const UINT8 *SourceBytes;
+    UINTN Index;
+
+    if (Destination == 0 || Source == 0)
+    {
+        return;
+    }
+
+    DestinationBytes = (UINT8 *)Destination;
+    SourceBytes = (const UINT8 *)Source;
+    for (Index = 0U; Index < ByteCount; ++Index)
+    {
+        DestinationBytes[Index] = SourceBytes[Index];
     }
 }
 
@@ -114,7 +140,7 @@ static BOOLEAN PostResponse(const LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
         return 0;
     }
 
-    Slot->Message = *Response;
+    CopyBytes(&Slot->Message, Response, sizeof(*Response));
     Slot->Sequence = Response->RequestId;
     Slot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY;
     Mailbox->Header.ProduceIndex += 1ULL;
@@ -141,39 +167,13 @@ BOOLEAN LosMemoryManagerBootstrapEnqueueRequest(const LOS_MEMORY_MANAGER_REQUEST
         return 0;
     }
 
-    Slot->Message = *Request;
+    CopyBytes(&Slot->Message, Request, sizeof(*Request));
     Slot->Sequence = Request->RequestId;
     Slot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY;
     Mailbox->Header.ProduceIndex += 1ULL;
     return 1;
 }
 
-static BOOLEAN ResponseReady(UINT64 RequestId)
-{
-    LOS_MEMORY_MANAGER_RESPONSE_MAILBOX *Mailbox;
-    UINT64 Scanned;
-
-    Mailbox = LosMemoryManagerBootstrapGetResponseMailbox();
-    if (Mailbox == 0)
-    {
-        return 0;
-    }
-
-    for (Scanned = 0ULL; Scanned < Mailbox->Header.SlotCount; ++Scanned)
-    {
-        UINT64 Index;
-        LOS_MEMORY_MANAGER_RESPONSE_SLOT *Slot;
-
-        Index = (Mailbox->Header.ConsumeIndex + Scanned) % Mailbox->Header.SlotCount;
-        Slot = &Mailbox->Slots[Index];
-        if (Slot->SlotState == LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY && Slot->Sequence == RequestId)
-        {
-            return 1;
-        }
-    }
-
-    return 0;
-}
 
 BOOLEAN LosMemoryManagerBootstrapDequeueResponse(UINT64 RequestId, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
@@ -203,7 +203,7 @@ BOOLEAN LosMemoryManagerBootstrapDequeueResponse(UINT64 RequestId, LOS_MEMORY_MA
             continue;
         }
 
-        *Response = Slot->Message;
+        CopyBytes(Response, &Slot->Message, sizeof(*Response));
         Slot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_FREE;
         Slot->Sequence = 0ULL;
         Mailbox->Header.ConsumeIndex = Index + 1ULL;
@@ -229,7 +229,6 @@ BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void)
     LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
     LOS_MEMORY_MANAGER_REQUEST_MAILBOX *RequestMailbox;
     LOS_MEMORY_MANAGER_REQUEST_SLOT *Slot;
-    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
 
     State = LosMemoryManagerBootstrapState();
     if (!HostedServiceTaskReady())
@@ -260,15 +259,9 @@ BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void)
         return 0;
     }
 
-    if (!ResponseReady(Slot->Message.RequestId))
-    {
-        LosMemoryManagerBootstrapDispatch(&Slot->Message, &Response);
-    }
-
     State->ServiceTaskObject->LastRequestId = Slot->Message.RequestId;
     State->ServiceTaskObject->Heartbeat += 1ULL;
-    State->ServiceTaskObject->Flags |= LOS_MEMORY_MANAGER_TASK_FLAG_SERVICE_READY;
-    State->Info.State = LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_ONLINE;
+    LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_ONLINE);
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ONLINE;
     return 1;
 }
@@ -312,6 +305,11 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
 
     switch (Slot->Message.Operation)
     {
+        case LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.BootstrapAttach.BootstrapResult = LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST;
+            Response->Payload.BootstrapAttach.BootstrapState = LosGetMemoryManagerBootstrapInfo()->State;
+            break;
         case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
             LosX64QueryMemoryRegions(
                 Slot->Message.Payload.QueryMemoryRegions.Buffer,
@@ -348,8 +346,49 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
     Slot->Sequence = 0ULL;
 }
 
+static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
+{
+    return Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH;
+}
+
+static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request)
+{
+    const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
+    const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
+
+    if (Request == 0)
+    {
+        return;
+    }
+
+    Info = LosGetMemoryManagerBootstrapInfo();
+    LaunchBlock = LosGetMemoryManagerLaunchBlock();
+    Request->Operation = LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH;
+    Request->Payload.BootstrapAttach.Version = LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION;
+    Request->Payload.BootstrapAttach.LaunchBlockPhysicalAddress = Info->LaunchBlockPhysicalAddress;
+    Request->Payload.BootstrapAttach.OfferedOperations = Info->SupportedOperations;
+    Request->Payload.BootstrapAttach.BootstrapFlags = Info->Flags;
+    Request->Payload.BootstrapAttach.KernelToServiceEndpointId = Info->Endpoints.KernelToService;
+    Request->Payload.BootstrapAttach.ServiceToKernelEndpointId = Info->Endpoints.ServiceToKernel;
+    Request->Payload.BootstrapAttach.ServiceEventsEndpointId = Info->Endpoints.ServiceEvents;
+    Request->Payload.BootstrapAttach.RequestMailboxPhysicalAddress = Info->RequestMailboxPhysicalAddress;
+    Request->Payload.BootstrapAttach.ResponseMailboxPhysicalAddress = Info->ResponseMailboxPhysicalAddress;
+    Request->Payload.BootstrapAttach.EventMailboxPhysicalAddress = Info->EventMailboxPhysicalAddress;
+    Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = Info->ServicePageMapLevel4PhysicalAddress;
+    Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress = Info->ServiceImagePhysicalAddress;
+    Request->Payload.BootstrapAttach.ServiceImageSize = Info->ServiceImageSize;
+    Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = Info->ServiceEntryVirtualAddress;
+    Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = 0ULL;
+    if (LaunchBlock != 0)
+    {
+        Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = LaunchBlock->ServiceStackTopVirtualAddress;
+    }
+}
+
 static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
+    BOOLEAN ResponsePublishedByService;
+
     InitializeResponse(Request, Response);
 
     TraceKernelToMemoryManagerRequest(Request);
@@ -364,10 +403,26 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager hosted service step failed.");
     }
-    if (!LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response))
+
+    ResponsePublishedByService = LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response);
+    if (!ResponsePublishedByService)
     {
-        Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
-        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to dequeue a response.");
+        if (RequestRequiresRealServiceReply(Request->Operation))
+        {
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+            LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap expected a real service reply and none was published.");
+        }
+
+        LosMemoryManagerBootstrapDispatch(Request, Response);
+        if (!LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response))
+        {
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+            LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to dequeue a response.");
+        }
+    }
+    else
+    {
+        LosMemoryManagerBootstrapRecordCompletion(Response->Operation, Response->Status);
     }
 
     TraceMemoryManagerToKernelResponse(Response);
@@ -389,7 +444,32 @@ void LosMemoryManagerBootstrapPublishLaunchReady(void)
     LosMemoryManagerBootstrapSetEndpointState(LosMemoryManagerBootstrapGetServiceToKernelEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_STATE_BOUND);
     LosMemoryManagerBootstrapSetEndpointState(LosMemoryManagerBootstrapGetServiceEventsEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_STATE_BOUND);
     State->Info.Flags = State->LaunchBlock->Flags;
-    State->Info.State = LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_PREPARED;
+    LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_PREPARED);
+}
+
+void LosMemoryManagerSendBootstrapAttach(LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    State = LosMemoryManagerBootstrapState();
+    if (State->BootstrapAttachRequestId != 0ULL)
+    {
+        LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap attach request was attempted more than once.");
+    }
+
+    ZeroMemory(&Request, sizeof(Request));
+    PopulateBootstrapAttachRequest(&Request);
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    State->BootstrapAttachRequestId = Request.RequestId;
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    LosMemoryManagerBootstrapRecordBootstrapResult(Response.Payload.BootstrapAttach.BootstrapResult);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.BootstrapAttach, sizeof(*Result));
+    }
 }
 
 void LosMemoryManagerSendQueryMemoryRegions(LOS_X64_MEMORY_REGION *Buffer, UINTN BufferRegionCapacity, LOS_X64_QUERY_MEMORY_REGIONS_RESULT *Result)
@@ -406,7 +486,7 @@ void LosMemoryManagerSendQueryMemoryRegions(LOS_X64_MEMORY_REGION *Buffer, UINTN
     SendRequestAndAwaitResponse(&Request, &Response);
     if (Result != 0)
     {
-        *Result = Response.Payload.QueryMemoryRegions;
+        CopyBytes(Result, &Response.Payload.QueryMemoryRegions, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }
@@ -421,13 +501,13 @@ void LosMemoryManagerSendReserveFrames(const LOS_X64_RESERVE_FRAMES_REQUEST *Req
     Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
     if (RequestData != 0)
     {
-        Request.Payload.ReserveFrames = *RequestData;
+        CopyBytes(&Request.Payload.ReserveFrames, RequestData, sizeof(*RequestData));
     }
     LosMemoryManagerBootstrapRecordRequest(Request.Operation);
     SendRequestAndAwaitResponse(&Request, &Response);
     if (Result != 0)
     {
-        *Result = Response.Payload.ReserveFrames;
+        CopyBytes(Result, &Response.Payload.ReserveFrames, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }
@@ -442,13 +522,13 @@ void LosMemoryManagerSendClaimFrames(const LOS_X64_CLAIM_FRAMES_REQUEST *Request
     Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
     if (RequestData != 0)
     {
-        Request.Payload.ClaimFrames = *RequestData;
+        CopyBytes(&Request.Payload.ClaimFrames, RequestData, sizeof(*RequestData));
     }
     LosMemoryManagerBootstrapRecordRequest(Request.Operation);
     SendRequestAndAwaitResponse(&Request, &Response);
     if (Result != 0)
     {
-        *Result = Response.Payload.ClaimFrames;
+        CopyBytes(Result, &Response.Payload.ClaimFrames, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }
@@ -463,13 +543,13 @@ void LosMemoryManagerSendMapPages(const LOS_X64_MAP_PAGES_REQUEST *RequestData, 
     Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
     if (RequestData != 0)
     {
-        Request.Payload.MapPages = *RequestData;
+        CopyBytes(&Request.Payload.MapPages, RequestData, sizeof(*RequestData));
     }
     LosMemoryManagerBootstrapRecordRequest(Request.Operation);
     SendRequestAndAwaitResponse(&Request, &Response);
     if (Result != 0)
     {
-        *Result = Response.Payload.MapPages;
+        CopyBytes(Result, &Response.Payload.MapPages, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }
@@ -484,13 +564,13 @@ void LosMemoryManagerSendUnmapPages(const LOS_X64_UNMAP_PAGES_REQUEST *RequestDa
     Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
     if (RequestData != 0)
     {
-        Request.Payload.UnmapPages = *RequestData;
+        CopyBytes(&Request.Payload.UnmapPages, RequestData, sizeof(*RequestData));
     }
     LosMemoryManagerBootstrapRecordRequest(Request.Operation);
     SendRequestAndAwaitResponse(&Request, &Response);
     if (Result != 0)
     {
-        *Result = Response.Payload.UnmapPages;
+        CopyBytes(Result, &Response.Payload.UnmapPages, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }
