@@ -1,3 +1,9 @@
+Version 0.1.72
+
+This delivery removes the last conditional guard around the visible bootstrap address-space notification in `KernelMain.c`. The kernel now prints `Bootstrap address space created.` unconditionally as soon as `LosLaunchMemoryManagerBootstrap()` returns, because that function only returns on a successful bootstrap path. The address-space ID line is also emitted unconditionally, and the object/root fields are printed either from the published bootstrap info or as explicit zero values if the info pointer were ever unavailable.
+
+That means the notification can no longer disappear merely because the ready-state check or bootstrap-info lookup behaved differently than expected at runtime. If the kernel reaches the later timer and idle-loop lines, the `Bootstrap address space created.` notification must now have already been written to both the screen status path and the serial log.
+
 Version 0.1.71
 
 This delivery moves the visible bootstrap address-space notification into `KernelMain.c` immediately after `LosLaunchMemoryManagerBootstrap()` returns ready. That makes the message impossible to miss in the normal kernel bring-up flow: once the memory-manager bootstrap succeeds, the kernel now always emits `Bootstrap address space created.` through the standard trace path that writes to both the framebuffer status output and the serial log, followed by the bootstrap address-space object and root PML4 physical addresses.
