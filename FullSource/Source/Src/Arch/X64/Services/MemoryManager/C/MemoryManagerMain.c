@@ -822,6 +822,13 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
         State->AddressSpaceObject->AddressSpaceId = 1ULL;
     }
     State->NextAddressSpaceId = State->AddressSpaceObject->AddressSpaceId + 1ULL;
+    ServiceSerialWriteText("[MemManager] Bootstrap address space created id=");
+    ServiceSerialWriteUnsigned(State->AddressSpaceObject->AddressSpaceId);
+    ServiceSerialWriteText(" object=");
+    ServiceSerialWriteHex64(LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress);
+    ServiceSerialWriteText(" root=");
+    ServiceSerialWriteHex64(State->AddressSpaceObject->RootTablePhysicalAddress);
+    ServiceSerialWriteText("\n");
     State->NegotiatedOperations = 0ULL;
     State->AttachComplete = 0U;
     State->BootstrapResultCode = LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST;

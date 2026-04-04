@@ -1,3 +1,7 @@
+Version 0.1.68
+
+This delivery adds explicit address-space creation notifications to the memory-manager service log. During bootstrap attach, `MEMORYMGR.ELF` now announces the initial service address space with its address-space ID, object physical address, and root PML4 physical address so bring-up can prove that the first live address space exists. The normal `CreateAddressSpace` request path now emits the same `Address space created` notification for newly created service-side address spaces.
+
 Version 0.1.67
 
 This delivery introduces a proper service-side address-space object model inside `MEMORYMGR.ELF`. The memory manager can now create and destroy address-space objects, attach a staged ELF image into an address space, allocate a stack inside an address space, track the root PML4 physical address, and keep an in-object list of reserved virtual regions for the attached image and stack.

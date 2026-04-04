@@ -43,6 +43,100 @@ typedef struct __attribute__((packed))
 #define LOS_ELF_PROGRAM_HEADER_FLAG_WRITE 0x2U
 #define LOS_ELF_PROGRAM_HEADER_FLAG_READ 0x4U
 
+#define LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE 0x3F8U
+
+static inline void AddressSpaceServiceOut8(UINT16 Port, UINT8 Value)
+{
+    __asm__ __volatile__("outb %0, %1" : : "a"(Value), "Nd"(Port));
+}
+
+static inline UINT8 AddressSpaceServiceIn8(UINT16 Port)
+{
+    UINT8 Value;
+
+    __asm__ __volatile__("inb %1, %0" : "=a"(Value) : "Nd"(Port));
+    return Value;
+}
+
+static void AddressSpaceServiceSerialWriteChar(char Character)
+{
+    while ((AddressSpaceServiceIn8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 5U) & 0x20U) == 0U)
+    {
+    }
+
+    AddressSpaceServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 0U, (UINT8)Character);
+}
+
+static void AddressSpaceServiceSerialWriteText(const char *Text)
+{
+    UINTN Index;
+
+    if (Text == 0)
+    {
+        return;
+    }
+
+    for (Index = 0U; Text[Index] != '\0'; ++Index)
+    {
+        if (Text[Index] == '\n')
+        {
+            AddressSpaceServiceSerialWriteChar('\r');
+        }
+        AddressSpaceServiceSerialWriteChar(Text[Index]);
+    }
+}
+
+static void AddressSpaceServiceSerialWriteHex64(UINT64 Value)
+{
+    UINTN Shift;
+
+    AddressSpaceServiceSerialWriteText("0x");
+    for (Shift = 16U; Shift > 0U; --Shift)
+    {
+        UINT8 Nibble;
+
+        Nibble = (UINT8)((Value >> ((Shift - 1U) * 4U)) & 0xFULL);
+        AddressSpaceServiceSerialWriteChar((char)(Nibble < 10U ? ('0' + Nibble) : ('A' + (Nibble - 10U))));
+    }
+}
+
+static void AddressSpaceServiceSerialWriteUnsigned(UINT64 Value)
+{
+    char Buffer[32];
+    UINTN Index;
+
+    if (Value == 0ULL)
+    {
+        AddressSpaceServiceSerialWriteChar('0');
+        return;
+    }
+
+    Index = 0U;
+    while (Value != 0ULL && Index < (sizeof(Buffer) / sizeof(Buffer[0])))
+    {
+        Buffer[Index] = (char)('0' + (Value % 10ULL));
+        Value /= 10ULL;
+        ++Index;
+    }
+
+    while (Index > 0U)
+    {
+        --Index;
+        AddressSpaceServiceSerialWriteChar(Buffer[Index]);
+    }
+}
+
+static void AddressSpaceServiceLogCreated(UINT64 AddressSpaceId, UINT64 AddressSpaceObjectPhysicalAddress, UINT64 RootTablePhysicalAddress)
+{
+    AddressSpaceServiceSerialWriteText("[MemManager] Address space created id=");
+    AddressSpaceServiceSerialWriteUnsigned(AddressSpaceId);
+    AddressSpaceServiceSerialWriteText(" object=");
+    AddressSpaceServiceSerialWriteHex64(AddressSpaceObjectPhysicalAddress);
+    AddressSpaceServiceSerialWriteText(" root=");
+    AddressSpaceServiceSerialWriteHex64(RootTablePhysicalAddress);
+    AddressSpaceServiceSerialWriteText("\n");
+}
+
 static void ZeroBytes(void *Buffer, UINTN ByteCount)
 {
     UINT8 *Bytes;
@@ -466,6 +560,10 @@ void LosMemoryManagerServiceCreateAddressSpace(
     Result->AddressSpaceObjectPhysicalAddress = AddressSpaceObjectPhysicalAddress;
     Result->RootTablePhysicalAddress = AddressSpaceObject->RootTablePhysicalAddress;
     Result->AddressSpaceId = AddressSpaceObject->AddressSpaceId;
+    AddressSpaceServiceLogCreated(
+        AddressSpaceObject->AddressSpaceId,
+        AddressSpaceObjectPhysicalAddress,
+        AddressSpaceObject->RootTablePhysicalAddress);
 }
 
 void LosMemoryManagerServiceDestroyAddressSpace(
