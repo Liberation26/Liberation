@@ -1,3 +1,7 @@
+## Delivery note for 0.1.31
+
+This update corrects a ChangedFiles packaging omission from 0.1.30. The new memory-manager bootstrap state code already expects the extended boot-context fields for the staged memory-manager image, but `KernelMain.h` was not included in `ChangedFiles`. A ChangedFiles-only apply therefore left an older boot-context definition in place and caused the kernel build to fail.
+
 ## Delivery note for 0.1.30
 
 This update fixes the memory-manager launch-block publication bug that caused the endpoint probe to fail at the launch-block stage. Bootstrap page claims now avoid physical page 0, and the kernel now keeps the embedded service image virtual address separate from the published service image physical address.
