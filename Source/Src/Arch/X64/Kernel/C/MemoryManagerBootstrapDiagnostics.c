@@ -182,7 +182,8 @@ void LosMemoryManagerBootstrapDescribeState(void)
     TraceEndpointObject("Memory-manager event endpoint id: ", LosMemoryManagerBootstrapGetServiceEventsEndpointObject());
     if (LaunchBlock != 0)
     {
-        LosKernelTraceHex64("Memory-manager launch block stack top: ", LaunchBlock->ServiceStackTopPhysicalAddress);
+        LosKernelTraceHex64("Memory-manager launch block stack top physical: ", LaunchBlock->ServiceStackTopPhysicalAddress);
+        LosKernelTraceHex64("Memory-manager launch block stack top virtual: ", LaunchBlock->ServiceStackTopVirtualAddress);
         LosKernelTraceHex64("Memory-manager launch block entry: ", LaunchBlock->ServiceEntryVirtualAddress);
     }
 }

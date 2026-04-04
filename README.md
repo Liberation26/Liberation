@@ -1,4 +1,4 @@
-Version 0.1.37
+Version 0.1.38
 
 This delivery adds a dedicated assembly bootstrap task-transfer helper for the memory-manager service. The kernel now performs the temporary service handoff by switching into the staged service CR3 root and service stack inside a standalone assembly path and restoring the kernel context only if the bootstrap entry returns. This is the first real task-style switch path instead of the previous inline C-hosted entry shim.
 
@@ -432,3 +432,5 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 ## 0.1.32
 - Improved memory-manager bootstrap diagnostics so launch-block validation failures are recorded into the task object when possible.
 - Service entry invocation now passes the launch-block address in RDI, RSI, and RCX to make the bootstrap handoff more robust during early service entry bring-up.
+
+- 0.1.38 maps the first memory-manager bootstrap stack into the service address space at a dedicated virtual range instead of using the higher-half direct-map stack address, and now prints both stack-top physical and virtual values during bootstrap diagnostics.

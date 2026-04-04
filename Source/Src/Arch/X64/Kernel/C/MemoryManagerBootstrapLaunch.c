@@ -254,6 +254,41 @@ static BOOLEAN MapSegmentIntoAddressSpace(
     return 1;
 }
 
+static BOOLEAN MapServiceStackIntoAddressSpace(
+    UINT64 PageMapLevel4PhysicalAddress,
+    UINT64 StackPhysicalAddress,
+    UINT64 StackPageCount,
+    UINT64 *StackTopVirtualAddress)
+{
+    LOS_X64_MAP_PAGES_REQUEST MapRequest;
+    LOS_X64_MAP_PAGES_RESULT MapResult;
+
+    if (PageMapLevel4PhysicalAddress == 0ULL ||
+        StackPhysicalAddress == 0ULL ||
+        StackPageCount == 0ULL ||
+        StackTopVirtualAddress == 0)
+    {
+        return 0;
+    }
+
+    ZeroMemory(&MapRequest, sizeof(MapRequest));
+    ZeroMemory(&MapResult, sizeof(MapResult));
+    MapRequest.PageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
+    MapRequest.VirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE;
+    MapRequest.PhysicalAddress = StackPhysicalAddress;
+    MapRequest.PageCount = StackPageCount;
+    MapRequest.PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_WRITABLE | LOS_X64_PAGE_USER | LOS_X64_PAGE_NX;
+    MapRequest.Flags = 0U;
+    LosX64MapPages(&MapRequest, &MapResult);
+    if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || MapResult.PagesProcessed != StackPageCount)
+    {
+        return 0;
+    }
+
+    *StackTopVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE + (StackPageCount * 0x1000ULL);
+    return 1;
+}
+
 static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
 {
     LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
@@ -318,7 +353,14 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = ServiceRootPhysicalAddress;
     State->ServiceAddressSpaceObject->DirectMapBase = Layout->HigherHalfDirectMapBase;
     State->ServiceAddressSpaceObject->DirectMapSize = Layout->HigherHalfDirectMapSize;
-    State->ServiceTaskObject->StackTopVirtualAddress = Layout->HigherHalfDirectMapBase + State->Info.ServiceStackPhysicalAddress + (State->Info.ServiceStackPageCount * 0x1000ULL);
+    if (!MapServiceStackIntoAddressSpace(
+            ServiceRootPhysicalAddress,
+            State->Info.ServiceStackPhysicalAddress,
+            State->Info.ServiceStackPageCount,
+            &State->ServiceTaskObject->StackTopVirtualAddress))
+    {
+        return 0;
+    }
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_MAPPED;
     State->LaunchBlock->Flags = State->Info.Flags;
     State->LaunchBlock->ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
