@@ -677,8 +677,33 @@ void LosMemoryManagerServicePoll(void)
 
 void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
 {
+    UINT64 RegisterLaunchBlockAddressRdi;
+    UINT64 RegisterLaunchBlockAddressRsi;
+    UINT64 RegisterLaunchBlockAddressRcx;
+    UINT64 RegisterLaunchBlockAddressRdx;
     const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
     LOS_MEMORY_MANAGER_SERVICE_STATE *State;
+
+    __asm__ __volatile__("" : "=D"(RegisterLaunchBlockAddressRdi), "=S"(RegisterLaunchBlockAddressRsi), "=c"(RegisterLaunchBlockAddressRcx), "=d"(RegisterLaunchBlockAddressRdx));
+    if (LaunchBlockAddress == 0ULL)
+    {
+        if (RegisterLaunchBlockAddressRdi != 0ULL)
+        {
+            LaunchBlockAddress = RegisterLaunchBlockAddressRdi;
+        }
+        else if (RegisterLaunchBlockAddressRsi != 0ULL)
+        {
+            LaunchBlockAddress = RegisterLaunchBlockAddressRsi;
+        }
+        else if (RegisterLaunchBlockAddressRcx != 0ULL)
+        {
+            LaunchBlockAddress = RegisterLaunchBlockAddressRcx;
+        }
+        else if (RegisterLaunchBlockAddressRdx != 0ULL)
+        {
+            LaunchBlockAddress = RegisterLaunchBlockAddressRdx;
+        }
+    }
 
     LaunchBlock = (const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *)(UINTN)LaunchBlockAddress;
     State = LosMemoryManagerServiceState();

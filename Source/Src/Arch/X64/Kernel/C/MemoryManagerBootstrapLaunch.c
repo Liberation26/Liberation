@@ -333,11 +333,14 @@ static void InvokeServiceEntry(UINT64 EntryVirtualAddress, UINT64 StackTopVirtua
         "and $-16, %%rsp\n"
         "sub $8, %%rsp\n"
         "mov %2, %%rdi\n"
+        "mov %2, %%rsi\n"
+        "mov %2, %%rcx\n"
+        "mov %2, %%rdx\n"
         "call *%1\n"
         "mov %%r11, %%rsp\n"
         :
         : "r"(StackTopVirtualAddress), "r"(EntryVirtualAddress), "r"(LaunchBlockAddress)
-        : "r11", "rdi", "memory");
+        : "r11", "rdi", "rsi", "rcx", "rdx", "memory");
 }
 
 BOOLEAN LosMemoryManagerBootstrapEnsureServiceEntryReady(void)

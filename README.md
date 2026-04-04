@@ -1,3 +1,7 @@
+## Delivery note for 0.1.33
+
+This update hardens the first memory-manager service entry handoff. The kernel now places the published launch-block address into `RDI`, `RSI`, `RCX`, and `RDX` before calling the staged `MEMORYMGR.ELF` entry, and the service bootstrap entry now falls back to those incoming registers if its formal launch-block argument arrives as zero. This targets the remaining probe failure where the service still reported a null launch-block at the very first attach step.
+
 ## Delivery note for 0.1.31
 
 This update corrects a ChangedFiles packaging omission from 0.1.30. The new memory-manager bootstrap state code already expects the extended boot-context fields for the staged memory-manager image, but `KernelMain.h` was not included in `ChangedFiles`. A ChangedFiles-only apply therefore left an older boot-context definition in place and caused the kernel build to fail.
