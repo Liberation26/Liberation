@@ -36,6 +36,12 @@ static void TraceKernelToMemoryManagerRequest(const LOS_MEMORY_MANAGER_REQUEST_M
     {
         LosKernelSerialWriteText(" root=");
         LosKernelSerialWriteHex64(Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress);
+        LosKernelSerialWriteText(" image=");
+        LosKernelSerialWriteHex64(Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress);
+        LosKernelSerialWriteText(" image-bytes=");
+        LosKernelSerialWriteHex64(Request->Payload.BootstrapAttach.ServiceImageSize);
+        LosKernelSerialWriteText(" entry=");
+        LosKernelSerialWriteHex64(Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress);
         LosKernelSerialWriteText(" stack-top=");
         LosKernelSerialWriteHex64(Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress);
     }
@@ -477,7 +483,31 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
         }
     }
 
+    if (State != 0)
+    {
+        if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress != 0ULL)
+        {
+            State->Info.ServiceImagePhysicalAddress = State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress;
+            if (State->LaunchBlock != 0)
+            {
+                State->LaunchBlock->ServiceImagePhysicalAddress = State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress;
+            }
+        }
+        if (State->Info.ServiceImageSize != 0ULL && State->LaunchBlock != 0 && State->LaunchBlock->ServiceImageSize == 0ULL)
+        {
+            State->LaunchBlock->ServiceImageSize = State->Info.ServiceImageSize;
+        }
+    }
+
     Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
+    if (State != 0 && State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress != 0ULL)
+    {
+        Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress = State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress;
+    }
+    if (State != 0 && State->Info.ServiceImageSize != 0ULL)
+    {
+        Request->Payload.BootstrapAttach.ServiceImageSize = State->Info.ServiceImageSize;
+    }
     Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = ServiceEntryVirtualAddress;
     Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = ServiceStackTopVirtualAddress;
 }

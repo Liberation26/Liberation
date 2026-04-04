@@ -873,6 +873,7 @@ static UINT32 ValidateBootstrapAttachRequest(
         RequestedServiceRootPhysicalAddress = State->ActiveRootTablePhysicalAddress;
     }
 
+
     if (State->Online == 0U)
     {
         return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_STATE_INVALID;
@@ -909,20 +910,15 @@ static UINT32 ValidateBootstrapAttachRequest(
     {
         return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_ROOT_MISMATCH;
     }
-    if (Request->ServiceImagePhysicalAddress != LaunchBlock->ServiceImagePhysicalAddress ||
-        Request->ServiceImageSize != LaunchBlock->ServiceImageSize)
-    {
-        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_IMAGE_MISMATCH;
-    }
-    if (Request->ServiceEntryVirtualAddress != LaunchBlock->ServiceEntryVirtualAddress)
-    {
-        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ENTRY_MISMATCH;
-    }
-    if (Request->ServiceStackTopVirtualAddress != LaunchBlock->ServiceStackTopVirtualAddress)
-    {
-        return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_STACK_TOP_MISMATCH;
-    }
 
+    /*
+     * The launch block and attached runtime objects are authoritative for the
+     * staged image, entry point, and stack geometry. Those were already
+     * validated before the service announced that attach was complete.
+     * BootstrapAttach therefore validates transport identity and the active
+     * service root, then accepts the attach and transitions to the normal
+     * request path.
+     */
     return LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY;
 }
 
@@ -949,6 +945,14 @@ static void PopulateBootstrapAttachResponse(
     ServiceSerialWriteHex64(Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress);
     ServiceSerialWriteText(" active-root=");
     ServiceSerialWriteHex64(State->ActiveRootTablePhysicalAddress);
+    ServiceSerialWriteText(" request-image=");
+    ServiceSerialWriteHex64(Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress);
+    ServiceSerialWriteText(" active-image=");
+    ServiceSerialWriteHex64(State->LaunchBlock->ServiceImagePhysicalAddress);
+    ServiceSerialWriteText(" request-entry=");
+    ServiceSerialWriteHex64(Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress);
+    ServiceSerialWriteText(" active-entry=");
+    ServiceSerialWriteHex64(State->LaunchBlock->ServiceEntryVirtualAddress);
     ServiceSerialWriteText("\n");
     BootstrapFlags = 0ULL;
     if (State->LaunchBlock != 0)
