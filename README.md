@@ -1,10 +1,10 @@
-Version 0.1.43
+Version 0.1.45
 
-This delivery fixes the first isolated memory-manager service root so it no longer clones the bootstrap lower-half identity mappings into the service page-map. The new service root now copies only the higher-half kernel/direct-map entries and leaves the lower half clear for the service ELF and stack mappings at 0x00400000 and 0x00800000, avoiding map-page conflicts during first entry preparation.
+This delivery fixes the first memory-manager service handoff so the bootstrap entry no longer falls straight back into the kernel after a single attach/poll pass. The service bootstrap entry now transfers into the long-running service loop, keeps task heartbeat/request breadcrumbs updated from inside the service context, and hard-stops inside the service context if attach fails instead of returning to the kernel transfer helper.
 
-It also adds kernel-side entry-preparation breadcrumbs and map failure traces so attach diagnostics now report the exact preparation phase instead of falling back to unset when the service has not executed yet.
+Version 0.1.44
 
-Version 0.1.41
+This delivery stages the full first memory-manager service image into one contiguous physical image range before mapping it into the isolated service root. That fixes overlapping ELF load-page conflicts where adjacent PT_LOAD segments shared a page and the previous per-segment mapping path tried to map that page twice.
 
 This delivery hardens the memory-manager bootstrap path into fatal report-and-halt mode. Bootstrap image validation, transport staging, launch-block translation, service-entry preparation, hosted request dispatch failures, and any unexpected service-entry return now report diagnostics and halt immediately instead of silently falling back or continuing. The dedicated service stack must now map successfully into the service address space; bootstrap no longer falls back to a best-effort direct-map stack view.
 

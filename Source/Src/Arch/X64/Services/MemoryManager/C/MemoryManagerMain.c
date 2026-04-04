@@ -751,23 +751,41 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         if (!LosMemoryManagerServiceAttach(LaunchBlock))
         {
             RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x10FFULL, 0xFFFFFFFFFFFFFFFFULL);
-            return;
+            for (;;)
+            {
+                __asm__ __volatile__("pause" : : : "memory");
+            }
         }
         RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1006ULL, LaunchBlock->ServiceEntryVirtualAddress);
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
     }
 
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1007ULL, LaunchBlock->ServiceStackTopVirtualAddress);
-    LosMemoryManagerServiceHeartbeat += 1ULL;
-    State->Heartbeat = LosMemoryManagerServiceHeartbeat;
-    LosMemoryManagerServicePoll();
+    LosMemoryManagerServiceEntry();
 }
 
 void LosMemoryManagerServiceEntry(void)
 {
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State;
+
+    State = LosMemoryManagerServiceState();
     for (;;)
     {
         LosMemoryManagerServiceHeartbeat += 1ULL;
+        State->Heartbeat = LosMemoryManagerServiceHeartbeat;
+        if (State->TaskObject != 0)
+        {
+            if (State->LastRequestId == 0ULL)
+            {
+                State->TaskObject->LastRequestId = 0x1008ULL;
+            }
+            else
+            {
+                State->TaskObject->LastRequestId = State->LastRequestId;
+            }
+            State->TaskObject->Heartbeat = State->Heartbeat;
+        }
+        LosMemoryManagerServicePoll();
         __asm__ __volatile__("pause" : : : "memory");
     }
 }
