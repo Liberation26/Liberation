@@ -281,75 +281,306 @@ static BOOLEAN CloneCurrentRootPageMap(UINT64 *NewRootPhysicalAddress)
     return 1;
 }
 
-static BOOLEAN MapSegmentIntoAddressSpace(
-    UINT64 PageMapLevel4PhysicalAddress,
-    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
-    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeader)
+static BOOLEAN TryGetLoadSegmentGeometry(
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeader,
+    UINT64 *SegmentVirtualBase,
+    UINT64 *SegmentMappedBytes,
+    UINT64 *SegmentPageCount)
 {
-    UINT64 SegmentVirtualBase;
-    UINT64 SegmentPageCount;
-    UINT64 SegmentPhysicalBase;
     UINT64 OffsetIntoFirstPage;
-    UINT64 SegmentMappedBytes;
-    LOS_X64_MAP_PAGES_REQUEST MapRequest;
-    LOS_X64_MAP_PAGES_RESULT MapResult;
-    void *SegmentTarget;
-    const void *SegmentSource;
 
-    if (Header == 0 || ProgramHeader == 0 || ProgramHeader->MemorySize == 0ULL)
+    if (ProgramHeader == 0 ||
+        SegmentVirtualBase == 0 ||
+        SegmentMappedBytes == 0 ||
+        SegmentPageCount == 0 ||
+        ProgramHeader->MemorySize == 0ULL)
     {
         return 0;
     }
 
-    SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
-    SegmentVirtualBase = AlignDown(ProgramHeader->VirtualAddress, 0x1000ULL);
-    OffsetIntoFirstPage = ProgramHeader->VirtualAddress - SegmentVirtualBase;
-    SegmentMappedBytes = AlignUp(ProgramHeader->MemorySize + OffsetIntoFirstPage, 0x1000ULL);
-    SegmentPageCount = SegmentMappedBytes / 0x1000ULL;
+    *SegmentVirtualBase = AlignDown(ProgramHeader->VirtualAddress, 0x1000ULL);
+    OffsetIntoFirstPage = ProgramHeader->VirtualAddress - *SegmentVirtualBase;
+    *SegmentMappedBytes = AlignUp(ProgramHeader->MemorySize + OffsetIntoFirstPage, 0x1000ULL);
+    *SegmentPageCount = *SegmentMappedBytes / 0x1000ULL;
+    return *SegmentPageCount != 0ULL;
+}
+
+static BOOLEAN DescribeServiceImageLayout(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    UINT64 *ImageVirtualBase,
+    UINT64 *ImageMappedBytes,
+    UINT64 *ImagePageCount)
+{
+    UINT16 ProgramHeaderIndex;
+    UINT64 LowestVirtualBase;
+    UINT64 HighestVirtualEnd;
+    BOOLEAN FoundLoadSegment;
+
+    if (Header == 0 ||
+        ProgramHeaders == 0 ||
+        ImageVirtualBase == 0 ||
+        ImageMappedBytes == 0 ||
+        ImagePageCount == 0)
+    {
+        return 0;
+    }
+
+    LowestVirtualBase = 0ULL;
+    HighestVirtualEnd = 0ULL;
+    FoundLoadSegment = 0;
+    for (ProgramHeaderIndex = 0U; ProgramHeaderIndex < Header->ProgramHeaderCount; ++ProgramHeaderIndex)
+    {
+        const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeader;
+        UINT64 SegmentVirtualBase;
+        UINT64 SegmentMappedBytes;
+        UINT64 SegmentPageCount;
+        UINT64 SegmentVirtualEnd;
+
+        ProgramHeader = (const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *)((const UINT8 *)ProgramHeaders + ((UINTN)ProgramHeaderIndex * Header->ProgramHeaderEntrySize));
+        if (ProgramHeader->Type != LOS_ELF_PROGRAM_HEADER_TYPE_LOAD)
+        {
+            continue;
+        }
+
+        if (!TryGetLoadSegmentGeometry(ProgramHeader, &SegmentVirtualBase, &SegmentMappedBytes, &SegmentPageCount))
+        {
+            continue;
+        }
+
+        SegmentVirtualEnd = SegmentVirtualBase + SegmentMappedBytes;
+        if (!FoundLoadSegment || SegmentVirtualBase < LowestVirtualBase)
+        {
+            LowestVirtualBase = SegmentVirtualBase;
+        }
+        if (!FoundLoadSegment || SegmentVirtualEnd > HighestVirtualEnd)
+        {
+            HighestVirtualEnd = SegmentVirtualEnd;
+        }
+        FoundLoadSegment = 1;
+    }
+
+    if (!FoundLoadSegment || HighestVirtualEnd <= LowestVirtualBase)
+    {
+        return 0;
+    }
+
+    *ImageVirtualBase = LowestVirtualBase;
+    *ImageMappedBytes = HighestVirtualEnd - LowestVirtualBase;
+    *ImagePageCount = *ImageMappedBytes / 0x1000ULL;
+    return *ImagePageCount != 0ULL;
+}
+
+static UINT64 ComputeServiceImagePageFlags(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    UINT64 PageVirtualAddress)
+{
+    UINT16 ProgramHeaderIndex;
+    UINT64 PageFlags;
+    BOOLEAN PageCovered;
+
+    if (Header == 0 || ProgramHeaders == 0)
+    {
+        return 0ULL;
+    }
+
+    PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER | LOS_X64_PAGE_NX;
+    PageCovered = 0;
+    for (ProgramHeaderIndex = 0U; ProgramHeaderIndex < Header->ProgramHeaderCount; ++ProgramHeaderIndex)
+    {
+        const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeader;
+        UINT64 SegmentVirtualBase;
+        UINT64 SegmentMappedBytes;
+        UINT64 SegmentPageCount;
+        UINT64 SegmentVirtualEnd;
+
+        ProgramHeader = (const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *)((const UINT8 *)ProgramHeaders + ((UINTN)ProgramHeaderIndex * Header->ProgramHeaderEntrySize));
+        if (ProgramHeader->Type != LOS_ELF_PROGRAM_HEADER_TYPE_LOAD)
+        {
+            continue;
+        }
+
+        if (!TryGetLoadSegmentGeometry(ProgramHeader, &SegmentVirtualBase, &SegmentMappedBytes, &SegmentPageCount))
+        {
+            continue;
+        }
+
+        SegmentVirtualEnd = SegmentVirtualBase + SegmentMappedBytes;
+        if (PageVirtualAddress < SegmentVirtualBase || PageVirtualAddress >= SegmentVirtualEnd)
+        {
+            continue;
+        }
+
+        {
+            UINT64 SegmentPageFlags;
+
+            SegmentPageFlags = ProgramHeaderPageFlags(ProgramHeader->Flags);
+            if ((SegmentPageFlags & LOS_X64_PAGE_WRITABLE) != 0ULL)
+            {
+                PageFlags |= LOS_X64_PAGE_WRITABLE;
+            }
+            if ((SegmentPageFlags & LOS_X64_PAGE_NX) == 0ULL)
+            {
+                PageFlags &= ~LOS_X64_PAGE_NX;
+            }
+        }
+        PageCovered = 1;
+    }
+
+    return PageCovered ? PageFlags : 0ULL;
+}
+
+static BOOLEAN StageServiceImageInPhysicalMemory(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    UINT64 *ImageVirtualBase,
+    UINT64 *ImageMappedBytes,
+    UINT64 *ImagePageCount,
+    UINT64 *ImagePhysicalBase)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+    void *ImageTarget;
+    UINT16 ProgramHeaderIndex;
+
+    if (Header == 0 ||
+        ProgramHeaders == 0 ||
+        ImageVirtualBase == 0 ||
+        ImageMappedBytes == 0 ||
+        ImagePageCount == 0 ||
+        ImagePhysicalBase == 0)
+    {
+        return 0;
+    }
+
+    if (!DescribeServiceImageLayout(Header, ProgramHeaders, ImageVirtualBase, ImageMappedBytes, ImagePageCount))
+    {
+        return 0;
+    }
 
     SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_FRAME_CLAIM);
-    if (!ClaimContiguousPages(SegmentPageCount, &SegmentPhysicalBase))
+    if (!ClaimContiguousPages(*ImagePageCount, ImagePhysicalBase))
     {
         return 0;
     }
 
-    LosKernelTraceHex64("Memory-manager segment virtual base: ", SegmentVirtualBase);
-    LosKernelTraceHex64("Memory-manager segment physical base: ", SegmentPhysicalBase);
-    LosKernelTraceHex64("Memory-manager segment file bytes: ", ProgramHeader->FileSize);
-    LosKernelTraceHex64("Memory-manager segment memory bytes: ", ProgramHeader->MemorySize);
-    LosKernelTraceHex64("Memory-manager segment page count: ", SegmentPageCount);
-    LosKernelTraceHex64("Memory-manager segment flags: ", ProgramHeader->Flags);
-
-    ZeroMemory(&MapRequest, sizeof(MapRequest));
-    ZeroMemory(&MapResult, sizeof(MapResult));
-    MapRequest.PageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
-    MapRequest.VirtualAddress = SegmentVirtualBase;
-    MapRequest.PhysicalAddress = SegmentPhysicalBase;
-    MapRequest.PageCount = SegmentPageCount;
-    MapRequest.PageFlags = ProgramHeaderPageFlags(ProgramHeader->Flags);
-    MapRequest.Flags = 0U;
-    LosX64MapPages(&MapRequest, &MapResult);
-    if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || MapResult.PagesProcessed != SegmentPageCount)
-    {
-        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS);
-        LosKernelTraceUnsigned("Memory-manager segment map status: ", MapResult.Status);
-        LosKernelTraceHex64("Memory-manager segment map pages processed: ", MapResult.PagesProcessed);
-        LosKernelTraceHex64("Memory-manager segment map requested pages: ", SegmentPageCount);
-        return 0;
-    }
-
-    SegmentTarget = LosX64GetDirectMapVirtualAddress(SegmentPhysicalBase, SegmentMappedBytes);
-    if (SegmentTarget == 0)
+    ImageTarget = LosX64GetDirectMapVirtualAddress(*ImagePhysicalBase, *ImageMappedBytes);
+    if (ImageTarget == 0)
     {
         SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_DIRECT_MAP);
         return 0;
     }
 
-    ZeroMemory(SegmentTarget, (UINTN)SegmentMappedBytes);
-    if (ProgramHeader->FileSize != 0ULL)
+    ZeroMemory(ImageTarget, (UINTN)*ImageMappedBytes);
+    LosKernelTraceHex64("Memory-manager image virtual base: ", *ImageVirtualBase);
+    LosKernelTraceHex64("Memory-manager image physical base: ", *ImagePhysicalBase);
+    LosKernelTraceHex64("Memory-manager image mapped bytes: ", *ImageMappedBytes);
+    LosKernelTraceHex64("Memory-manager image page count: ", *ImagePageCount);
+
+    for (ProgramHeaderIndex = 0U; ProgramHeaderIndex < Header->ProgramHeaderCount; ++ProgramHeaderIndex)
     {
-        SegmentSource = (const void *)((const UINT8 *)Header + ProgramHeader->Offset);
-        CopyMemory((UINT8 *)SegmentTarget + OffsetIntoFirstPage, SegmentSource, (UINTN)ProgramHeader->FileSize);
+        const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeader;
+        UINT64 SegmentVirtualBase;
+        UINT64 SegmentMappedBytes;
+        UINT64 SegmentPageCount;
+        UINT64 SegmentPhysicalBase;
+        UINT64 SegmentImageOffset;
+        void *SegmentTarget;
+        const void *SegmentSource;
+
+        ProgramHeader = (const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *)((const UINT8 *)ProgramHeaders + ((UINTN)ProgramHeaderIndex * Header->ProgramHeaderEntrySize));
+        if (ProgramHeader->Type != LOS_ELF_PROGRAM_HEADER_TYPE_LOAD)
+        {
+            continue;
+        }
+
+        if (!TryGetLoadSegmentGeometry(ProgramHeader, &SegmentVirtualBase, &SegmentMappedBytes, &SegmentPageCount))
+        {
+            continue;
+        }
+
+        SegmentImageOffset = ProgramHeader->VirtualAddress - *ImageVirtualBase;
+        SegmentPhysicalBase = *ImagePhysicalBase + (SegmentVirtualBase - *ImageVirtualBase);
+        SegmentTarget = (UINT8 *)ImageTarget + SegmentImageOffset;
+
+        LosKernelTraceHex64("Memory-manager segment virtual base: ", SegmentVirtualBase);
+        LosKernelTraceHex64("Memory-manager segment physical base: ", SegmentPhysicalBase);
+        LosKernelTraceHex64("Memory-manager segment file bytes: ", ProgramHeader->FileSize);
+        LosKernelTraceHex64("Memory-manager segment memory bytes: ", ProgramHeader->MemorySize);
+        LosKernelTraceHex64("Memory-manager segment page count: ", SegmentPageCount);
+        LosKernelTraceHex64("Memory-manager segment flags: ", ProgramHeader->Flags);
+
+        if (ProgramHeader->FileSize != 0ULL)
+        {
+            SegmentSource = (const void *)((const UINT8 *)Header + ProgramHeader->Offset);
+            CopyMemory(SegmentTarget, SegmentSource, (UINTN)ProgramHeader->FileSize);
+        }
+    }
+
+    State = LosMemoryManagerBootstrapState();
+    State->Info.ServiceImagePhysicalAddress = *ImagePhysicalBase;
+    State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress = *ImagePhysicalBase;
+    State->LaunchBlock->ServiceImagePhysicalAddress = *ImagePhysicalBase;
+    return 1;
+}
+
+static BOOLEAN MapStagedServiceImageIntoAddressSpace(
+    UINT64 PageMapLevel4PhysicalAddress,
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    UINT64 ImageVirtualBase,
+    UINT64 ImagePageCount,
+    UINT64 ImagePhysicalBase)
+{
+    UINT64 PageIndex;
+
+    if (PageMapLevel4PhysicalAddress == 0ULL ||
+        Header == 0 ||
+        ProgramHeaders == 0 ||
+        ImagePageCount == 0ULL ||
+        ImagePhysicalBase == 0ULL)
+    {
+        return 0;
+    }
+
+    for (PageIndex = 0ULL; PageIndex < ImagePageCount; ++PageIndex)
+    {
+        UINT64 PageVirtualAddress;
+        UINT64 PagePhysicalAddress;
+        UINT64 PageFlags;
+        LOS_X64_MAP_PAGES_REQUEST MapRequest;
+        LOS_X64_MAP_PAGES_RESULT MapResult;
+
+        PageVirtualAddress = ImageVirtualBase + (PageIndex * 0x1000ULL);
+        PagePhysicalAddress = ImagePhysicalBase + (PageIndex * 0x1000ULL);
+        PageFlags = ComputeServiceImagePageFlags(Header, ProgramHeaders, PageVirtualAddress);
+        if (PageFlags == 0ULL)
+        {
+            SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS);
+            LosKernelTraceHex64("Memory-manager image page had no segment coverage: ", PageVirtualAddress);
+            return 0;
+        }
+
+        ZeroMemory(&MapRequest, sizeof(MapRequest));
+        ZeroMemory(&MapResult, sizeof(MapResult));
+        MapRequest.PageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
+        MapRequest.VirtualAddress = PageVirtualAddress;
+        MapRequest.PhysicalAddress = PagePhysicalAddress;
+        MapRequest.PageCount = 1ULL;
+        MapRequest.PageFlags = PageFlags;
+        MapRequest.Flags = 0U;
+        LosX64MapPages(&MapRequest, &MapResult);
+        if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || MapResult.PagesProcessed != 1ULL)
+        {
+            SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS);
+            LosKernelTraceUnsigned("Memory-manager segment map status: ", MapResult.Status);
+            LosKernelTraceHex64("Memory-manager segment map pages processed: ", MapResult.PagesProcessed);
+            LosKernelTraceHex64("Memory-manager segment map requested pages: ", 1ULL);
+            LosKernelTraceHex64("Memory-manager segment map virtual page: ", PageVirtualAddress);
+            LosKernelTraceHex64("Memory-manager segment map physical page: ", PagePhysicalAddress);
+            LosKernelTraceHex64("Memory-manager segment map page flags: ", PageFlags);
+            return 0;
+        }
     }
 
     return 1;
@@ -403,7 +634,10 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders;
     const LOS_X64_VIRTUAL_MEMORY_LAYOUT *Layout;
     UINT64 ServiceRootPhysicalAddress;
-    UINT16 ProgramHeaderIndex;
+    UINT64 ImageVirtualBase;
+    UINT64 ImageMappedBytes;
+    UINT64 ImagePageCount;
+    UINT64 ImagePhysicalBase;
 
     State = LosMemoryManagerBootstrapState();
     if (State->ServiceImageVirtualAddress == 0ULL)
@@ -443,20 +677,26 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     }
 
     ProgramHeaders = (const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *)((const UINT8 *)Header + Header->ProgramHeaderOffset);
-    for (ProgramHeaderIndex = 0U; ProgramHeaderIndex < Header->ProgramHeaderCount; ++ProgramHeaderIndex)
+    if (!StageServiceImageInPhysicalMemory(
+            Header,
+            ProgramHeaders,
+            &ImageVirtualBase,
+            &ImageMappedBytes,
+            &ImagePageCount,
+            &ImagePhysicalBase))
     {
-        const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeader;
+        return 0;
+    }
 
-        ProgramHeader = (const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *)((const UINT8 *)ProgramHeaders + ((UINTN)ProgramHeaderIndex * Header->ProgramHeaderEntrySize));
-        if (ProgramHeader->Type != LOS_ELF_PROGRAM_HEADER_TYPE_LOAD)
-        {
-            continue;
-        }
-
-        if (!MapSegmentIntoAddressSpace(ServiceRootPhysicalAddress, Header, ProgramHeader))
-        {
-            return 0;
-        }
+    if (!MapStagedServiceImageIntoAddressSpace(
+            ServiceRootPhysicalAddress,
+            Header,
+            ProgramHeaders,
+            ImageVirtualBase,
+            ImagePageCount,
+            ImagePhysicalBase))
+    {
+        return 0;
     }
 
     Layout = LosX64GetVirtualMemoryLayout();
