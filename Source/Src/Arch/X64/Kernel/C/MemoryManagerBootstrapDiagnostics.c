@@ -262,6 +262,41 @@ void LosMemoryManagerBootstrapReportFailureValueAndHalt(const char *Reason, cons
     LosMemoryManagerBootstrapReportFailureAndHalt(Reason);
 }
 
+static const char *LosMemoryManagerBootstrapAttachResultName(UINT32 Result)
+{
+    switch (Result)
+    {
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY:
+            return "ready";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ALREADY_ATTACHED:
+            return "already-attached";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST:
+            return "invalid-request";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_VERSION_MISMATCH:
+            return "version-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_LAUNCH_BLOCK_MISMATCH:
+            return "launch-block-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ENDPOINT_MISMATCH:
+            return "endpoint-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_MAILBOX_MISMATCH:
+            return "mailbox-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_ROOT_MISMATCH:
+            return "service-root-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_IMAGE_MISMATCH:
+            return "service-image-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_STATE_INVALID:
+            return "service-state-invalid";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_OPERATION_SET_INVALID:
+            return "operation-set-invalid";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ENTRY_MISMATCH:
+            return "entry-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_STACK_TOP_MISMATCH:
+            return "stack-top-mismatch";
+        default:
+            return "unknown";
+    }
+}
+
 void LosMemoryManagerBootstrapRunProbe(void)
 {
     LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT Result;
@@ -279,7 +314,13 @@ void LosMemoryManagerBootstrapRunProbe(void)
     else
     {
         LosKernelTraceUnsigned("Memory-manager bootstrap result: ", Result.BootstrapResult);
+        LosKernelTrace("Memory-manager bootstrap result name: ");
+        LosKernelTrace(LosMemoryManagerBootstrapAttachResultName(Result.BootstrapResult));
         LosKernelTraceUnsigned("Memory-manager bootstrap reply state: ", Result.BootstrapState);
+        LosKernelTraceHex64("Memory-manager bootstrap negotiated operations: ", Result.NegotiatedOperations);
+        LosKernelTraceHex64("Memory-manager bootstrap active service root: ", Result.ActiveRootTablePhysicalAddress);
+        LosKernelTraceHex64("Memory-manager bootstrap kernel root: ", Result.KernelRootTablePhysicalAddress);
+        LosKernelTraceHex64("Memory-manager bootstrap reply flags: ", Result.BootstrapFlags);
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap attach failed.");
     }
 }

@@ -382,8 +382,19 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
     Request->Payload.BootstrapAttach.ServiceImageSize = Info->ServiceImageSize;
     Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = Info->ServiceEntryVirtualAddress;
     Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = 0ULL;
+
     if (LaunchBlock != 0)
     {
+        Request->Payload.BootstrapAttach.KernelToServiceEndpointId = LaunchBlock->Endpoints.KernelToService;
+        Request->Payload.BootstrapAttach.ServiceToKernelEndpointId = LaunchBlock->Endpoints.ServiceToKernel;
+        Request->Payload.BootstrapAttach.ServiceEventsEndpointId = LaunchBlock->Endpoints.ServiceEvents;
+        Request->Payload.BootstrapAttach.RequestMailboxPhysicalAddress = LaunchBlock->RequestMailboxPhysicalAddress;
+        Request->Payload.BootstrapAttach.ResponseMailboxPhysicalAddress = LaunchBlock->ResponseMailboxPhysicalAddress;
+        Request->Payload.BootstrapAttach.EventMailboxPhysicalAddress = LaunchBlock->EventMailboxPhysicalAddress;
+        Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;
+        Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress = LaunchBlock->ServiceImagePhysicalAddress;
+        Request->Payload.BootstrapAttach.ServiceImageSize = LaunchBlock->ServiceImageSize;
+        Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = LaunchBlock->ServiceEntryVirtualAddress;
         Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = LaunchBlock->ServiceStackTopVirtualAddress;
     }
 }

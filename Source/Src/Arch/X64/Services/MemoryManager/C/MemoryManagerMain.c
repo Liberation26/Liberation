@@ -162,6 +162,41 @@ static void ServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
     ServiceSerialWriteText("\n");
 }
 
+static const char *BootstrapAttachResultName(UINT32 BootstrapResult)
+{
+    switch (BootstrapResult)
+    {
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY:
+            return "ready";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ALREADY_ATTACHED:
+            return "already-attached";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST:
+            return "invalid-request";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_VERSION_MISMATCH:
+            return "version-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_LAUNCH_BLOCK_MISMATCH:
+            return "launch-block-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ENDPOINT_MISMATCH:
+            return "endpoint-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_MAILBOX_MISMATCH:
+            return "mailbox-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_ROOT_MISMATCH:
+            return "service-root-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_IMAGE_MISMATCH:
+            return "service-image-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_SERVICE_STATE_INVALID:
+            return "service-state-invalid";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_OPERATION_SET_INVALID:
+            return "operation-set-invalid";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ENTRY_MISMATCH:
+            return "entry-mismatch";
+        case LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_STACK_TOP_MISMATCH:
+            return "stack-top-mismatch";
+        default:
+            return "unknown";
+    }
+}
+
 static void ZeroMemory(void *Buffer, UINTN ByteCount)
 {
     UINT8 *Bytes;
@@ -895,6 +930,11 @@ static void PopulateBootstrapAttachResponse(
     }
 
     BootstrapResult = ValidateBootstrapAttachRequest(State, &Request->Payload.BootstrapAttach);
+    ServiceSerialWriteText("[MemManager] Bootstrap attach validation result=");
+    ServiceSerialWriteUnsigned(BootstrapResult);
+    ServiceSerialWriteText(" name=");
+    ServiceSerialWriteText(BootstrapAttachResultName(BootstrapResult));
+    ServiceSerialWriteText("\n");
     BootstrapFlags = 0ULL;
     if (State->LaunchBlock != 0)
     {
