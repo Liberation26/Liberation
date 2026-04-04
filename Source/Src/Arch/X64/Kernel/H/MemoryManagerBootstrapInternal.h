@@ -24,6 +24,7 @@ typedef struct
     UINT64 RequestMailboxVirtualAddress;
     UINT64 ResponseMailboxVirtualAddress;
     UINT64 EventMailboxVirtualAddress;
+    UINT64 ServiceImageVirtualAddress;
 } LOS_MEMORY_MANAGER_BOOTSTRAP_STATE;
 
 LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *LosMemoryManagerBootstrapState(void);

@@ -116,6 +116,7 @@ static BOOLEAN ClaimContiguousPages(UINT64 PageCount, UINT64 *BaseAddress)
     ZeroMemory(&Request, sizeof(Request));
     ZeroMemory(&Result, sizeof(Result));
 
+    Request.MinimumPhysicalAddress = 0x1000ULL;
     Request.AlignmentBytes = 0x1000ULL;
     Request.PageCount = PageCount;
     Request.Flags = LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS;
@@ -263,6 +264,11 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     UINT16 ProgramHeaderIndex;
 
     State = LosMemoryManagerBootstrapState();
+    if (State->ServiceImageVirtualAddress == 0ULL)
+    {
+        return 0;
+    }
+
     if ((State->Info.Flags & LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_MAPPED) != 0ULL)
     {
         return 1;
@@ -273,7 +279,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
         return 0;
     }
 
-    Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)(UINTN)State->Info.ServiceImagePhysicalAddress;
+    Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)(UINTN)State->ServiceImageVirtualAddress;
     if (Header == 0)
     {
         return 0;

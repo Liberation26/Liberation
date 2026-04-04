@@ -118,6 +118,47 @@ static void InitializeTaskObject(
     TaskObject->StackTopVirtualAddress = StackTopVirtualAddress;
 }
 
+static UINT64 ResolveServiceImagePhysicalAddress(const LOS_BOOT_CONTEXT *BootContext, UINT64 ServiceImageVirtualAddress, UINT64 ServiceImageSize)
+{
+    UINT64 SegmentIndex;
+
+    if (BootContext != 0)
+    {
+        if ((BootContext->Flags & LOS_BOOT_CONTEXT_FLAG_MEMORY_MANAGER_IMAGE_VALID) != 0ULL &&
+            BootContext->MemoryManagerImagePhysicalAddress != 0ULL)
+        {
+            return BootContext->MemoryManagerImagePhysicalAddress;
+        }
+
+        if ((BootContext->Flags & LOS_BOOT_CONTEXT_FLAG_KERNEL_SEGMENTS_VALID) != 0ULL)
+        {
+            for (SegmentIndex = 0ULL; SegmentIndex < BootContext->KernelLoadSegmentCount && SegmentIndex < LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS; ++SegmentIndex)
+            {
+                const LOS_BOOT_CONTEXT_LOAD_SEGMENT *Segment;
+                UINT64 SegmentVirtualStart;
+                UINT64 SegmentVirtualEnd;
+                UINT64 ServiceImageVirtualEnd;
+
+                Segment = &BootContext->KernelLoadSegments[SegmentIndex];
+                SegmentVirtualStart = Segment->VirtualAddress;
+                SegmentVirtualEnd = Segment->VirtualAddress + Segment->MemorySize;
+                ServiceImageVirtualEnd = ServiceImageVirtualAddress + ServiceImageSize;
+                if (SegmentVirtualEnd < SegmentVirtualStart || ServiceImageVirtualEnd < ServiceImageVirtualAddress)
+                {
+                    continue;
+                }
+
+                if (ServiceImageVirtualAddress >= SegmentVirtualStart && ServiceImageVirtualEnd <= SegmentVirtualEnd)
+                {
+                    return Segment->PhysicalAddress + (ServiceImageVirtualAddress - SegmentVirtualStart);
+                }
+            }
+        }
+    }
+
+    return 0ULL;
+}
+
 static BOOLEAN ClaimBootstrapPages(UINT64 PageCount, UINT32 Owner, UINT64 *BaseAddress)
 {
     LOS_X64_CLAIM_FRAMES_REQUEST Request;
@@ -126,6 +167,7 @@ static BOOLEAN ClaimBootstrapPages(UINT64 PageCount, UINT32 Owner, UINT64 *BaseA
     ZeroMemory(&Request, sizeof(Request));
     ZeroMemory(&Result, sizeof(Result));
 
+    Request.MinimumPhysicalAddress = 0x1000ULL;
     Request.AlignmentBytes = 0x1000ULL;
     Request.PageCount = PageCount;
     Request.Flags = LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS;
@@ -290,6 +332,7 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
     State->Info.EventMailboxSize = 0ULL;
     State->Info.LaunchBlockPhysicalAddress = 0ULL;
     State->Info.LaunchBlockSize = 0ULL;
+    State->ServiceImageVirtualAddress = 0ULL;
     State->NextRequestId = 1ULL;
     CopyUtf16(State->Info.ServicePath, LOS_MEMORY_MANAGER_SERVICE_PATH_CHARACTERS, L"\\LIBERATION\\SERVICES\\MEMORYMGR.ELF");
 
@@ -298,8 +341,9 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
         (void)BootContext;
     }
 
-    State->Info.ServiceImagePhysicalAddress = (UINT64)(UINTN)LosMemoryManagerServiceImageStart;
+    State->ServiceImageVirtualAddress = (UINT64)(UINTN)LosMemoryManagerServiceImageStart;
     State->Info.ServiceImageSize = (UINT64)((UINTN)LosMemoryManagerServiceImageEnd - (UINTN)LosMemoryManagerServiceImageStart);
+    State->Info.ServiceImagePhysicalAddress = ResolveServiceImagePhysicalAddress(BootContext, State->ServiceImageVirtualAddress, State->Info.ServiceImageSize);
 }
 
 void LosMemoryManagerBootstrapUpdateState(UINT32 NewState)

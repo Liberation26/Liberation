@@ -48,12 +48,12 @@ BOOLEAN LosMemoryManagerBootstrapValidateServiceImage(void)
     const LOS_MEMORY_MANAGER_ELF64_HEADER *Header;
 
     State = LosMemoryManagerBootstrapState();
-    if (State->Info.ServiceImagePhysicalAddress == 0ULL || State->Info.ServiceImageSize < sizeof(LOS_MEMORY_MANAGER_ELF64_HEADER))
+    if (State->ServiceImageVirtualAddress == 0ULL || State->Info.ServiceImageSize < sizeof(LOS_MEMORY_MANAGER_ELF64_HEADER))
     {
         return 0;
     }
 
-    Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)(UINTN)State->Info.ServiceImagePhysicalAddress;
+    Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)(UINTN)State->ServiceImageVirtualAddress;
     if (Header->Ident[0] != LOS_ELF_MAGIC_0 ||
         Header->Ident[1] != LOS_ELF_MAGIC_1 ||
         Header->Ident[2] != LOS_ELF_MAGIC_2 ||

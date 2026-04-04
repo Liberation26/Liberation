@@ -1,9 +1,6 @@
-## Delivery note for 0.1.29
+## Delivery note for 0.1.30
 
-- Added explicit memory-manager attach diagnostics so bootstrap probe failures now record the exact failing stage and detail code through the shared task object before the kernel falls back.
-- The memory-manager service now validates the launch block, each endpoint object, the address-space object, and the task object with per-check failure reporting instead of returning a single undifferentiated attach failure.
-- Kernel bootstrap diagnostics now print the attach stage name, detail name, numeric codes, and object state snapshots when the endpoint bootstrap probe fails.
-- Source tar excludes build output binaries.
+This update fixes the memory-manager launch-block publication bug that caused the endpoint probe to fail at the launch-block stage. Bootstrap page claims now avoid physical page 0, and the kernel now keeps the embedded service image virtual address separate from the published service image physical address.
 
 ## Delivery note for 0.1.27
 
