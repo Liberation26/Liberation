@@ -32,6 +32,13 @@ static void TraceKernelToMemoryManagerRequest(const LOS_MEMORY_MANAGER_REQUEST_M
     LosKernelSerialWriteText(OperationName(Request->Operation));
     LosKernelSerialWriteText(" id=");
     LosKernelSerialWriteHex64(Request->RequestId);
+    if (Request->Operation == LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH)
+    {
+        LosKernelSerialWriteText(" root=");
+        LosKernelSerialWriteHex64(Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress);
+        LosKernelSerialWriteText(" stack-top=");
+        LosKernelSerialWriteHex64(Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress);
+    }
     LosKernelSerialWriteText("\n");
 }
 
@@ -356,6 +363,7 @@ static UINT32 HostedServiceStepBudgetForOperation(UINT32 Operation)
 
 static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request)
 {
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
     const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
     const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
 
@@ -364,6 +372,7 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
         return;
     }
 
+    State = LosMemoryManagerBootstrapState();
     Info = LosGetMemoryManagerBootstrapInfo();
     LaunchBlock = LosGetMemoryManagerLaunchBlock();
     Request->Operation = LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH;
@@ -385,6 +394,7 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
 
     if (LaunchBlock != 0)
     {
+        Request->Payload.BootstrapAttach.LaunchBlockPhysicalAddress = LaunchBlock->LaunchBlockPhysicalAddress;
         Request->Payload.BootstrapAttach.KernelToServiceEndpointId = LaunchBlock->Endpoints.KernelToService;
         Request->Payload.BootstrapAttach.ServiceToKernelEndpointId = LaunchBlock->Endpoints.ServiceToKernel;
         Request->Payload.BootstrapAttach.ServiceEventsEndpointId = LaunchBlock->Endpoints.ServiceEvents;
@@ -396,6 +406,25 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
         Request->Payload.BootstrapAttach.ServiceImageSize = LaunchBlock->ServiceImageSize;
         Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = LaunchBlock->ServiceEntryVirtualAddress;
         Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = LaunchBlock->ServiceStackTopVirtualAddress;
+    }
+
+    if (State != 0)
+    {
+        if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->RootTablePhysicalAddress != 0ULL)
+        {
+            Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress = State->ServiceAddressSpaceObject->RootTablePhysicalAddress;
+        }
+        if (State->ServiceTaskObject != 0)
+        {
+            if (State->ServiceTaskObject->EntryVirtualAddress != 0ULL)
+            {
+                Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = State->ServiceTaskObject->EntryVirtualAddress;
+            }
+            if (State->ServiceTaskObject->StackTopVirtualAddress != 0ULL)
+            {
+                Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
+            }
+        }
     }
 }
 

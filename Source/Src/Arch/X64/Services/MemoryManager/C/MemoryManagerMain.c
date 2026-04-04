@@ -934,6 +934,10 @@ static void PopulateBootstrapAttachResponse(
     ServiceSerialWriteUnsigned(BootstrapResult);
     ServiceSerialWriteText(" name=");
     ServiceSerialWriteText(BootstrapAttachResultName(BootstrapResult));
+    ServiceSerialWriteText(" request-root=");
+    ServiceSerialWriteHex64(Request->Payload.BootstrapAttach.ServicePageMapLevel4PhysicalAddress);
+    ServiceSerialWriteText(" active-root=");
+    ServiceSerialWriteHex64(State->ActiveRootTablePhysicalAddress);
     ServiceSerialWriteText("\n");
     BootstrapFlags = 0ULL;
     if (State->LaunchBlock != 0)

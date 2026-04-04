@@ -658,6 +658,8 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
 
     Layout = LosX64GetVirtualMemoryLayout();
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = ServiceRootPhysicalAddress;
+    State->Info.ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
+    State->LaunchBlock->ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
     State->ServiceAddressSpaceObject->DirectMapBase = Layout->HigherHalfDirectMapBase;
     State->ServiceAddressSpaceObject->DirectMapSize = Layout->HigherHalfDirectMapSize;
     if (!MapServiceStackIntoAddressSpace(
