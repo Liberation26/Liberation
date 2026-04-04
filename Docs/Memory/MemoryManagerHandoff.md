@@ -1,3 +1,7 @@
+
+## Version 0.1.59
+
+The X64 bootstrap path now suppresses serial function-entry tracing for the hottest paging helper routines used during memory-manager launch. This removes repeated `Enter` lines for direct-map lookup, discovery checks, page-table index helpers, and CR3 reads so bootstrap serial output stays readable while fatal reports and higher-level state transitions remain visible.
 ## 0.1.57 service-side normalized-memory ingest
 
 The first live `MEMORYMGR.ELF` bootstrap now ingests the kernel's normalized physical-memory region table instead of treating the kernel as the only authority on discovered RAM.

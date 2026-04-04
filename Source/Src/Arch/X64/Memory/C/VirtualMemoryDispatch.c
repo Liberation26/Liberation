@@ -51,28 +51,24 @@ void LosX64ReportHigherHalfEntryJump(void)
 LOS_X64_BOOTSTRAP_SECTION
 static UINT16 LosX64GetPml4Index(UINT64 Address)
 {
-    LOS_KERNEL_ENTER();
     return (UINT16)((Address >> 39) & 0x1FFULL);
 }
 
 LOS_X64_BOOTSTRAP_SECTION
 static UINT16 LosX64GetPdptIndex(UINT64 Address)
 {
-    LOS_KERNEL_ENTER();
     return (UINT16)((Address >> 30) & 0x1FFULL);
 }
 
 LOS_X64_BOOTSTRAP_SECTION
 static UINT16 LosX64GetPdIndex(UINT64 Address)
 {
-    LOS_KERNEL_ENTER();
     return (UINT16)((Address >> 21) & 0x1FFULL);
 }
 
 LOS_X64_BOOTSTRAP_SECTION
 static UINT16 LosX64GetPtIndex(UINT64 Address)
 {
-    LOS_KERNEL_ENTER();
     return (UINT16)((Address >> 12) & 0x1FFULL);
 }
 

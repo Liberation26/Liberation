@@ -1,3 +1,7 @@
+Version 0.1.59
+
+This delivery removes serial function-entry tracing for the hottest X64 paging helpers so normal bring-up no longer floods COM1 with internal address-translation chatter. The kernel keeps runtime tracing available elsewhere, but `LosX64IsPhysicalRangeDiscovered`, `LosX64GetDirectMapVirtualAddress`, `LosX64GetPml4Index`, `LosX64GetPdptIndex`, `LosX64GetPdIndex`, `LosX64GetPtIndex`, and `LosX64GetCurrentPageMapLevel4PhysicalAddress` no longer emit `[Kernel] Enter ...` lines. That keeps the memory-manager bootstrap log focused on meaningful state changes and failures instead of low-level helper noise.
+
 Version 0.1.58
 
 This delivery lets the live memory-manager service ingest the kernel's normalized physical-memory region table and build its own service-side RAM view during attach. The bootstrap launch block now publishes the normalized region table physical address, region count, and entry size. `MEMORYMGR.ELF` copies that table into internal descriptors split across usable, bootstrap-reserved, firmware-reserved, runtime, MMIO, ACPI/NVS, and unusable ranges, then builds a service-side page-frame database and overlays the memory-manager's own in-use objects: service image, stack, request/response/event mailboxes, launch block, endpoint objects, address-space object, task object, and service PML4 root. The service now logs the ingested region-table address plus descriptor/page-database totals at attach time so bring-up can prove that the first userland memory authority knows what RAM exists and what is already taken.

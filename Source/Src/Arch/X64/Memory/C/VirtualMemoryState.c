@@ -994,7 +994,6 @@ UINTN LosX64GetPageTablePoolUsedCount(void)
 LOS_X64_BOOTSTRAP_SECTION
 BOOLEAN LosX64IsPhysicalRangeDiscovered(UINT64 PhysicalAddress, UINT64 Length)
 {
-    LOS_KERNEL_ENTER();
     UINT64 EndAddress;
 
     if (Length == 0ULL)
@@ -1314,7 +1313,6 @@ UINT64 LosX64GetCurrentPageMapLevel4PhysicalAddress(void)
 {
     UINT64 Value;
 
-    LOS_KERNEL_ENTER();
     __asm__ __volatile__("mov %%cr3, %0" : "=r"(Value));
     return Value & LOS_X64_PAGE_TABLE_ADDRESS_MASK;
 }
@@ -1322,7 +1320,6 @@ UINT64 LosX64GetCurrentPageMapLevel4PhysicalAddress(void)
 LOS_X64_BOOTSTRAP_SECTION
 void *LosX64GetDirectMapVirtualAddress(UINT64 PhysicalAddress, UINT64 Length)
 {
-    LOS_KERNEL_ENTER();
     if (Length == 0ULL || !LosX64IsPhysicalRangeDiscovered(PhysicalAddress, Length))
     {
         return 0;
