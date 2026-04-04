@@ -27,6 +27,24 @@ RequireTool() {
 }
 
 echo "[Liberation] Starting hard-disk build and run..."
+
+TryMaximizeQemuWindow() {
+    local WindowTitle="$1"
+    local Attempt
+
+    if ! command -v wmctrl >/dev/null 2>&1; then
+        return
+    fi
+
+    (
+        for Attempt in $(seq 1 50); do
+            sleep 0.2
+            if wmctrl -r "${WindowTitle}" -b add,maximized_vert,maximized_horz >/dev/null 2>&1; then
+                exit 0
+            fi
+        done
+    ) &
+}
 RequireTool qemu-system-x86_64
 RequireTool cp
 RequireTool mkdir
@@ -59,6 +77,7 @@ if [[ ! -f "${DiskFile}" ]]; then
 fi
 
 echo "[Liberation] Launching QEMU from UEFI hard disk image..." | tee -a "${HostLogFile}"
+TryMaximizeQemuWindow "Liberation Hard Disk"
 qemu-system-x86_64 \
     -machine q35,accel=kvm:tcg \
     -m 256M \
@@ -68,5 +87,6 @@ qemu-system-x86_64 \
     -drive if=none,id=BootDisk,format=raw,file="${DiskFile}" \
     -device ide-hd,drive=BootDisk,bus=ahci.0 \
     -boot c \
-    -display gtk,gl=off \
+    -name "Liberation Hard Disk" \
+    -display gtk,gl=off,zoom-to-fit=on \
     -serial stdio 2>&1 | tee >(StripAnsiToFile "${HostLogFile}")

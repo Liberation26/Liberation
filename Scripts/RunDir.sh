@@ -41,6 +41,24 @@ PY
 }
 
 echo "[Liberation] Starting directory build and run..."
+
+TryMaximizeQemuWindow() {
+    local WindowTitle="$1"
+    local Attempt
+
+    if ! command -v wmctrl >/dev/null 2>&1; then
+        return
+    fi
+
+    (
+        for Attempt in $(seq 1 50); do
+            sleep 0.2
+            if wmctrl -r "${WindowTitle}" -b add,maximized_vert,maximized_horz >/dev/null 2>&1; then
+                exit 0
+            fi
+        done
+    ) &
+}
 RequireTool qemu-system-x86_64
 RequireTool cp
 RequireTool mkdir
@@ -88,6 +106,7 @@ endif
 EOS
 
 echo "[Liberation] Launching QEMU from EFI directory as removable USB media..." | tee -a "${HostLogFile}"
+TryMaximizeQemuWindow "Liberation Directory Boot"
 qemu-system-x86_64 \
     -machine q35,accel=kvm:tcg \
     -m 256M \
@@ -96,5 +115,6 @@ qemu-system-x86_64 \
     -device qemu-xhci,id=xhci \
     -drive if=none,id=BootDir,format=raw,file=fat:rw:${ImageDir} \
     -device usb-storage,drive=BootDir,bus=xhci.0,removable=true \
-    -display gtk,gl=off \
+    -name "Liberation Directory Boot" \
+    -display gtk,gl=off,zoom-to-fit=on \
     -serial stdio 2>&1 | tee >(StripAnsiToFile "${HostLogFile}")

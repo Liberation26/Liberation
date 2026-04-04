@@ -55,8 +55,14 @@ static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 #define LOS_KERNEL_SCREEN_LINE_SPACING 6U
 #define LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS 1U
 #define LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS 8U
+#define LOS_KERNEL_SCREEN_RIGHT_MARGIN_COLUMNS 1U
+#define LOS_KERNEL_SCREEN_TIMER_ROW 1U
+#define LOS_KERNEL_SCREEN_FIRST_LOG_ROW 3U
 
 static void ApplyLineIndent(UINT32 IndentColumns);
+static UINT32 GetWritableColumnLimit(void);
+static void ClearRow(UINT32 Row);
+static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color);
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -221,6 +227,16 @@ static void ApplyLineIndent(UINT32 IndentColumns)
     }
 }
 
+static UINT32 GetWritableColumnLimit(void)
+{
+    if (LosKernelScreenState.MaxColumns <= LOS_KERNEL_SCREEN_RIGHT_MARGIN_COLUMNS)
+    {
+        return 0U;
+    }
+
+    return LosKernelScreenState.MaxColumns - LOS_KERNEL_SCREEN_RIGHT_MARGIN_COLUMNS;
+}
+
 static void PutPixel(UINT32 X, UINT32 Y, UINT32 Color)
 {
     if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.FrameBuffer == 0)
@@ -233,6 +249,21 @@ static void PutPixel(UINT32 X, UINT32 Y, UINT32 Color)
     }
 
     LosKernelScreenState.FrameBuffer[((UINT64)Y * (UINT64)LosKernelScreenState.PixelsPerScanLine) + (UINT64)X] = Color;
+}
+
+static void ClearRow(UINT32 Row)
+{
+    UINT32 Column;
+
+    if (LosKernelScreenState.Ready == 0U || Row >= LosKernelScreenState.MaxRows)
+    {
+        return;
+    }
+
+    for (Column = 0U; Column < LosKernelScreenState.MaxColumns; ++Column)
+    {
+        FillCellBackground(Column, Row, 0x00000000U);
+    }
 }
 
 static void AdvanceLine(void)
@@ -347,7 +378,7 @@ static void PutCharacterColored(char Character, UINT32 Color)
         return;
     }
 
-    if (LosKernelScreenState.CursorColumn >= LosKernelScreenState.MaxColumns)
+    if (LosKernelScreenState.CursorColumn >= GetWritableColumnLimit())
     {
         AdvanceLine();
     }
@@ -474,11 +505,11 @@ static void PutTextColored(const char *Text, UINT32 Color)
         }
 
         WordLength = GetWordLength(Text + Index);
-        RemainingColumns = LosKernelScreenState.MaxColumns > LosKernelScreenState.CursorColumn
-            ? (LosKernelScreenState.MaxColumns - LosKernelScreenState.CursorColumn)
+        RemainingColumns = GetWritableColumnLimit() > LosKernelScreenState.CursorColumn
+            ? (GetWritableColumnLimit() - LosKernelScreenState.CursorColumn)
             : 0U;
 
-        if (WordLength != 0U && WordLength <= LosKernelScreenState.MaxColumns && WordLength > RemainingColumns && LosKernelScreenState.CursorColumn != 0U)
+        if (WordLength != 0U && WordLength <= GetWritableColumnLimit() && WordLength > RemainingColumns && LosKernelScreenState.CursorColumn != 0U)
         {
             AdvanceLine();
             ApplyLineIndent(LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS);
@@ -667,8 +698,9 @@ void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN Inter
     }
 
     StatusColor = InterruptsLive != 0U ? GetOkPrefixColor() : GetFailPrefixColor();
-    Row = 1U;
+    Row = LOS_KERNEL_SCREEN_TIMER_ROW;
 
+    ClearRow(Row);
     DrawTextAt(0U, Row, "TIMER IRQ ", GetTextColor());
     DrawTextAt(10U, Row, InterruptsLive != 0U ? "LIVE" : "WAIT", StatusColor);
     DrawTextAt(16U, Row, "HZ ", GetTextColor());
@@ -798,6 +830,9 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     ClearScreen();
     DrawInitializationProbe();
     PutText("LIBERATION KERNEL SCREEN ONLINE\n");
+    LosKernelScreenState.CursorColumn = 0U;
+    LosKernelScreenState.CursorRow = LOS_KERNEL_SCREEN_FIRST_LOG_ROW;
+    ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
     LosKernelSerialWriteText("[KernelScreen] Screen path initialized.\n");
 }
 

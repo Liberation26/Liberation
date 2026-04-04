@@ -1,3 +1,9 @@
+Version 0.1.62
+
+This delivery makes the direct hard-disk and directory QEMU launch scripts use the same zoom-to-fit GTK display behaviour as the ISO path so all three bash launch routes present the same smaller on-screen text scale by default. `RunHD.sh` and `RunDir.sh` now also publish explicit QEMU window names and use the same maximize helper pattern as the ISO launcher.
+
+It also moves the kernel log start row down by one text row so the fixed timer status row no longer collides visually with the first scrolling kernel status line. That leaves a dedicated blank separator row between the timer line and the live kernel log output.
+
 Version 0.1.61
 
 This delivery builds the first real service-side frame allocator inside `MEMORYMGR.ELF`. The memory manager now keeps a deterministic post-attach baseline frame database, records later reserve/claim allocations in a sorted dynamic-allocation list, and rebuilds the live current page-frame database from that service-owned bookkeeping instead of falling back to ad hoc kernel bootstrap ownership updates.
