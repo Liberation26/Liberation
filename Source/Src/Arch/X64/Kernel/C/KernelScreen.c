@@ -52,6 +52,7 @@ typedef struct
 static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 
 #define LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE 2U
+#define LOS_KERNEL_SCREEN_LINE_SPACING 4U
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -389,6 +390,19 @@ static void DrawCharacterAt(UINT32 Column, UINT32 Row, char Character, UINT32 Co
     LosKernelScreenState.CursorRow = SavedRow;
 }
 
+static UINT32 GetWordLength(const char *Text)
+{
+    UINT32 Length;
+
+    Length = 0U;
+    while (Text[Length] != '\0' && Text[Length] != ' ' && Text[Length] != '\n' && Text[Length] != '\r' && Text[Length] != '\t')
+    {
+        Length += 1U;
+    }
+
+    return Length;
+}
+
 static void PutTextColored(const char *Text, UINT32 Color)
 {
     UINTN Index;
@@ -398,9 +412,53 @@ static void PutTextColored(const char *Text, UINT32 Color)
         return;
     }
 
-    for (Index = 0U; Text[Index] != '\0'; ++Index)
+    for (Index = 0U; Text[Index] != '\0'; )
     {
-        PutCharacterColored(Text[Index], Color);
+        UINT32 WordLength;
+        UINT32 RemainingColumns;
+
+        if (Text[Index] == '\n' || Text[Index] == '\r')
+        {
+            PutCharacterColored(Text[Index], Color);
+            Index += 1U;
+            continue;
+        }
+
+        if (Text[Index] == '\t')
+        {
+            PutCharacterColored(' ', Color);
+            PutCharacterColored(' ', Color);
+            PutCharacterColored(' ', Color);
+            PutCharacterColored(' ', Color);
+            Index += 1U;
+            continue;
+        }
+
+        if (Text[Index] == ' ')
+        {
+            if (LosKernelScreenState.CursorColumn != 0U)
+            {
+                PutCharacterColored(' ', Color);
+            }
+            Index += 1U;
+            continue;
+        }
+
+        WordLength = GetWordLength(Text + Index);
+        RemainingColumns = LosKernelScreenState.MaxColumns > LosKernelScreenState.CursorColumn
+            ? (LosKernelScreenState.MaxColumns - LosKernelScreenState.CursorColumn)
+            : 0U;
+
+        if (WordLength != 0U && WordLength <= LosKernelScreenState.MaxColumns && WordLength > RemainingColumns && LosKernelScreenState.CursorColumn != 0U)
+        {
+            AdvanceLine();
+        }
+
+        while (Text[Index] != '\0' && Text[Index] != ' ' && Text[Index] != '\n' && Text[Index] != '\r' && Text[Index] != '\t')
+        {
+            PutCharacterColored(Text[Index], Color);
+            Index += 1U;
+        }
     }
 }
 
@@ -413,7 +471,6 @@ static void DrawTextAt(UINT32 Column, UINT32 Row, const char *Text, UINT32 Color
 {
     UINT32 SavedColumn;
     UINT32 SavedRow;
-    UINTN Index;
 
     if (LosKernelScreenState.Ready == 0U || Text == 0)
     {
@@ -425,10 +482,7 @@ static void DrawTextAt(UINT32 Column, UINT32 Row, const char *Text, UINT32 Color
     LosKernelScreenState.CursorColumn = Column;
     LosKernelScreenState.CursorRow = Row;
 
-    for (Index = 0U; Text[Index] != '\0'; ++Index)
-    {
-        PutCharacterColored(Text[Index], Color);
-    }
+    PutTextColored(Text, Color);
 
     LosKernelScreenState.CursorColumn = SavedColumn;
     LosKernelScreenState.CursorRow = SavedRow;
@@ -481,7 +535,7 @@ static void DrawInitializationProbe(void)
 static void InitializeDefaultFont(void)
 {
     LosKernelScreenState.CellWidth = LOS_KERNEL_SCREEN_DEFAULT_CELL_WIDTH;
-    LosKernelScreenState.CellHeight = LOS_KERNEL_SCREEN_DEFAULT_CELL_HEIGHT;
+    LosKernelScreenState.CellHeight = LOS_KERNEL_SCREEN_DEFAULT_CELL_HEIGHT + LOS_KERNEL_SCREEN_LINE_SPACING;
     LosKernelScreenState.GlyphWidth = LOS_KERNEL_SCREEN_DEFAULT_GLYPH_WIDTH;
     LosKernelScreenState.GlyphHeight = LOS_KERNEL_SCREEN_DEFAULT_GLYPH_HEIGHT;
     LosKernelScreenState.FontGlyphCount = 0U;
@@ -540,7 +594,7 @@ static void TryInitializePsfFont(const LOS_BOOT_CONTEXT *BootContext)
     }
 
     LosKernelScreenState.CellWidth = Header->Width;
-    LosKernelScreenState.CellHeight = Header->Height;
+    LosKernelScreenState.CellHeight = Header->Height + LOS_KERNEL_SCREEN_LINE_SPACING;
     LosKernelScreenState.GlyphWidth = Header->Width;
     LosKernelScreenState.GlyphHeight = Header->Height;
     LosKernelScreenState.FontGlyphCount = Header->Length;

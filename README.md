@@ -1,7 +1,7 @@
-## Delivery note for 0.1.16
+## Delivery note for 0.1.17
 
-- Fixed kernel text-cell positioning so framebuffer text now advances and clears using the active font scale.
-- This corrects the compressed tiny-on-screen appearance seen with the scaled PSF kernel font.
+- Added word wrap to kernel console text output so status and log lines move cleanly onto the next line instead of running through word boundaries.
+- Increased kernel console line spacing so framebuffer text is easier to read during bring-up.
 - Source tar excludes build output binaries.
 
 # Liberation OS
