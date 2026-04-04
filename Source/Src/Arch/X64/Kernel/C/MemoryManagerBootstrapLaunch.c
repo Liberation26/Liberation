@@ -262,6 +262,7 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
 {
     LOS_X64_MAP_PAGES_REQUEST MapRequest;
     LOS_X64_MAP_PAGES_RESULT MapResult;
+    UINT64 DirectMapStackTopVirtualAddress;
 
     if (PageMapLevel4PhysicalAddress == 0ULL ||
         StackPhysicalAddress == 0ULL ||
@@ -269,6 +270,15 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
         StackTopVirtualAddress == 0)
     {
         return 0;
+    }
+
+    *StackTopVirtualAddress = 0ULL;
+    DirectMapStackTopVirtualAddress = (UINT64)(UINTN)LosX64GetDirectMapVirtualAddress(
+        StackPhysicalAddress,
+        StackPageCount * 0x1000ULL);
+    if (DirectMapStackTopVirtualAddress != 0ULL)
+    {
+        DirectMapStackTopVirtualAddress += (StackPageCount * 0x1000ULL);
     }
 
     ZeroMemory(&MapRequest, sizeof(MapRequest));
@@ -280,13 +290,19 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
     MapRequest.PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_WRITABLE | LOS_X64_PAGE_USER | LOS_X64_PAGE_NX;
     MapRequest.Flags = 0U;
     LosX64MapPages(&MapRequest, &MapResult);
-    if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || MapResult.PagesProcessed != StackPageCount)
+    if (MapResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS && MapResult.PagesProcessed == StackPageCount)
     {
-        return 0;
+        *StackTopVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE + (StackPageCount * 0x1000ULL);
+        return 1;
     }
 
-    *StackTopVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE + (StackPageCount * 0x1000ULL);
-    return 1;
+    if (DirectMapStackTopVirtualAddress != 0ULL)
+    {
+        *StackTopVirtualAddress = DirectMapStackTopVirtualAddress;
+        return 1;
+    }
+
+    return 0;
 }
 
 static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
@@ -358,6 +374,10 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
             State->Info.ServiceStackPhysicalAddress,
             State->Info.ServiceStackPageCount,
             &State->ServiceTaskObject->StackTopVirtualAddress))
+    {
+        return 0;
+    }
+    if (State->ServiceTaskObject->StackTopVirtualAddress == 0ULL)
     {
         return 0;
     }

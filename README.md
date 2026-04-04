@@ -438,3 +438,5 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 - Service entry invocation now passes the launch-block address in RDI, RSI, and RCX to make the bootstrap handoff more robust during early service entry bring-up.
 
 - 0.1.38 maps the first memory-manager bootstrap stack into the service address space at a dedicated virtual range instead of using the higher-half direct-map stack address, and now prints both stack-top physical and virtual values during bootstrap diagnostics.
+
+- 0.1.40 hardens the first memory-manager service stack handoff by refusing a zero stack-top virtual address and by falling back to the cloned direct-map stack view if the dedicated service-stack mapping is not yet available.
