@@ -1299,6 +1299,7 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         ServiceSerialWriteNamedHex("Runtime pages", State->MemoryView.RuntimePages);
         ServiceSerialWriteNamedHex("MMIO pages", State->MemoryView.MmioPages);
         ServiceSerialWriteNamedHex("Free pages", State->MemoryView.FreePages);
+        ServiceSerialWriteLine("[MemManager] Frame allocator ready.");
         ServiceSerialWriteLine("[MemManager] Memory-manager attach complete.");
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
     }

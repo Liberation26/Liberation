@@ -1,3 +1,7 @@
+Version 0.1.66
+
+This delivery adds an explicit frame-allocator readiness announcement once the memory-manager service has finished building its service-owned page-frame database and current memory view. `MEMORYMGR.ELF` now writes `[MemManager] Frame allocator ready.` to the serial log during attach, and the kernel now prints and displays `Frame allocator ready.` on the status screen after the bootstrap attach succeeds and the service-authored memory view is accepted.
+
 Version 0.1.65
 
 This delivery fixes the framebuffer overlay update path so the fixed screen decorations no longer get cleared and repainted on every timer/spinner refresh. The top title row, bottom geometry row, and timer scaffold are now drawn as anchored overlay content, while the live timer state only updates the changing fields in place. That removes the heavy flicker seen during refresh and stops the timer/status overlay from smearing back into the reserved rows.

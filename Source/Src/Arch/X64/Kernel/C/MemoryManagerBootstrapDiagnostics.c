@@ -358,6 +358,8 @@ static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTA
     LosKernelTraceUnsigned("Memory-manager descriptor count: ", Result->InternalDescriptorCount);
     LosKernelTraceUnsigned("Memory-manager frame-database ranges: ", Result->PageFrameDatabaseEntryCount);
 
+    LosKernelTraceOk("Frame allocator ready.");
+    LosKernelStatusScreenWriteOk("Frame allocator ready.");
     LosKernelStatusScreenWriteOk("Memory view from Memory Manager ready.");
     BuildMemoryManagerKnowledgeLine0(ScreenLine, sizeof(ScreenLine), Result);
     LosKernelStatusScreenWriteOk(ScreenLine);
