@@ -314,6 +314,36 @@ static BOOLEAN ValidateTaskObjectDetailed(const LOS_MEMORY_MANAGER_TASK_OBJECT *
     return 1;
 }
 
+static LOS_MEMORY_MANAGER_TASK_OBJECT *TryTranslateTaskObjectForDiagnostics(
+    const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock,
+    UINT64 LaunchBlockAddress)
+{
+    UINT64 DirectMapOffset;
+
+    if (LaunchBlock == 0)
+    {
+        return 0;
+    }
+
+    if (LaunchBlock->ServiceTaskObjectPhysicalAddress == 0ULL)
+    {
+        return 0;
+    }
+
+    if (LaunchBlock->LaunchBlockPhysicalAddress == 0ULL || LaunchBlockAddress < LaunchBlock->LaunchBlockPhysicalAddress)
+    {
+        return 0;
+    }
+
+    DirectMapOffset = LaunchBlockAddress - LaunchBlock->LaunchBlockPhysicalAddress;
+    if (DirectMapOffset == 0ULL)
+    {
+        return 0;
+    }
+
+    return (LOS_MEMORY_MANAGER_TASK_OBJECT *)TranslateBootstrapAddress(DirectMapOffset, LaunchBlock->ServiceTaskObjectPhysicalAddress);
+}
+
 static BOOLEAN ValidateLaunchBlockDetailed(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock, UINT64 *Detail)
 {
     if (Detail != 0)
@@ -467,18 +497,25 @@ LOS_MEMORY_MANAGER_SERVICE_STATE *LosMemoryManagerServiceState(void)
 BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock)
 {
     LOS_MEMORY_MANAGER_SERVICE_STATE *State;
+    LOS_MEMORY_MANAGER_TASK_OBJECT *DiagnosticTaskObject;
+    UINT64 LaunchBlockAddress;
     UINT64 DirectMapOffset;
     UINT64 Detail;
 
+    LaunchBlockAddress = (UINT64)(UINTN)LaunchBlock;
     Detail = LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE;
     if (!ValidateLaunchBlockDetailed(LaunchBlock, &Detail))
     {
+        DiagnosticTaskObject = TryTranslateTaskObjectForDiagnostics(LaunchBlock, LaunchBlockAddress);
+        RecordAttachDiagnostic(DiagnosticTaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_LAUNCH_BLOCK, Detail);
         return 0;
     }
 
-    DirectMapOffset = ResolveDirectMapOffset(LaunchBlock, (UINT64)(UINTN)LaunchBlock);
+    DirectMapOffset = ResolveDirectMapOffset(LaunchBlock, LaunchBlockAddress);
     if (DirectMapOffset == 0ULL)
     {
+        DiagnosticTaskObject = TryTranslateTaskObjectForDiagnostics(LaunchBlock, LaunchBlockAddress);
+        RecordAttachDiagnostic(DiagnosticTaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_DIRECT_MAP_OFFSET, LOS_MEMORY_MANAGER_ATTACH_DETAIL_LAUNCH_BLOCK_PHYSICAL);
         return 0;
     }
 

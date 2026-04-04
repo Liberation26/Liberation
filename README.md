@@ -398,3 +398,8 @@ Version 0.1.13 adds the first dedicated `MEMORYMGR.ELF` image to the installed i
 ## 0.1.28 packaging fix
 
 This package corrects the memory-manager bootstrap update set so ChangedFiles-only updates include the full memory-manager bootstrap source/header set required by the kernel and service build.
+
+
+## 0.1.32
+- Improved memory-manager bootstrap diagnostics so launch-block validation failures are recorded into the task object when possible.
+- Service entry invocation now passes the launch-block address in RDI, RSI, and RCX to make the bootstrap handoff more robust during early service entry bring-up.
