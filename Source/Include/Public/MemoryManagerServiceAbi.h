@@ -4,7 +4,7 @@
 #include "Efi.h"
 #include "VirtualMemory.h"
 
-#define LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION 11U
+#define LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION 12U
 #define LOS_MEMORY_MANAGER_SERVICE_PATH_CHARACTERS 128U
 #define LOS_MEMORY_MANAGER_SERVICE_NAME "MemoryManager"
 
@@ -34,6 +34,10 @@
 #define LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES 5U
 #define LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES 6U
 #define LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES 7U
+#define LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE 8U
+#define LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE 9U
+#define LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE 10U
+#define LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK 11U
 
 #define LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_READY 0U
 #define LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_ALREADY_ATTACHED 1U
@@ -81,6 +85,13 @@
 #define LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_DEFINED 1U
 #define LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY 2U
 #define LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_ACTIVE 3U
+
+#define LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE 0x0000000000000010ULL
+#define LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK 0x0000000000000020ULL
+
+#define LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE 1U
+#define LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_STACK 2U
+#define LOS_MEMORY_MANAGER_MAX_RESERVED_VIRTUAL_REGIONS 32U
 
 #define LOS_MEMORY_MANAGER_TASK_STATE_OFFLINE 0U
 #define LOS_MEMORY_MANAGER_TASK_STATE_DEFINED 1U
@@ -135,6 +146,85 @@ typedef struct
 
 typedef struct
 {
+    UINT64 BaseVirtualAddress;
+    UINT64 PageCount;
+    UINT32 Type;
+    UINT32 Flags;
+    UINT64 BackingPhysicalAddress;
+} LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION;
+
+typedef struct
+{
+    UINT64 Flags;
+    UINT64 Reserved0;
+} LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_REQUEST;
+
+typedef struct
+{
+    UINT32 Status;
+    UINT32 Reserved;
+    UINT64 AddressSpaceObjectPhysicalAddress;
+    UINT64 RootTablePhysicalAddress;
+    UINT64 AddressSpaceId;
+} LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_RESULT;
+
+typedef struct
+{
+    UINT64 AddressSpaceObjectPhysicalAddress;
+    UINT64 Flags;
+} LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_REQUEST;
+
+typedef struct
+{
+    UINT32 Status;
+    UINT32 Reserved;
+    UINT64 AddressSpaceObjectPhysicalAddress;
+    UINT64 ReleasedPageCount;
+    UINT64 ReleasedVirtualRegionCount;
+} LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_RESULT;
+
+typedef struct
+{
+    UINT64 AddressSpaceObjectPhysicalAddress;
+    UINT64 StagedImagePhysicalAddress;
+    UINT64 StagedImageSize;
+    UINT64 Flags;
+} LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_REQUEST;
+
+typedef struct
+{
+    UINT32 Status;
+    UINT32 Reserved;
+    UINT64 AddressSpaceObjectPhysicalAddress;
+    UINT64 ImagePhysicalAddress;
+    UINT64 ImageSize;
+    UINT64 ImageVirtualBase;
+    UINT64 EntryVirtualAddress;
+    UINT64 ImagePageCount;
+} LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT;
+
+typedef struct
+{
+    UINT64 AddressSpaceObjectPhysicalAddress;
+    UINT64 DesiredStackBaseVirtualAddress;
+    UINT64 PageCount;
+    UINT32 Flags;
+    UINT32 Reserved;
+} LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_REQUEST;
+
+typedef struct
+{
+    UINT32 Status;
+    UINT32 Reserved;
+    UINT64 AddressSpaceObjectPhysicalAddress;
+    UINT64 StackPhysicalAddress;
+    UINT64 StackPageCount;
+    UINT64 StackBaseVirtualAddress;
+    UINT64 StackTopVirtualAddress;
+} LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT;
+
+typedef struct
+{
     UINT64 Signature;
     UINT32 Version;
     UINT32 State;
@@ -144,6 +234,17 @@ typedef struct
     UINT64 DirectMapBase;
     UINT64 DirectMapSize;
     UINT64 ServiceImagePhysicalAddress;
+    UINT64 ServiceImageSize;
+    UINT64 ServiceImageVirtualBase;
+    UINT64 EntryVirtualAddress;
+    UINT64 StackPhysicalAddress;
+    UINT64 StackPageCount;
+    UINT64 StackBaseVirtualAddress;
+    UINT64 StackTopVirtualAddress;
+    UINT64 AddressSpaceId;
+    UINT32 ReservedVirtualRegionCount;
+    UINT32 Reserved0;
+    LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION ReservedVirtualRegions[LOS_MEMORY_MANAGER_MAX_RESERVED_VIRTUAL_REGIONS];
 } LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT;
 
 typedef struct
@@ -228,6 +329,10 @@ typedef struct
         LOS_X64_FREE_FRAMES_REQUEST FreeFrames;
         LOS_X64_MAP_PAGES_REQUEST MapPages;
         LOS_X64_UNMAP_PAGES_REQUEST UnmapPages;
+        LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_REQUEST CreateAddressSpace;
+        LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_REQUEST DestroyAddressSpace;
+        LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_REQUEST AttachStagedImage;
+        LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_REQUEST AllocateAddressSpaceStack;
     } Payload;
 } LOS_MEMORY_MANAGER_REQUEST_MESSAGE;
 
@@ -245,6 +350,10 @@ typedef struct
         LOS_X64_FREE_FRAMES_RESULT FreeFrames;
         LOS_X64_MAP_PAGES_RESULT MapPages;
         LOS_X64_UNMAP_PAGES_RESULT UnmapPages;
+        LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_RESULT CreateAddressSpace;
+        LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_RESULT DestroyAddressSpace;
+        LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT AttachStagedImage;
+        LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT AllocateAddressSpaceStack;
     } Payload;
 } LOS_MEMORY_MANAGER_RESPONSE_MESSAGE;
 

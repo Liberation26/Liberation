@@ -1,4 +1,5 @@
 #include "MemoryManagerMain.h"
+#include "MemoryManagerAddressSpace.h"
 
 volatile UINT64 LosMemoryManagerServiceHeartbeat = 0ULL;
 const char LosMemoryManagerServiceBanner[] = "Liberation Memory Manager Service";
@@ -816,6 +817,18 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
     State->EventEndpoint->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
     State->AddressSpaceObject->State = LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_ACTIVE;
     State->TaskObject->State = LOS_MEMORY_MANAGER_TASK_STATE_ONLINE;
+    if (State->AddressSpaceObject->AddressSpaceId == 0ULL)
+    {
+        State->AddressSpaceObject->AddressSpaceId = 1ULL;
+    }
+    State->NextAddressSpaceId = State->AddressSpaceObject->AddressSpaceId + 1ULL;
+    ServiceSerialWriteText("[MemManager] Bootstrap address space created id=");
+    ServiceSerialWriteUnsigned(State->AddressSpaceObject->AddressSpaceId);
+    ServiceSerialWriteText(" object=");
+    ServiceSerialWriteHex64(LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress);
+    ServiceSerialWriteText(" root=");
+    ServiceSerialWriteHex64(State->AddressSpaceObject->RootTablePhysicalAddress);
+    ServiceSerialWriteText("\n");
     State->NegotiatedOperations = 0ULL;
     State->AttachComplete = 0U;
     State->BootstrapResultCode = LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST;
@@ -870,6 +883,10 @@ static BOOLEAN ServiceMayHandleOperation(const LOS_MEMORY_MANAGER_SERVICE_STATE 
         case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
+        case LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE:
+        case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
             return 1;
         default:
             return 0;
@@ -1182,6 +1199,22 @@ void LosMemoryManagerServicePoll(void)
         case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
             LosMemoryManagerServiceFreeFrames(State, &Slot->Message.Payload.FreeFrames, &Response.Payload.FreeFrames);
             Response.Status = Response.Payload.FreeFrames.Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
+            LosMemoryManagerServiceCreateAddressSpace(State, &Slot->Message.Payload.CreateAddressSpace, &Response.Payload.CreateAddressSpace);
+            Response.Status = Response.Payload.CreateAddressSpace.Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE:
+            LosMemoryManagerServiceDestroyAddressSpace(State, &Slot->Message.Payload.DestroyAddressSpace, &Response.Payload.DestroyAddressSpace);
+            Response.Status = Response.Payload.DestroyAddressSpace.Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
+            LosMemoryManagerServiceAttachStagedImage(State, &Slot->Message.Payload.AttachStagedImage, &Response.Payload.AttachStagedImage);
+            Response.Status = Response.Payload.AttachStagedImage.Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
+            LosMemoryManagerServiceAllocateAddressSpaceStack(State, &Slot->Message.Payload.AllocateAddressSpaceStack, &Response.Payload.AllocateAddressSpaceStack);
+            Response.Status = Response.Payload.AllocateAddressSpaceStack.Status;
             break;
         default:
             return;

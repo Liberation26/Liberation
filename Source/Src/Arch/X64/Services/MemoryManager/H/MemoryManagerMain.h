@@ -123,6 +123,7 @@ typedef struct
     UINT32 AttachComplete;
     UINT32 BootstrapResultCode;
     UINT32 Reserved0;
+    UINT64 NextAddressSpaceId;
     LOS_MEMORY_MANAGER_MEMORY_VIEW MemoryView;
 } LOS_MEMORY_MANAGER_SERVICE_STATE;
 
@@ -136,5 +137,15 @@ void LosMemoryManagerServiceQueryMemoryRegions(LOS_MEMORY_MANAGER_SERVICE_STATE 
 void LosMemoryManagerServiceReserveFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_X64_RESERVE_FRAMES_REQUEST *Request, LOS_X64_RESERVE_FRAMES_RESULT *Result);
 void LosMemoryManagerServiceClaimFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_X64_CLAIM_FRAMES_REQUEST *Request, LOS_X64_CLAIM_FRAMES_RESULT *Result);
 void LosMemoryManagerServiceFreeFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_X64_FREE_FRAMES_REQUEST *Request, LOS_X64_FREE_FRAMES_RESULT *Result);
+BOOLEAN LosMemoryManagerServiceClaimTrackedFrames(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    UINT64 PageCount,
+    UINT64 AlignmentBytes,
+    UINT32 Flags,
+    UINT32 Owner,
+    UINT32 Usage,
+    UINT64 *BaseAddress);
+BOOLEAN LosMemoryManagerServiceFreeTrackedFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT64 PhysicalAddress, UINT64 PageCount);
+
 
 #endif

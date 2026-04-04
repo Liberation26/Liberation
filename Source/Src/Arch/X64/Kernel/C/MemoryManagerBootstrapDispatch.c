@@ -18,6 +18,14 @@ static const char *OperationName(UINT32 Operation)
             return "UnmapPages";
         case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
             return "FreeFrames";
+        case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
+            return "CreateAddressSpace";
+        case LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE:
+            return "DestroyAddressSpace";
+        case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
+            return "AttachStagedImage";
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
+            return "AllocateAddressSpaceStack";
         default:
             return "Unknown";
     }
@@ -350,6 +358,22 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
             LosX64UnmapPages(&Slot->Message.Payload.UnmapPages, &Response->Payload.UnmapPages);
             Response->Status = Response->Payload.UnmapPages.Status;
             break;
+        case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.CreateAddressSpace.Status = Response->Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.DestroyAddressSpace.Status = Response->Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.AttachStagedImage.Status = Response->Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.AllocateAddressSpaceStack.Status = Response->Status;
+            break;
         default:
             Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
             break;
@@ -372,6 +396,10 @@ static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
         case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
+        case LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE:
+        case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
             return 1;
         default:
             return 0;
@@ -755,6 +783,90 @@ void LosMemoryManagerSendUnmapPages(const LOS_X64_UNMAP_PAGES_REQUEST *RequestDa
     if (Result != 0)
     {
         CopyBytes(Result, &Response.Payload.UnmapPages, sizeof(*Result));
+        Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendCreateAddressSpace(const LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_REQUEST *RequestData, LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    ZeroMemory(&Request, sizeof(Request));
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE;
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    if (RequestData != 0)
+    {
+        CopyBytes(&Request.Payload.CreateAddressSpace, RequestData, sizeof(*RequestData));
+    }
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.CreateAddressSpace, sizeof(*Result));
+        Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendDestroyAddressSpace(const LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_REQUEST *RequestData, LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    ZeroMemory(&Request, sizeof(Request));
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE;
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    if (RequestData != 0)
+    {
+        CopyBytes(&Request.Payload.DestroyAddressSpace, RequestData, sizeof(*RequestData));
+    }
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.DestroyAddressSpace, sizeof(*Result));
+        Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendAttachStagedImage(const LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_REQUEST *RequestData, LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    ZeroMemory(&Request, sizeof(Request));
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE;
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    if (RequestData != 0)
+    {
+        CopyBytes(&Request.Payload.AttachStagedImage, RequestData, sizeof(*RequestData));
+    }
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.AttachStagedImage, sizeof(*Result));
+        Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendAllocateAddressSpaceStack(const LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_REQUEST *RequestData, LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    ZeroMemory(&Request, sizeof(Request));
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK;
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    if (RequestData != 0)
+    {
+        CopyBytes(&Request.Payload.AllocateAddressSpaceStack, RequestData, sizeof(*RequestData));
+    }
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.AllocateAddressSpaceStack, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }

@@ -369,7 +369,7 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
 
         MemoryManagerBootstrapInfo = LosGetMemoryManagerBootstrapInfo();
         LosKernelSerialWriteText("[OK] [Kernel] Bootstrap address space created.\n");
-        LosKernelScreenSetBootstrapNotification("Bootstrap address space created.");
+        LosKernelTraceOk("Bootstrap address space created.");
         LosKernelTraceUnsigned("Memory-manager bootstrap address-space id: ", 1ULL);
         if (MemoryManagerBootstrapInfo != 0)
         {

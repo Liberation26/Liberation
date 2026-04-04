@@ -714,6 +714,11 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->LaunchBlock->ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
     State->ServiceAddressSpaceObject->DirectMapBase = Layout->HigherHalfDirectMapBase;
     State->ServiceAddressSpaceObject->DirectMapSize = Layout->HigherHalfDirectMapSize;
+    State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress = ImagePhysicalBase;
+    State->ServiceAddressSpaceObject->ServiceImageSize = ImageMappedBytes;
+    State->ServiceAddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
+    State->ServiceAddressSpaceObject->EntryVirtualAddress = Header->Entry;
+    State->ServiceAddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
     if (!MapServiceStackIntoAddressSpace(
             ServiceRootPhysicalAddress,
             State->Info.ServiceStackPhysicalAddress,
@@ -728,6 +733,22 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
         LosKernelTraceFail("Memory-manager service stack top virtual address remained zero after stack map.");
         return 0;
     }
+    State->ServiceAddressSpaceObject->StackPhysicalAddress = State->Info.ServiceStackPhysicalAddress;
+    State->ServiceAddressSpaceObject->StackPageCount = State->Info.ServiceStackPageCount;
+    State->ServiceAddressSpaceObject->StackBaseVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE;
+    State->ServiceAddressSpaceObject->StackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
+    State->ServiceAddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegionCount = 2U;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].BaseVirtualAddress = ImageVirtualBase;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].PageCount = ImagePageCount;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].Type = LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].Flags = 0U;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].BackingPhysicalAddress = ImagePhysicalBase;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].BaseVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].PageCount = State->Info.ServiceStackPageCount;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].Type = LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_STACK;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].Flags = 0U;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].BackingPhysicalAddress = State->Info.ServiceStackPhysicalAddress;
     SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_PUBLISH_LAUNCH, LOS_MEMORY_MANAGER_PREP_DETAIL_BEGIN);
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_IMAGE_MAPPED;
     State->LaunchBlock->Flags = State->Info.Flags;

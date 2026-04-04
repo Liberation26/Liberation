@@ -47,8 +47,6 @@ typedef struct
     UINT32 FontScale;
     BOOLEAN FontLoaded;
     BOOLEAN Ready;
-    BOOLEAN BootstrapNotificationVisible;
-    char BootstrapNotificationText[96];
 } LOS_KERNEL_SCREEN_STATE;
 
 static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
@@ -59,7 +57,6 @@ static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 #define LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS 8U
 #define LOS_KERNEL_SCREEN_RIGHT_MARGIN_COLUMNS 1U
 #define LOS_KERNEL_SCREEN_TIMER_ROW 1U
-#define LOS_KERNEL_SCREEN_NOTIFICATION_ROW 2U
 #define LOS_KERNEL_SCREEN_FIRST_LOG_ROW 3U
 
 static void ApplyLineIndent(UINT32 IndentColumns);
@@ -68,7 +65,6 @@ static void ClearRow(UINT32 Row);
 static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color);
 static void DrawStaticScreenDecorations(void);
 static void DrawTimerOverlayFrame(void);
-static void DrawBootstrapNotification(void);
 static void ResetLogCursor(void);
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
@@ -94,29 +90,6 @@ static void TraceScreenInitValue(const char *Prefix, UINT64 Value)
     LosKernelSerialWriteText(Prefix);
     LosKernelSerialWriteHex64(Value);
     LosKernelSerialWriteText("\n");
-}
-
-static void CopyAsciiText(char *Destination, UINT32 Capacity, const char *Source)
-{
-    UINT32 Index;
-
-    if (Destination == 0 || Capacity == 0U)
-    {
-        return;
-    }
-
-    if (Source == 0)
-    {
-        Destination[0] = '\0';
-        return;
-    }
-
-    for (Index = 0U; Index + 1U < Capacity && Source[Index] != '\0'; ++Index)
-    {
-        Destination[Index] = Source[Index];
-    }
-
-    Destination[Index] = '\0';
 }
 
 static char ToUpperAscii(char Character)
@@ -700,29 +673,6 @@ static void DrawTimerOverlayFrame(void)
     DrawUnsignedAt(30U, Row, 0ULL, 10U, GetTextColor());
 }
 
-static void DrawBootstrapNotification(void)
-{
-    UINT32 Row;
-
-    if (LosKernelScreenState.Ready == 0U ||
-        LosKernelScreenState.MaxRows <= LOS_KERNEL_SCREEN_NOTIFICATION_ROW ||
-        LosKernelScreenState.MaxColumns < 20U)
-    {
-        return;
-    }
-
-    Row = LOS_KERNEL_SCREEN_NOTIFICATION_ROW;
-    ClearRow(Row);
-    if (LosKernelScreenState.BootstrapNotificationVisible == 0U ||
-        LosKernelScreenState.BootstrapNotificationText[0] == '\0')
-    {
-        return;
-    }
-
-    DrawTextAt(1U, Row, "[OK]", GetOkPrefixColor());
-    DrawTextAt(6U, Row, LosKernelScreenState.BootstrapNotificationText, GetTextColor());
-}
-
 static void DrawStaticScreenDecorations(void)
 {
     UINT32 LastColumn;
@@ -770,7 +720,6 @@ static void DrawStaticScreenDecorations(void)
     DrawTextAt(18U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer) + GetWordLength(ColumnBuffer), LastRow, "X", TextColor);
     DrawTextAt(19U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer) + GetWordLength(ColumnBuffer), LastRow, RowBuffer, TextColor);
     DrawTimerOverlayFrame();
-    DrawBootstrapNotification();
 }
 
 static void DrawInitializationProbe(void)
@@ -908,18 +857,6 @@ void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN Inter
     DrawUnsignedAt(30U, Row, TickCount, 10U, GetTextColor());
 }
 
-void LosKernelScreenSetBootstrapNotification(const char *Text)
-{
-    CopyAsciiText(
-        LosKernelScreenState.BootstrapNotificationText,
-        (UINT32)sizeof(LosKernelScreenState.BootstrapNotificationText),
-        Text);
-    LosKernelScreenState.BootstrapNotificationVisible =
-        (Text != 0 && Text[0] != '\0') ? 1U : 0U;
-
-    DrawBootstrapNotification();
-}
-
 void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
 {
     LOS_X64_MAP_PAGES_REQUEST MapRequest;
@@ -943,8 +880,6 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
     ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
     LosKernelScreenState.MaxColumns = 0U;
     LosKernelScreenState.MaxRows = 0U;
-    LosKernelScreenState.BootstrapNotificationVisible = 0U;
-    LosKernelScreenState.BootstrapNotificationText[0] = '\0';
     InitializeDefaultFont();
     LosKernelScreenState.Ready = 0U;
 
