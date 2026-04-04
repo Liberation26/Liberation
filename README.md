@@ -1,5 +1,6 @@
-## Delivery note for 0.1.26
+## Delivery note for 0.1.27
 
+- Packaging fix: `Scripts/BuildBoot.sh` is now included in `ChangedFiles` so ChangedFiles-only updates pick up the public include path needed for `MemoryManagerServiceAbi.h`.
 - Added a distinct bootstrap-owned **memory-manager PML4 root** so the first service image is no longer mapped only into the live kernel root. The service address-space object now carries both the new service root and the original kernel root.
 - The kernel now clones the current higher-half/direct-map root into a dedicated memory-manager page-map, maps `MEMORYMGR.ELF` into that root, and records the service root physical address in the shared launch block.
 - The hosted bootstrap invocation now performs a real **CR3 switch into the service root** before calling the mapped `MEMORYMGR.ELF` entry, then restores the previous kernel root on return.

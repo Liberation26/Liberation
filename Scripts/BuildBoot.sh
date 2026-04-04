@@ -5,6 +5,7 @@ RootDir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SourceRoot="${RootDir}/Source/Src"
 BootSourceDir="${SourceRoot}/Arch/X64/Boot/C"
 BootHeaderDir="${SourceRoot}/Arch/X64/Boot/H"
+PublicIncludeDir="${RootDir}/Source/Include/Public"
 InstallerSourceDir="${SourceRoot}/Arch/X64/Installer/C"
 InstallerHeaderDir="${SourceRoot}/Arch/X64/Installer/H"
 MonitorSourceDir="${SourceRoot}/Arch/X64/Monitor/C"
@@ -132,7 +133,7 @@ echo "[Liberation] Building memory-manager service ELF image..."
 MemoryManagerServiceObjects=()
 for SourceFile in "${MemoryManagerServiceSourceDir}"/*.c; do
     BaseName="$(basename "${SourceFile}" .c)-MemoryManagerService"
-    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -I"${BootHeaderDir}"         -I"${MemoryManagerServiceHeaderDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -I"${BootHeaderDir}"         -I"${MemoryManagerServiceHeaderDir}"         -I"${PublicIncludeDir}"         -I"${MemoryHeaderDir}"         -I"${KernelHeaderDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
     MemoryManagerServiceObjects+=("${BuildDir}/${BaseName}.o")
 done
 
@@ -149,7 +150,7 @@ echo "[Liberation] Building ELF X64 kernel image..."
 KernelObjects=()
 for SourceFile in "${KernelSourceDir}"/*.c "${InterruptSourceDir}"/*.c "${MemorySourceDir}"/*.c; do
     BaseName="$(basename "${SourceFile}" .c)-Kernel"
-    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -DLIBERATION_VERSION_STRING="${OsVersion}"         -I"${BootHeaderDir}"         -I"${KernelHeaderDir}"         -I"${InterruptHeaderDir}"         -I"${MemoryHeaderDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -DLIBERATION_VERSION_STRING="${OsVersion}"         -I"${BootHeaderDir}"         -I"${KernelHeaderDir}"         -I"${InterruptHeaderDir}"         -I"${MemoryHeaderDir}"         -I"${PublicIncludeDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
     KernelObjects+=("${BuildDir}/${BaseName}.o")
 done
 
