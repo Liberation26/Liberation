@@ -750,6 +750,6 @@ BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void)
     State->ServiceTaskObject->Flags &= ~LOS_MEMORY_MANAGER_TASK_FLAG_BOOTSTRAP_HOSTED;
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ENTRY_INVOKED;
     State->LaunchBlock->Flags = State->Info.Flags;
-    LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager service entry returned unexpectedly.");
-    return 0;
+    LosKernelTrace("Memory-manager hosted bootstrap step completed and control returned to kernel.");
+    return 1;
 }
