@@ -5,6 +5,19 @@ static void TraceEndpoint(const char *Prefix, UINT64 Value)
     LosKernelTraceHex64(Prefix, Value);
 }
 
+static void TraceEndpointObject(const char *Prefix, const LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint)
+{
+    if (Endpoint == 0)
+    {
+        return;
+    }
+
+    LosKernelTraceHex64(Prefix, Endpoint->EndpointId);
+    LosKernelTraceUnsigned("Memory-manager endpoint role: ", Endpoint->Role);
+    LosKernelTraceUnsigned("Memory-manager endpoint state: ", Endpoint->State);
+    LosKernelTraceHex64("Memory-manager endpoint mailbox physical: ", Endpoint->MailboxPhysicalAddress);
+}
+
 void LosMemoryManagerBootstrapDescribeState(void)
 {
     const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
@@ -23,6 +36,9 @@ void LosMemoryManagerBootstrapDescribeState(void)
     LosKernelTraceHex64("Memory-manager request mailbox physical: ", Info->RequestMailboxPhysicalAddress);
     LosKernelTraceHex64("Memory-manager response mailbox physical: ", Info->ResponseMailboxPhysicalAddress);
     LosKernelTraceHex64("Memory-manager event mailbox physical: ", Info->EventMailboxPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager receive endpoint object physical: ", Info->KernelToServiceEndpointObjectPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager reply endpoint object physical: ", Info->ServiceToKernelEndpointObjectPhysicalAddress);
+    LosKernelTraceHex64("Memory-manager event endpoint object physical: ", Info->ServiceEventsEndpointObjectPhysicalAddress);
     LosKernelTraceHex64("Memory-manager launch block physical: ", Info->LaunchBlockPhysicalAddress);
     LosKernelTraceHex64("Memory-manager service stack physical: ", Info->ServiceStackPhysicalAddress);
     LosKernelTraceHex64("Memory-manager service image physical: ", Info->ServiceImagePhysicalAddress);
@@ -30,6 +46,9 @@ void LosMemoryManagerBootstrapDescribeState(void)
     LosKernelTraceHex64("Memory-manager service ELF entry: ", Info->ServiceEntryVirtualAddress);
     LosKernelTraceUnsigned("Memory-manager bootstrap messages sent: ", State->MessagesSent);
     LosKernelTraceUnsigned("Memory-manager bootstrap messages completed: ", State->MessagesCompleted);
+    TraceEndpointObject("Memory-manager receive endpoint id: ", LosMemoryManagerBootstrapGetKernelToServiceEndpointObject());
+    TraceEndpointObject("Memory-manager reply endpoint id: ", LosMemoryManagerBootstrapGetServiceToKernelEndpointObject());
+    TraceEndpointObject("Memory-manager event endpoint id: ", LosMemoryManagerBootstrapGetServiceEventsEndpointObject());
     if (LaunchBlock != 0)
     {
         LosKernelTraceHex64("Memory-manager launch block stack top: ", LaunchBlock->ServiceStackTopPhysicalAddress);

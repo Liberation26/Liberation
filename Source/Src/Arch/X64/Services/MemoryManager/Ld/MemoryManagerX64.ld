@@ -1,4 +1,4 @@
-ENTRY(LosMemoryManagerServiceEntry)
+ENTRY(LosMemoryManagerServiceBootstrapEntry)
 
 SECTIONS
 {

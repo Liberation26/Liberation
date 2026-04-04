@@ -387,3 +387,6 @@ Version 0.1.13 adds the first dedicated `MEMORYMGR.ELF` image to the installed i
 - 0.1.18: kernel console now starts each line with a 1-character indent and uses an 8-character indent for automatic word-wrapped continuation lines.
 
 - 0.1.20: fixed the kernel console build break by forward-declaring ApplyLineIndent before its first use.
+## 0.1.28 packaging fix
+
+This package corrects the memory-manager bootstrap update set so ChangedFiles-only updates include the full memory-manager bootstrap source/header set required by the kernel and service build.

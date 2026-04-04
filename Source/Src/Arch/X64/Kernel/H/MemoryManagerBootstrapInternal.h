@@ -11,6 +11,11 @@ typedef struct
 {
     LOS_MEMORY_MANAGER_BOOTSTRAP_INFO Info;
     LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock;
+    LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *KernelToServiceEndpointObject;
+    LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *ServiceToKernelEndpointObject;
+    LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *ServiceEventsEndpointObject;
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *ServiceAddressSpaceObject;
+    LOS_MEMORY_MANAGER_TASK_OBJECT *ServiceTaskObject;
     UINT64 NextRequestId;
     UINT64 MessagesSent;
     UINT64 MessagesCompleted;
@@ -36,8 +41,18 @@ BOOLEAN LosMemoryManagerBootstrapValidateServiceImage(void);
 BOOLEAN LosMemoryManagerBootstrapStageTransport(void);
 LOS_MEMORY_MANAGER_REQUEST_MAILBOX *LosMemoryManagerBootstrapGetRequestMailbox(void);
 LOS_MEMORY_MANAGER_RESPONSE_MAILBOX *LosMemoryManagerBootstrapGetResponseMailbox(void);
+LOS_MEMORY_MANAGER_EVENT_MAILBOX *LosMemoryManagerBootstrapGetEventMailbox(void);
 void LosMemoryManagerBootstrapInitializeMailboxes(void);
 BOOLEAN LosMemoryManagerBootstrapEnqueueRequest(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request);
 BOOLEAN LosMemoryManagerBootstrapDequeueResponse(UINT64 RequestId, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response);
+void LosMemoryManagerBootstrapPublishLaunchReady(void);
+LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *LosMemoryManagerBootstrapGetKernelToServiceEndpointObject(void);
+LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *LosMemoryManagerBootstrapGetServiceToKernelEndpointObject(void);
+LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *LosMemoryManagerBootstrapGetServiceEventsEndpointObject(void);
+BOOLEAN LosMemoryManagerBootstrapEndpointsReady(void);
+void LosMemoryManagerBootstrapSetEndpointState(LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint, UINT32 State);
+BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void);
+BOOLEAN LosMemoryManagerBootstrapEnsureServiceEntryReady(void);
+BOOLEAN LosMemoryManagerBootstrapInvokeServiceEntry(void);
 
 #endif

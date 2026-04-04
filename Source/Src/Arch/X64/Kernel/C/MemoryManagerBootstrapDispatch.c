@@ -17,6 +17,19 @@ static void ZeroMemory(void *Buffer, UINTN ByteCount)
     }
 }
 
+static BOOLEAN EndpointReady(const LOS_MEMORY_MANAGER_ENDPOINT_OBJECT *Endpoint, UINT64 EndpointId, UINT32 Role)
+{
+    if (Endpoint == 0)
+    {
+        return 0;
+    }
+
+    return Endpoint->EndpointId == EndpointId &&
+           Endpoint->Role == Role &&
+           Endpoint->State >= LOS_MEMORY_MANAGER_ENDPOINT_STATE_READY &&
+           (Endpoint->Flags & LOS_MEMORY_MANAGER_ENDPOINT_FLAG_MAILBOX_ATTACHED) != 0ULL;
+}
+
 static void InitializeResponse(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
     if (Response == 0)
@@ -39,7 +52,8 @@ static BOOLEAN PostResponse(const LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
     LOS_MEMORY_MANAGER_RESPONSE_SLOT *Slot;
 
     Mailbox = LosMemoryManagerBootstrapGetResponseMailbox();
-    if (Mailbox == 0 || Response == 0)
+    if (!EndpointReady(LosMemoryManagerBootstrapGetServiceToKernelEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_SERVICE_TO_KERNEL, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_REPLY) ||
+        Mailbox == 0 || Response == 0)
     {
         return 0;
     }
@@ -65,7 +79,8 @@ BOOLEAN LosMemoryManagerBootstrapEnqueueRequest(const LOS_MEMORY_MANAGER_REQUEST
     LOS_MEMORY_MANAGER_REQUEST_SLOT *Slot;
 
     Mailbox = LosMemoryManagerBootstrapGetRequestMailbox();
-    if (Mailbox == 0 || Request == 0)
+    if (!EndpointReady(LosMemoryManagerBootstrapGetKernelToServiceEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_KERNEL_TO_SERVICE, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_RECEIVE) ||
+        Mailbox == 0 || Request == 0)
     {
         return 0;
     }
@@ -84,13 +99,41 @@ BOOLEAN LosMemoryManagerBootstrapEnqueueRequest(const LOS_MEMORY_MANAGER_REQUEST
     return 1;
 }
 
+static BOOLEAN ResponseReady(UINT64 RequestId)
+{
+    LOS_MEMORY_MANAGER_RESPONSE_MAILBOX *Mailbox;
+    UINT64 Scanned;
+
+    Mailbox = LosMemoryManagerBootstrapGetResponseMailbox();
+    if (Mailbox == 0)
+    {
+        return 0;
+    }
+
+    for (Scanned = 0ULL; Scanned < Mailbox->Header.SlotCount; ++Scanned)
+    {
+        UINT64 Index;
+        LOS_MEMORY_MANAGER_RESPONSE_SLOT *Slot;
+
+        Index = (Mailbox->Header.ConsumeIndex + Scanned) % Mailbox->Header.SlotCount;
+        Slot = &Mailbox->Slots[Index];
+        if (Slot->SlotState == LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY && Slot->Sequence == RequestId)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 BOOLEAN LosMemoryManagerBootstrapDequeueResponse(UINT64 RequestId, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
     LOS_MEMORY_MANAGER_RESPONSE_MAILBOX *Mailbox;
     UINT64 Scanned;
 
     Mailbox = LosMemoryManagerBootstrapGetResponseMailbox();
-    if (Mailbox == 0 || Response == 0)
+    if (!EndpointReady(LosMemoryManagerBootstrapGetServiceToKernelEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_SERVICE_TO_KERNEL, LOS_MEMORY_MANAGER_ENDPOINT_ROLE_REPLY) ||
+        Mailbox == 0 || Response == 0)
     {
         return 0;
     }
@@ -121,6 +164,64 @@ BOOLEAN LosMemoryManagerBootstrapDequeueResponse(UINT64 RequestId, LOS_MEMORY_MA
     return 0;
 }
 
+static BOOLEAN HostedServiceTaskReady(void)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+
+    State = LosMemoryManagerBootstrapState();
+    return State->ServiceTaskObject != 0 &&
+           State->ServiceAddressSpaceObject != 0 &&
+           State->ServiceTaskObject->State >= LOS_MEMORY_MANAGER_TASK_STATE_READY &&
+           State->ServiceAddressSpaceObject->State >= LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY;
+}
+
+BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+    LOS_MEMORY_MANAGER_REQUEST_MAILBOX *RequestMailbox;
+    LOS_MEMORY_MANAGER_REQUEST_SLOT *Slot;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    State = LosMemoryManagerBootstrapState();
+    if (!HostedServiceTaskReady())
+    {
+        return 0;
+    }
+
+    RequestMailbox = LosMemoryManagerBootstrapGetRequestMailbox();
+    if (RequestMailbox == 0)
+    {
+        return 0;
+    }
+
+    Slot = &RequestMailbox->Slots[(RequestMailbox->Header.ConsumeIndex) % RequestMailbox->Header.SlotCount];
+    if (Slot->SlotState != LOS_MEMORY_MANAGER_MAILBOX_SLOT_READY)
+    {
+        return 0;
+    }
+
+    State->ServiceTaskObject->LastRequestId = Slot->Message.RequestId;
+    State->ServiceTaskObject->Heartbeat += 1ULL;
+    State->KernelToServiceEndpointObject->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
+    State->ServiceToKernelEndpointObject->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
+    State->ServiceEventsEndpointObject->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
+
+    if (!LosMemoryManagerBootstrapInvokeServiceEntry())
+    {
+        return 0;
+    }
+
+    if (!ResponseReady(Slot->Message.RequestId))
+    {
+        LosMemoryManagerBootstrapDispatch(&Slot->Message, &Response);
+    }
+
+    State->ServiceTaskObject->Flags |= LOS_MEMORY_MANAGER_TASK_FLAG_SERVICE_READY;
+    State->Info.State = LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_ONLINE;
+    State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ONLINE;
+    return 1;
+}
+
 void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response)
 {
     LOS_MEMORY_MANAGER_REQUEST_MAILBOX *RequestMailbox;
@@ -134,7 +235,7 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
     }
 
     RequestMailbox = LosMemoryManagerBootstrapGetRequestMailbox();
-    if (RequestMailbox == 0)
+    if (!LosMemoryManagerBootstrapEndpointsReady() || RequestMailbox == 0)
     {
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
         return;
@@ -206,11 +307,34 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
         return;
     }
 
-    LosMemoryManagerBootstrapDispatch(Request, Response);
+    if (!LosMemoryManagerBootstrapHostedServiceStep())
+    {
+        Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        return;
+    }
     if (!LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response))
     {
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
     }
+}
+
+void LosMemoryManagerBootstrapPublishLaunchReady(void)
+{
+    LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+
+    State = LosMemoryManagerBootstrapState();
+    if (State->LaunchBlock == 0 || State->Info.ServiceEntryVirtualAddress == 0ULL)
+    {
+        return;
+    }
+
+    State->LaunchBlock->Flags = State->Info.Flags | LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ENTRY_PUBLISHED | LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_LAUNCH_PREPARED;
+    State->LaunchBlock->ServiceEntryVirtualAddress = State->Info.ServiceEntryVirtualAddress;
+    LosMemoryManagerBootstrapSetEndpointState(LosMemoryManagerBootstrapGetKernelToServiceEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_STATE_BOUND);
+    LosMemoryManagerBootstrapSetEndpointState(LosMemoryManagerBootstrapGetServiceToKernelEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_STATE_BOUND);
+    LosMemoryManagerBootstrapSetEndpointState(LosMemoryManagerBootstrapGetServiceEventsEndpointObject(), LOS_MEMORY_MANAGER_ENDPOINT_STATE_BOUND);
+    State->Info.Flags = State->LaunchBlock->Flags;
+    State->Info.State = LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_PREPARED;
 }
 
 void LosMemoryManagerSendQueryMemoryRegions(LOS_X64_MEMORY_REGION *Buffer, UINTN BufferRegionCapacity, LOS_X64_QUERY_MEMORY_REGIONS_RESULT *Result)
