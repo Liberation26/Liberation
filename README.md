@@ -1,5 +1,27 @@
 # Liberation OS
 
+## Delivery note for 0.1.11
+
+This delivery advances the memory-manager bootstrap from a direct in-kernel bridge to a staged service-launch contract. The kernel now claims and initializes dedicated physical pages for request, response, and event mailboxes, builds a concrete memory-manager launch block with endpoint and stack metadata, and routes bootstrap memory requests through those mailboxes before dispatching them to the kernel-owned low-level frame and paging primitives.
+
+That means the next real step is now clearly isolated: load a real `MEMORYMGR.ELF` into userland, point it at the staged launch block, and let it begin consuming the already-defined mailbox transport instead of changing the memory operation interface again.
+
+# Liberation OS
+
+## Delivery note for 0.1.10
+
+This delivery moves the memory path from raw bootstrap-only handoff toward a real memory-manager service bootstrap. The kernel now defines a dedicated memory-manager bootstrap contract with fixed endpoint identifiers, endpoint-shaped request and response messages, lifecycle state, and a launch path that probes the service contract before the idle loop begins.
+
+At this stage the low-level frame and page-table primitives still execute inside the kernel, exactly as intended for the lowest-level physical-memory operations, but the kernel now reaches them through a memory-manager bootstrap endpoint bridge instead of treating them only as direct future hooks. That gives the source tree a concrete place to hang the future userland service image, stack, ELF load, and real endpoint transport without changing the already-defined memory operations again.
+
+# Liberation OS
+
+## Delivery note for 0.1.9
+
+This delivery makes the monitor-passed PSF boot font visibly larger in the kernel by switching `Boot.psf` to the bundled 24x32 font and adding integer glyph scaling in the framebuffer text renderer. The kernel now uses the monitor-loaded PSF2 font when present, defaults the boot console to scale 2, recalculates the text grid from the scaled cell size, and keeps the existing built-in bitmap path as a fallback.
+
+# Liberation OS
+
 ## Delivery note for 0.0.74
 
 This delivery fixes a new silent post-`ExitBootServices` bootstrap failure introduced by the serial status-tag helpers. The early bootstrap `[OK]`, `[FAIL]`, and ANSI colour escape literals were being emitted from inline bootstrap helper code without being forced into bootstrap-read-only storage, so the compiler generated references into higher-half rodata before the higher-half mappings existed. That could fault before the bootstrap trap reporter was installed, which is why the log could stop immediately after the final monitor memory-map line.
@@ -288,3 +310,27 @@ Use `./Scripts/Rerunqemu.sh` to relaunch QEMU with the most recently created har
 - replaced the raw EFI-usable interpretation with a physical-frame region database and a first memory-manager handoff contract for the future userland memory-manager service
 - reduced the higher-half memory log to summary totals by default, keeping the full descriptor dump behind a debug flag
 - added page unmap plus frame reservation and frame claim primitives to the x64 bootstrap memory interface
+
+
+## Boot fonts
+
+The source tree now includes bundled PSF2 boot-font assets in `Image/LIBERATION/FONTS/`:
+
+- `Boot.psf` (default, currently `Boot-16x32.psf`)
+- `Boot-16x28.psf`
+- `Boot-16x32.psf`
+- `Boot-24x32.psf`
+
+These files are carried in the installation payload so the kernel screen path can switch to a larger boot console font later. The current timer bring-up build still uses the built-in framebuffer font until the PSF loader is wired into `KernelScreen`.
+
+
+## Memory-manager bootstrap
+
+Version 0.1.13 adds the first dedicated `MEMORYMGR.ELF` image to the installed image tree at `\LIBERATION\SERVICES\MEMORYMGR.ELF`. The monitor now preloads that ELF before `ExitBootServices`, records its physical address and size in the boot context, and the kernel bootstrap validates the ELF header and entry address before publishing the launch block.
+
+
+## 0.1.13
+
+- The monitor is back to kernel-only responsibility.
+- `MEMORYMGR.ELF` is now built as a normal service image and also embedded into a kernel-owned bootstrap package for first-service launch preparation.
+- The monitor no longer loads or validates the memory-manager image.

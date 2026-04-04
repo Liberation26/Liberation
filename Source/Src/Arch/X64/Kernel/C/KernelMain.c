@@ -1,6 +1,7 @@
 #include "KernelMain.h"
 #include "Interrupts.h"
 #include "VirtualMemory.h"
+#include "MemoryManagerBootstrap.h"
 
 #define LOS_SERIAL_COM1_BASE 0x3F8U
 #define LOS_GDT_CODE_FLAGS 0x9AU
@@ -363,8 +364,12 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosX64DescribeMemoryManagerHandoff();
     LosKernelTraceOk("Kernel now owns deliberate paging structures.");
     LosKernelTraceOk("Dedicated kernel stack mapping is active.");
-    LosKernelTraceOk("QueryMemoryRegions, ReserveFrames, and ClaimFrames are ready for the future userland memory manager.");
-    LosKernelTraceOk("MapPages and UnmapPages are ready for explicit address-space work.");
+    LosInitializeMemoryManagerBootstrap(BootContext);
+    LosLaunchMemoryManagerBootstrap();
+    LosDescribeMemoryManagerBootstrap();
+    LosKernelTraceOk("QueryMemoryRegions, ReserveFrames, and ClaimFrames are reachable through the memory-manager bootstrap endpoint path.");
+    LosKernelTraceOk("MapPages and UnmapPages are reachable through the memory-manager bootstrap endpoint path.");
+    LosKernelTraceOk("A first dedicated memory-manager ELF image is staged from the kernel-owned bootstrap package.");
     LosKernelTraceOk("Memory manager remains a userland service.");
     LosKernelTraceUnsigned("Timer tick count before enabling interrupts: ", LosX64GetTimerTickCount());
     LosKernelScreenUpdateTimer(LosX64GetTimerTickCount(), 100ULL, 0U);

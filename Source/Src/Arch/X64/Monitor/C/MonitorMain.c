@@ -57,6 +57,7 @@ static void LoadBootFont(EFI_HANDLE ParentDeviceHandle, EFI_SYSTEM_TABLE *System
     *FontSize = 0ULL;
 }
 
+
 EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
     LOS_MONITOR_ENTER(SystemTable);
