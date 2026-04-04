@@ -64,6 +64,7 @@ static UINT32 GetWritableColumnLimit(void);
 static void ClearRow(UINT32 Row);
 static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color);
 static void DrawStaticScreenDecorations(void);
+static void DrawTimerOverlayFrame(void);
 static void ResetLogCursor(void);
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
@@ -557,23 +558,35 @@ static void PutText(const char *Text)
 
 static void DrawTextAt(UINT32 Column, UINT32 Row, const char *Text, UINT32 Color)
 {
-    UINT32 SavedColumn;
-    UINT32 SavedRow;
+    UINTN Index;
+    UINT32 DrawColumn;
+    char Character;
 
     if (LosKernelScreenState.Ready == 0U || Text == 0)
     {
         return;
     }
+    if (Row >= LosKernelScreenState.MaxRows || Column >= LosKernelScreenState.MaxColumns)
+    {
+        return;
+    }
 
-    SavedColumn = LosKernelScreenState.CursorColumn;
-    SavedRow = LosKernelScreenState.CursorRow;
-    LosKernelScreenState.CursorColumn = Column;
-    LosKernelScreenState.CursorRow = Row;
+    DrawColumn = Column;
+    for (Index = 0U; Text[Index] != '\0' && DrawColumn < LosKernelScreenState.MaxColumns; ++Index)
+    {
+        Character = Text[Index];
+        if (Character == '\n' || Character == '\r')
+        {
+            break;
+        }
+        if (Character == '\t')
+        {
+            Character = ' ';
+        }
 
-    PutTextColored(Text, Color);
-
-    LosKernelScreenState.CursorColumn = SavedColumn;
-    LosKernelScreenState.CursorRow = SavedRow;
+        DrawCharacterAt(DrawColumn, Row, Character, Color);
+        DrawColumn += 1U;
+    }
 }
 
 static void DrawUnsignedAt(UINT32 Column, UINT32 Row, UINT64 Value, UINT32 Digits, UINT32 Color)
@@ -639,6 +652,27 @@ static UINT32 FormatUnsignedDecimal(UINT64 Value, char *Buffer, UINT32 BufferSiz
     return Length;
 }
 
+static void DrawTimerOverlayFrame(void)
+{
+    UINT32 Row;
+
+    if (LosKernelScreenState.Ready == 0U ||
+        LosKernelScreenState.MaxRows <= LOS_KERNEL_SCREEN_TIMER_ROW ||
+        LosKernelScreenState.MaxColumns < 40U)
+    {
+        return;
+    }
+
+    Row = LOS_KERNEL_SCREEN_TIMER_ROW;
+    ClearRow(Row);
+    DrawTextAt(0U, Row, "TIMER IRQ ", GetTextColor());
+    DrawTextAt(10U, Row, "WAIT", GetFailPrefixColor());
+    DrawTextAt(16U, Row, "HZ ", GetTextColor());
+    DrawUnsignedAt(19U, Row, 0ULL, 3U, GetTextColor());
+    DrawTextAt(24U, Row, "TICKS ", GetTextColor());
+    DrawUnsignedAt(30U, Row, 0ULL, 10U, GetTextColor());
+}
+
 static void DrawStaticScreenDecorations(void)
 {
     UINT32 LastColumn;
@@ -685,6 +719,7 @@ static void DrawStaticScreenDecorations(void)
     DrawTextAt(18U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer), LastRow, ColumnBuffer, TextColor);
     DrawTextAt(18U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer) + GetWordLength(ColumnBuffer), LastRow, "X", TextColor);
     DrawTextAt(19U + GetWordLength(WidthBuffer) + GetWordLength(HeightBuffer) + GetWordLength(ColumnBuffer), LastRow, RowBuffer, TextColor);
+    DrawTimerOverlayFrame();
 }
 
 static void DrawInitializationProbe(void)
@@ -802,8 +837,6 @@ void LosKernelScreenUpdateSpinner(UINT64 TickCount)
     SpinnerColumn = LosKernelScreenState.MaxColumns - 3U;
     SpinnerCharacter = LosSpinnerFrames[(UINTN)(TickCount & 0x3ULL)];
     DrawCharacterAt(SpinnerColumn, 0U, SpinnerCharacter, GetOkPrefixColor());
-    DrawStaticScreenDecorations();
-    DrawCharacterAt(SpinnerColumn, 0U, SpinnerCharacter, GetOkPrefixColor());
 }
 
 void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN InterruptsLive)
@@ -811,7 +844,7 @@ void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN Inter
     UINT32 StatusColor;
     UINT32 Row;
 
-    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.MaxColumns < 30U || LosKernelScreenState.MaxRows < 3U)
+    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.MaxColumns < 40U || LosKernelScreenState.MaxRows < 3U)
     {
         return;
     }
@@ -819,14 +852,9 @@ void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN Inter
     StatusColor = InterruptsLive != 0U ? GetOkPrefixColor() : GetFailPrefixColor();
     Row = LOS_KERNEL_SCREEN_TIMER_ROW;
 
-    ClearRow(Row);
-    DrawTextAt(0U, Row, "TIMER IRQ ", GetTextColor());
     DrawTextAt(10U, Row, InterruptsLive != 0U ? "LIVE" : "WAIT", StatusColor);
-    DrawTextAt(16U, Row, "HZ ", GetTextColor());
     DrawUnsignedAt(19U, Row, TargetHz, 3U, GetTextColor());
-    DrawTextAt(24U, Row, "TICKS ", GetTextColor());
     DrawUnsignedAt(30U, Row, TickCount, 10U, GetTextColor());
-    DrawStaticScreenDecorations();
 }
 
 void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)

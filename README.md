@@ -1,3 +1,9 @@
+Version 0.1.65
+
+This delivery fixes the framebuffer overlay update path so the fixed screen decorations no longer get cleared and repainted on every timer/spinner refresh. The top title row, bottom geometry row, and timer scaffold are now drawn as anchored overlay content, while the live timer state only updates the changing fields in place. That removes the heavy flicker seen during refresh and stops the timer/status overlay from smearing back into the reserved rows.
+
+It also changes fixed-position overlay text rendering to use direct cell draws instead of the normal cursor/word-wrap path. That means the title, geometry line, and timer digits can no longer wrap into neighbouring rows when the text grid is exactly full width, which is what was causing the timer/status corruption at 1280x800.
+
 Version 0.1.64
 
 This delivery hardens the kernel-screen overlay so the title-row wait spinner is rendered directly into a fixed cell instead of going through the cursor/write path. That removes any remaining wrap-side effects from the spinner draw itself. It also adds visible screen diagnostics on the framebuffer output: a `Q` marker is now drawn in all four text-grid corners, and the bottom row shows the current framebuffer pixel dimensions together with the active text-grid column and row count.
