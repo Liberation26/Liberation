@@ -1,6 +1,8 @@
-Version 0.1.57
+Version 0.1.58
 
 This delivery lets the live memory-manager service ingest the kernel's normalized physical-memory region table and build its own service-side RAM view during attach. The bootstrap launch block now publishes the normalized region table physical address, region count, and entry size. `MEMORYMGR.ELF` copies that table into internal descriptors split across usable, bootstrap-reserved, firmware-reserved, runtime, MMIO, ACPI/NVS, and unusable ranges, then builds a service-side page-frame database and overlays the memory-manager's own in-use objects: service image, stack, request/response/event mailboxes, launch block, endpoint objects, address-space object, task object, and service PML4 root. The service now logs the ingested region-table address plus descriptor/page-database totals at attach time so bring-up can prove that the first userland memory authority knows what RAM exists and what is already taken.
+
+This follow-up delivery also fixes the service-image bootstrap mapper so the kernel batches contiguous image pages with identical flags into a single `LosX64MapPages` request. That removes the apparent endless per-page map loop triggered once the memory-manager image grew to carry the real region-table and page-frame database state.
 
 Version 0.1.49
 

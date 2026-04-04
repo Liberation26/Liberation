@@ -481,6 +481,49 @@ static BOOLEAN StageServiceImageInPhysicalMemory(
     return 1;
 }
 
+static BOOLEAN MapServiceImageRunIntoAddressSpace(
+    UINT64 PageMapLevel4PhysicalAddress,
+    UINT64 VirtualAddress,
+    UINT64 PhysicalAddress,
+    UINT64 PageCount,
+    UINT64 PageFlags)
+{
+    LOS_X64_MAP_PAGES_REQUEST MapRequest;
+    LOS_X64_MAP_PAGES_RESULT MapResult;
+
+    if (PageMapLevel4PhysicalAddress == 0ULL ||
+        VirtualAddress == 0ULL ||
+        PhysicalAddress == 0ULL ||
+        PageCount == 0ULL ||
+        PageFlags == 0ULL)
+    {
+        return 0;
+    }
+
+    ZeroMemory(&MapRequest, sizeof(MapRequest));
+    ZeroMemory(&MapResult, sizeof(MapResult));
+    MapRequest.PageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
+    MapRequest.VirtualAddress = VirtualAddress;
+    MapRequest.PhysicalAddress = PhysicalAddress;
+    MapRequest.PageCount = PageCount;
+    MapRequest.PageFlags = PageFlags;
+    MapRequest.Flags = 0U;
+    LosX64MapPages(&MapRequest, &MapResult);
+    if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || MapResult.PagesProcessed != PageCount)
+    {
+        SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS);
+        LosKernelTraceUnsigned("Memory-manager segment map status: ", MapResult.Status);
+        LosKernelTraceHex64("Memory-manager segment map pages processed: ", MapResult.PagesProcessed);
+        LosKernelTraceHex64("Memory-manager segment map requested pages: ", PageCount);
+        LosKernelTraceHex64("Memory-manager segment map virtual page: ", VirtualAddress);
+        LosKernelTraceHex64("Memory-manager segment map physical page: ", PhysicalAddress);
+        LosKernelTraceHex64("Memory-manager segment map page flags: ", PageFlags);
+        return 0;
+    }
+
+    return 1;
+}
+
 static BOOLEAN MapStagedServiceImageIntoAddressSpace(
     UINT64 PageMapLevel4PhysicalAddress,
     const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
@@ -494,50 +537,59 @@ static BOOLEAN MapStagedServiceImageIntoAddressSpace(
     if (PageMapLevel4PhysicalAddress == 0ULL ||
         Header == 0 ||
         ProgramHeaders == 0 ||
+        ImageVirtualBase == 0ULL ||
         ImagePageCount == 0ULL ||
         ImagePhysicalBase == 0ULL)
     {
         return 0;
     }
 
-    for (PageIndex = 0ULL; PageIndex < ImagePageCount; ++PageIndex)
+    PageIndex = 0ULL;
+    while (PageIndex < ImagePageCount)
     {
-        UINT64 PageVirtualAddress;
-        UINT64 PagePhysicalAddress;
+        UINT64 RunStartIndex;
+        UINT64 RunPageCount;
+        UINT64 RunVirtualAddress;
+        UINT64 RunPhysicalAddress;
         UINT64 PageFlags;
-        LOS_X64_MAP_PAGES_REQUEST MapRequest;
-        LOS_X64_MAP_PAGES_RESULT MapResult;
 
-        PageVirtualAddress = ImageVirtualBase + (PageIndex * 0x1000ULL);
-        PagePhysicalAddress = ImagePhysicalBase + (PageIndex * 0x1000ULL);
-        PageFlags = ComputeServiceImagePageFlags(Header, ProgramHeaders, PageVirtualAddress);
+        RunStartIndex = PageIndex;
+        RunVirtualAddress = ImageVirtualBase + (RunStartIndex * 0x1000ULL);
+        RunPhysicalAddress = ImagePhysicalBase + (RunStartIndex * 0x1000ULL);
+        PageFlags = ComputeServiceImagePageFlags(Header, ProgramHeaders, RunVirtualAddress);
         if (PageFlags == 0ULL)
         {
             SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS);
-            LosKernelTraceHex64("Memory-manager image page had no segment coverage: ", PageVirtualAddress);
+            LosKernelTraceHex64("Memory-manager image page had no segment coverage: ", RunVirtualAddress);
             return 0;
         }
 
-        ZeroMemory(&MapRequest, sizeof(MapRequest));
-        ZeroMemory(&MapResult, sizeof(MapResult));
-        MapRequest.PageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
-        MapRequest.VirtualAddress = PageVirtualAddress;
-        MapRequest.PhysicalAddress = PagePhysicalAddress;
-        MapRequest.PageCount = 1ULL;
-        MapRequest.PageFlags = PageFlags;
-        MapRequest.Flags = 0U;
-        LosX64MapPages(&MapRequest, &MapResult);
-        if (MapResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || MapResult.PagesProcessed != 1ULL)
+        RunPageCount = 1ULL;
+        while ((RunStartIndex + RunPageCount) < ImagePageCount)
         {
-            SetKernelPrepareDiagnostic(LOS_MEMORY_MANAGER_PREP_STAGE_MAP_SEGMENT, LOS_MEMORY_MANAGER_PREP_DETAIL_SEGMENT_MAP_STATUS);
-            LosKernelTraceUnsigned("Memory-manager segment map status: ", MapResult.Status);
-            LosKernelTraceHex64("Memory-manager segment map pages processed: ", MapResult.PagesProcessed);
-            LosKernelTraceHex64("Memory-manager segment map requested pages: ", 1ULL);
-            LosKernelTraceHex64("Memory-manager segment map virtual page: ", PageVirtualAddress);
-            LosKernelTraceHex64("Memory-manager segment map physical page: ", PagePhysicalAddress);
-            LosKernelTraceHex64("Memory-manager segment map page flags: ", PageFlags);
+            UINT64 NextVirtualAddress;
+            UINT64 NextPageFlags;
+
+            NextVirtualAddress = ImageVirtualBase + ((RunStartIndex + RunPageCount) * 0x1000ULL);
+            NextPageFlags = ComputeServiceImagePageFlags(Header, ProgramHeaders, NextVirtualAddress);
+            if (NextPageFlags != PageFlags)
+            {
+                break;
+            }
+            RunPageCount += 1ULL;
+        }
+
+        if (!MapServiceImageRunIntoAddressSpace(
+                PageMapLevel4PhysicalAddress,
+                RunVirtualAddress,
+                RunPhysicalAddress,
+                RunPageCount,
+                PageFlags))
+        {
             return 0;
         }
+
+        PageIndex = RunStartIndex + RunPageCount;
     }
 
     return 1;
