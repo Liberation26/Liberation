@@ -1,3 +1,22 @@
+## Version 0.1.60
+
+The visible boot-time memory summary now comes from the live memory-manager service after bootstrap attach succeeds.
+
+The kernel no longer presents the earlier pre-attach physical-memory summary as the main memory display. Instead, `MEMORYMGR.ELF` returns its own computed totals in the bootstrap-attach reply:
+
+- usable bytes
+- bootstrap-reserved bytes
+- firmware-reserved bytes
+- runtime bytes
+- MMIO bytes
+- ACPI/NVS bytes
+- unusable bytes
+- total, free, reserved, runtime, and MMIO page counts
+- internal-descriptor count
+- page-frame database entry count
+
+That means the screen and serial memory report now reflects the memory manager's own post-ingest, post-overlay knowledge, including pages already marked in use by the service's image, stack, mailboxes, launch block, endpoint objects, task/address-space objects, and service root page table.
+
 
 ## Version 0.1.59
 

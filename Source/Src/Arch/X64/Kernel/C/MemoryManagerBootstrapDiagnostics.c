@@ -194,6 +194,181 @@ static void TraceEndpointObject(const char *Prefix, const LOS_MEMORY_MANAGER_END
     LosKernelTraceHex64("Memory-manager endpoint mailbox physical: ", Endpoint->MailboxPhysicalAddress);
 }
 
+static void AppendCharacter(char *Buffer, UINTN Capacity, UINTN *Length, char Character)
+{
+    if (Buffer == 0 || Length == 0 || Capacity == 0U)
+    {
+        return;
+    }
+
+    if (*Length + 1U >= Capacity)
+    {
+        return;
+    }
+
+    Buffer[*Length] = Character;
+    *Length += 1U;
+    Buffer[*Length] = '\0';
+}
+
+static void AppendText(char *Buffer, UINTN Capacity, UINTN *Length, const char *Text)
+{
+    UINTN Index;
+
+    if (Text == 0)
+    {
+        return;
+    }
+
+    for (Index = 0U; Text[Index] != '\0'; ++Index)
+    {
+        AppendCharacter(Buffer, Capacity, Length, Text[Index]);
+    }
+}
+
+static void AppendUnsigned(char *Buffer, UINTN Capacity, UINTN *Length, UINT64 Value)
+{
+    char Digits[32];
+    UINTN DigitCount;
+
+    if (Value == 0ULL)
+    {
+        AppendCharacter(Buffer, Capacity, Length, '0');
+        return;
+    }
+
+    DigitCount = 0U;
+    while (Value != 0ULL && DigitCount < (sizeof(Digits) / sizeof(Digits[0])))
+    {
+        Digits[DigitCount] = (char)('0' + (Value % 10ULL));
+        Value /= 10ULL;
+        ++DigitCount;
+    }
+
+    while (DigitCount > 0U)
+    {
+        --DigitCount;
+        AppendCharacter(Buffer, Capacity, Length, Digits[DigitCount]);
+    }
+}
+
+static void AppendMiBValue(char *Buffer, UINTN Capacity, UINTN *Length, UINT64 Bytes)
+{
+    AppendUnsigned(Buffer, Capacity, Length, Bytes / (1024ULL * 1024ULL));
+}
+
+static void BuildMemoryManagerKnowledgeLine0(char *Buffer, UINTN Capacity, const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
+{
+    UINTN Length;
+
+    if (Buffer == 0 || Capacity == 0U || Result == 0)
+    {
+        return;
+    }
+
+    Buffer[0] = '\0';
+    Length = 0U;
+    AppendText(Buffer, Capacity, &Length, "MM usable MiB ");
+    AppendMiBValue(Buffer, Capacity, &Length, Result->TotalUsableBytes);
+    AppendText(Buffer, Capacity, &Length, " boot ");
+    AppendMiBValue(Buffer, Capacity, &Length, Result->TotalBootstrapReservedBytes);
+    AppendText(Buffer, Capacity, &Length, " fw ");
+    AppendMiBValue(Buffer, Capacity, &Length, Result->TotalFirmwareReservedBytes);
+}
+
+static void BuildMemoryManagerKnowledgeLine1(char *Buffer, UINTN Capacity, const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
+{
+    UINTN Length;
+
+    if (Buffer == 0 || Capacity == 0U || Result == 0)
+    {
+        return;
+    }
+
+    Buffer[0] = '\0';
+    Length = 0U;
+    AppendText(Buffer, Capacity, &Length, "MM runtime ");
+    AppendMiBValue(Buffer, Capacity, &Length, Result->TotalRuntimeBytes);
+    AppendText(Buffer, Capacity, &Length, " mmio ");
+    AppendMiBValue(Buffer, Capacity, &Length, Result->TotalMmioBytes);
+    AppendText(Buffer, Capacity, &Length, " acpi ");
+    AppendMiBValue(Buffer, Capacity, &Length, Result->TotalAcpiBytes);
+    AppendText(Buffer, Capacity, &Length, " bad ");
+    AppendMiBValue(Buffer, Capacity, &Length, Result->TotalUnusableBytes);
+}
+
+static void BuildMemoryManagerKnowledgeLine2(char *Buffer, UINTN Capacity, const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
+{
+    UINTN Length;
+
+    if (Buffer == 0 || Capacity == 0U || Result == 0)
+    {
+        return;
+    }
+
+    Buffer[0] = '\0';
+    Length = 0U;
+    AppendText(Buffer, Capacity, &Length, "MM pages free ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->FreePages);
+    AppendText(Buffer, Capacity, &Length, " res ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->ReservedPages);
+    AppendText(Buffer, Capacity, &Length, " total ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->TotalPages);
+}
+
+static void BuildMemoryManagerKnowledgeLine3(char *Buffer, UINTN Capacity, const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
+{
+    UINTN Length;
+
+    if (Buffer == 0 || Capacity == 0U || Result == 0)
+    {
+        return;
+    }
+
+    Buffer[0] = '\0';
+    Length = 0U;
+    AppendText(Buffer, Capacity, &Length, "MM desc ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->InternalDescriptorCount);
+    AppendText(Buffer, Capacity, &Length, " frame-ranges ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->PageFrameDatabaseEntryCount);
+}
+
+static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
+{
+    char ScreenLine[96];
+
+    if (Result == 0)
+    {
+        return;
+    }
+
+    LosKernelTraceOk("Memory now displayed from the Memory Manager's own knowledge.");
+    LosKernelTraceUnsigned("Memory-manager total usable bytes: ", Result->TotalUsableBytes);
+    LosKernelTraceUnsigned("Memory-manager bootstrap-reserved bytes: ", Result->TotalBootstrapReservedBytes);
+    LosKernelTraceUnsigned("Memory-manager firmware-reserved bytes: ", Result->TotalFirmwareReservedBytes);
+    LosKernelTraceUnsigned("Memory-manager runtime bytes: ", Result->TotalRuntimeBytes);
+    LosKernelTraceUnsigned("Memory-manager MMIO bytes: ", Result->TotalMmioBytes);
+    LosKernelTraceUnsigned("Memory-manager ACPI/NVS bytes: ", Result->TotalAcpiBytes);
+    LosKernelTraceUnsigned("Memory-manager unusable bytes: ", Result->TotalUnusableBytes);
+    LosKernelTraceUnsigned("Memory-manager total pages: ", Result->TotalPages);
+    LosKernelTraceUnsigned("Memory-manager free pages: ", Result->FreePages);
+    LosKernelTraceUnsigned("Memory-manager reserved pages: ", Result->ReservedPages);
+    LosKernelTraceUnsigned("Memory-manager runtime pages: ", Result->RuntimePages);
+    LosKernelTraceUnsigned("Memory-manager MMIO pages: ", Result->MmioPages);
+    LosKernelTraceUnsigned("Memory-manager descriptor count: ", Result->InternalDescriptorCount);
+    LosKernelTraceUnsigned("Memory-manager frame-database ranges: ", Result->PageFrameDatabaseEntryCount);
+
+    LosKernelStatusScreenWriteOk("Memory view from Memory Manager ready.");
+    BuildMemoryManagerKnowledgeLine0(ScreenLine, sizeof(ScreenLine), Result);
+    LosKernelStatusScreenWriteOk(ScreenLine);
+    BuildMemoryManagerKnowledgeLine1(ScreenLine, sizeof(ScreenLine), Result);
+    LosKernelStatusScreenWriteOk(ScreenLine);
+    BuildMemoryManagerKnowledgeLine2(ScreenLine, sizeof(ScreenLine), Result);
+    LosKernelStatusScreenWriteOk(ScreenLine);
+    BuildMemoryManagerKnowledgeLine3(ScreenLine, sizeof(ScreenLine), Result);
+    LosKernelStatusScreenWriteOk(ScreenLine);
+}
+
 void LosMemoryManagerBootstrapDescribeState(void)
 {
     const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
@@ -309,6 +484,7 @@ void LosMemoryManagerBootstrapRunProbe(void)
         LosKernelTraceOk("Memory-manager bootstrap attach succeeded.");
         LosKernelTraceUnsigned("Memory-manager bootstrap result: ", Result.BootstrapResult);
         LosKernelTraceUnsigned("Memory-manager bootstrap reply state: ", Result.BootstrapState);
+        ReportMemoryManagerKnowledge(&Result);
         LosMemoryManagerBootstrapTransitionTo(LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_READY);
     }
     else

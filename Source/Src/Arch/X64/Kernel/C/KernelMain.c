@@ -360,8 +360,6 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     }
 
     LosX64DescribeVirtualMemoryLayout();
-    LosX64DescribePhysicalMemoryState();
-    LosX64DescribeMemoryManagerHandoff();
     LosKernelTraceOk("Kernel now owns deliberate paging structures.");
     LosKernelTraceOk("Dedicated kernel stack mapping is active.");
     LosInitializeMemoryManagerBootstrap(BootContext);

@@ -1,3 +1,7 @@
+Version 0.1.60
+
+This delivery changes the visible memory summary over to the memory-manager service's own computed view instead of the kernel's pre-attach bootstrap accounting. The kernel no longer prints the earlier physical-memory and handoff summaries before the service is online. Instead, once bootstrap attach succeeds, the memory manager returns its own totals for usable, bootstrap-reserved, firmware-reserved, runtime, MMIO, ACPI/NVS, and unusable bytes together with total/free/reserved/runtime/MMIO page counts plus descriptor and frame-database sizes. The kernel now logs that service-authored summary to serial and writes a concise on-screen memory summary from the memory manager's knowledge.
+
 Version 0.1.59
 
 This delivery removes serial function-entry tracing for the hottest X64 paging helpers so normal bring-up no longer floods COM1 with internal address-translation chatter. The kernel keeps runtime tracing available elsewhere, but `LosX64IsPhysicalRangeDiscovered`, `LosX64GetDirectMapVirtualAddress`, `LosX64GetPml4Index`, `LosX64GetPdptIndex`, `LosX64GetPdIndex`, `LosX64GetPtIndex`, and `LosX64GetCurrentPageMapLevel4PhysicalAddress` no longer emit `[Kernel] Enter ...` lines. That keeps the memory-manager bootstrap log focused on meaningful state changes and failures instead of low-level helper noise.

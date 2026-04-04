@@ -1046,6 +1046,20 @@ static void PopulateBootstrapAttachResponse(
     Response->Payload.BootstrapAttach.KernelRootTablePhysicalAddress = State->KernelRootTablePhysicalAddress;
     Response->Payload.BootstrapAttach.ServiceHeartbeat = State->Heartbeat;
     Response->Payload.BootstrapAttach.LastProcessedRequestId = Request->RequestId;
+    Response->Payload.BootstrapAttach.TotalUsableBytes = State->MemoryView.TotalUsableBytes;
+    Response->Payload.BootstrapAttach.TotalBootstrapReservedBytes = State->MemoryView.TotalBootstrapReservedBytes;
+    Response->Payload.BootstrapAttach.TotalFirmwareReservedBytes = State->MemoryView.TotalFirmwareReservedBytes;
+    Response->Payload.BootstrapAttach.TotalRuntimeBytes = State->MemoryView.TotalRuntimeBytes;
+    Response->Payload.BootstrapAttach.TotalMmioBytes = State->MemoryView.TotalMmioBytes;
+    Response->Payload.BootstrapAttach.TotalAcpiBytes = State->MemoryView.TotalAcpiBytes;
+    Response->Payload.BootstrapAttach.TotalUnusableBytes = State->MemoryView.TotalUnusableBytes;
+    Response->Payload.BootstrapAttach.TotalPages = State->MemoryView.TotalPages;
+    Response->Payload.BootstrapAttach.FreePages = State->MemoryView.FreePages;
+    Response->Payload.BootstrapAttach.ReservedPages = State->MemoryView.ReservedPages;
+    Response->Payload.BootstrapAttach.RuntimePages = State->MemoryView.RuntimePages;
+    Response->Payload.BootstrapAttach.MmioPages = State->MemoryView.MmioPages;
+    Response->Payload.BootstrapAttach.InternalDescriptorCount = (UINT64)State->MemoryView.InternalDescriptorCount;
+    Response->Payload.BootstrapAttach.PageFrameDatabaseEntryCount = (UINT64)State->MemoryView.PageFrameDatabaseEntryCount;
 }
 
 static void PostEvent(UINT32 EventType, UINT32 Status, UINT64 Value0, UINT64 Value1)
@@ -1213,7 +1227,16 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         ServiceSerialWriteNamedUnsigned("Memory-view descriptors", (UINT64)State->MemoryView.InternalDescriptorCount);
         ServiceSerialWriteNamedUnsigned("Page-frame DB entries", (UINT64)State->MemoryView.PageFrameDatabaseEntryCount);
         ServiceSerialWriteNamedHex("Total usable bytes", State->MemoryView.TotalUsableBytes);
+        ServiceSerialWriteNamedHex("Bootstrap reserved bytes", State->MemoryView.TotalBootstrapReservedBytes);
+        ServiceSerialWriteNamedHex("Firmware reserved bytes", State->MemoryView.TotalFirmwareReservedBytes);
+        ServiceSerialWriteNamedHex("Runtime bytes", State->MemoryView.TotalRuntimeBytes);
+        ServiceSerialWriteNamedHex("MMIO bytes", State->MemoryView.TotalMmioBytes);
+        ServiceSerialWriteNamedHex("ACPI/NVS bytes", State->MemoryView.TotalAcpiBytes);
+        ServiceSerialWriteNamedHex("Unusable bytes", State->MemoryView.TotalUnusableBytes);
+        ServiceSerialWriteNamedHex("Total pages", State->MemoryView.TotalPages);
         ServiceSerialWriteNamedHex("Reserved pages", State->MemoryView.ReservedPages);
+        ServiceSerialWriteNamedHex("Runtime pages", State->MemoryView.RuntimePages);
+        ServiceSerialWriteNamedHex("MMIO pages", State->MemoryView.MmioPages);
         ServiceSerialWriteNamedHex("Free pages", State->MemoryView.FreePages);
         ServiceSerialWriteLine("[MemManager] Memory-manager attach complete.");
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);

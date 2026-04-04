@@ -4,7 +4,7 @@
 #include "Efi.h"
 #include "VirtualMemory.h"
 
-#define LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION 10U
+#define LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION 11U
 #define LOS_MEMORY_MANAGER_SERVICE_PATH_CHARACTERS 128U
 #define LOS_MEMORY_MANAGER_SERVICE_NAME "MemoryManager"
 
@@ -193,6 +193,20 @@ typedef struct
     UINT64 KernelRootTablePhysicalAddress;
     UINT64 ServiceHeartbeat;
     UINT64 LastProcessedRequestId;
+    UINT64 TotalUsableBytes;
+    UINT64 TotalBootstrapReservedBytes;
+    UINT64 TotalFirmwareReservedBytes;
+    UINT64 TotalRuntimeBytes;
+    UINT64 TotalMmioBytes;
+    UINT64 TotalAcpiBytes;
+    UINT64 TotalUnusableBytes;
+    UINT64 TotalPages;
+    UINT64 FreePages;
+    UINT64 ReservedPages;
+    UINT64 RuntimePages;
+    UINT64 MmioPages;
+    UINT64 InternalDescriptorCount;
+    UINT64 PageFrameDatabaseEntryCount;
 } LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT;
 
 typedef struct
