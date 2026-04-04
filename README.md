@@ -1,3 +1,9 @@
+Version 0.1.34
+
+This update clears the task-object request bookkeeping before the hosted service probe so attach diagnostics are no longer misreported as stage 1/detail 1 when the service never publishes real attach data.
+
+It also changes the kernel-side bootstrap diagnostics to print unset when the service entry did not publish attach diagnostics before the probe failed.
+
 ## Delivery note for 0.1.33
 
 This update hardens the first memory-manager service entry handoff. The kernel now places the published launch-block address into `RDI`, `RSI`, `RCX`, and `RDX` before calling the staged `MEMORYMGR.ELF` entry, and the service bootstrap entry now falls back to those incoming registers if its formal launch-block argument arrives as zero. This targets the remaining probe failure where the service still reported a null launch-block at the very first attach step.

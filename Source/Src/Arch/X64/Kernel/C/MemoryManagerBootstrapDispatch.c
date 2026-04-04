@@ -200,8 +200,8 @@ BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void)
         return 0;
     }
 
-    State->ServiceTaskObject->LastRequestId = Slot->Message.RequestId;
-    State->ServiceTaskObject->Heartbeat += 1ULL;
+    State->ServiceTaskObject->LastRequestId = 0ULL;
+    State->ServiceTaskObject->Heartbeat = 0ULL;
     State->KernelToServiceEndpointObject->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
     State->ServiceToKernelEndpointObject->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
     State->ServiceEventsEndpointObject->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
@@ -216,6 +216,8 @@ BOOLEAN LosMemoryManagerBootstrapHostedServiceStep(void)
         LosMemoryManagerBootstrapDispatch(&Slot->Message, &Response);
     }
 
+    State->ServiceTaskObject->LastRequestId = Slot->Message.RequestId;
+    State->ServiceTaskObject->Heartbeat += 1ULL;
     State->ServiceTaskObject->Flags |= LOS_MEMORY_MANAGER_TASK_FLAG_SERVICE_READY;
     State->Info.State = LOS_MEMORY_MANAGER_BOOTSTRAP_STATE_SERVICE_ONLINE;
     State->Info.Flags |= LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ONLINE;

@@ -95,10 +95,21 @@ static void TraceAttachFailureDetails(void)
     }
 
     LosKernelTrace("Memory-manager attach failure diagnostics follow.");
-    LosKernelTrace("Memory-manager attach stage:");
-    LosKernelTrace(AttachStageName(State->ServiceTaskObject->LastRequestId));
-    LosKernelTrace("Memory-manager attach detail:");
-    LosKernelTrace(AttachDetailName(State->ServiceTaskObject->Heartbeat));
+    if (State->ServiceTaskObject->LastRequestId == 0ULL && State->ServiceTaskObject->Heartbeat == 0ULL)
+    {
+        LosKernelTrace("Memory-manager attach stage:");
+        LosKernelTrace("unset");
+        LosKernelTrace("Memory-manager attach detail:");
+        LosKernelTrace("unset");
+        LosKernelTrace("Memory-manager service entry did not publish attach diagnostics before the probe failed.");
+    }
+    else
+    {
+        LosKernelTrace("Memory-manager attach stage:");
+        LosKernelTrace(AttachStageName(State->ServiceTaskObject->LastRequestId));
+        LosKernelTrace("Memory-manager attach detail:");
+        LosKernelTrace(AttachDetailName(State->ServiceTaskObject->Heartbeat));
+    }
     LosKernelTraceUnsigned("Memory-manager attach stage code: ", State->ServiceTaskObject->LastRequestId);
     LosKernelTraceUnsigned("Memory-manager attach detail code: ", State->ServiceTaskObject->Heartbeat);
     if (State->KernelToServiceEndpointObject != 0)
