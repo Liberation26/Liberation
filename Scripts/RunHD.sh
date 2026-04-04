@@ -31,6 +31,7 @@ RequireTool qemu-system-x86_64
 RequireTool cp
 RequireTool mkdir
 RequireTool tee
+RequireTool rm
 
 mkdir -p "${BuildDir}"
 rm -f "${HostLogFile}"
@@ -45,10 +46,9 @@ if [[ ! -f "${OvmfVarsSource}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${OvmfVarsLocal}" ]]; then
-    echo "[Liberation] Creating local writable OVMF vars file..."
-    cp "${OvmfVarsSource}" "${OvmfVarsLocal}"
-fi
+echo "[Liberation] Resetting local writable OVMF vars file..."
+rm -f "${OvmfVarsLocal}"
+cp "${OvmfVarsSource}" "${OvmfVarsLocal}"
 
 "${RootDir}/Scripts/BuildBoot.sh" hd
 "${RootDir}/Scripts/MakeHardDisk.sh"

@@ -28,6 +28,8 @@ rm -f \
     "${BootDir}/MONITORX64.EFI" \
     "${BootDir}/KERNELX64.ELF" \
     "${BootDir}/KERNELX64.BIN" \
-    "${BootDir}/BOOTINFO.TXT"
+    "${BootDir}/BOOTINFO.TXT" \
+    "${BootDir}/Boot.psf" \
+    "${ImageDir}/LIBERATION/KERNELX64.ELF"
 
 echo "[Liberation] Clean complete. The next ISO run will rebuild all output from scratch."

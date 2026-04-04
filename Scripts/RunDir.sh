@@ -4,10 +4,13 @@ set -euo pipefail
 RootDir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BuildDir="${RootDir}/Build"
 ImageDir="${RootDir}/Image"
+BootDir="${ImageDir}/EFI/BOOT"
+LiberationDir="${ImageDir}/LIBERATION"
 OvmfCode="/usr/share/OVMF/OVMF_CODE_4M.fd"
 OvmfVarsSource="/usr/share/OVMF/OVMF_VARS_4M.fd"
 OvmfVarsLocal="${BuildDir}/OVMF_VARS_DIR_4M.fd"
 StartupScript="${ImageDir}/startup.nsh"
+BootInfoFile="${BootDir}/BOOTINFO.TXT"
 HostLogFile="${BuildDir}/RunDir-Host.log"
 
 StripAnsiToFile() {
@@ -27,6 +30,16 @@ RequireTool() {
     fi
 }
 
+WriteUtf16LeTextFile() {
+    local OutputFile="$1"
+    local Text="$2"
+    python3 - "$OutputFile" "$Text" <<'PY'
+import sys
+from pathlib import Path
+Path(sys.argv[1]).write_bytes(sys.argv[2].encode('utf-16le'))
+PY
+}
+
 echo "[Liberation] Starting directory build and run..."
 RequireTool qemu-system-x86_64
 RequireTool cp
@@ -34,6 +47,7 @@ RequireTool mkdir
 RequireTool tee
 RequireTool cat
 RequireTool rm
+RequireTool python3
 
 mkdir -p "${BuildDir}"
 rm -f "${HostLogFile}"
@@ -48,16 +62,20 @@ if [[ ! -f "${OvmfVarsSource}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${OvmfVarsLocal}" ]]; then
-    echo "[Liberation] Creating local writable OVMF vars file..."
-    cp "${OvmfVarsSource}" "${OvmfVarsLocal}"
-fi
+echo "[Liberation] Resetting local writable OVMF vars file..."
+rm -f "${OvmfVarsLocal}"
+cp "${OvmfVarsSource}" "${OvmfVarsLocal}"
 
 "${RootDir}/Scripts/BuildBoot.sh" dir
 
+mkdir -p "${BootDir}" "${LiberationDir}"
+cp "${BootDir}/KERNELX64.ELF" "${LiberationDir}/KERNELX64.ELF"
+WriteUtf16LeTextFile "${BootInfoFile}" $'Booting from directory media\r\n'
+
 echo "[Liberation] Writing startup.nsh for directory boot fallback..."
 rm -f "${StartupScript}"
-cat > "${StartupScript}" <<'EOF'
+cat > "${StartupScript}" <<'EOS'
+map -r
 if exist fs0:\EFI\BOOT\BOOTX64.EFI then
   fs0:\EFI\BOOT\BOOTX64.EFI
 endif
@@ -67,7 +85,7 @@ endif
 if exist fs2:\EFI\BOOT\BOOTX64.EFI then
   fs2:\EFI\BOOT\BOOTX64.EFI
 endif
-EOF
+EOS
 
 echo "[Liberation] Launching QEMU from EFI directory as removable USB media..." | tee -a "${HostLogFile}"
 qemu-system-x86_64 \

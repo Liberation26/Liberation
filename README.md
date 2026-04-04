@@ -1,3 +1,18 @@
+Version 0.1.36
+
+This delivery corrects the packaging omission in 0.1.35 by restoring the `ChangedFiles` folder. The `ChangedFiles` tree now includes the RunDir/RunHD staging fixes, the hard-disk image staging updates, the cleanup updates, and the version/readme files so a ChangedFiles-only apply picks up the intended boot-path changes.
+
+## Delivery note for 0.1.35
+
+This delivery updates the direct-run and hard-disk bash paths so they stage the kernel at the monitor-visible lookup locations rather than relying only on the ESP fallback layout that the ISO-installed path already satisfied.
+
+Specifically:
+- `RunDir.sh` now resets the writable OVMF vars file each run, stages `Image/LIBERATION/KERNELX64.ELF`, writes `EFI/BOOT/BOOTINFO.TXT`, and refreshes the UEFI shell mapping before launch.
+- `RunHD.sh` now resets the writable OVMF vars file each run.
+- `BuildBoot.sh` now stages `Image/LIBERATION/KERNELX64.ELF`, `Image/EFI/BOOT/Boot.psf`, and `Image/LIBERATION/SERVICES/MEMORYMGR.ELF`.
+- `MakeHardDisk.sh` now writes both the ESP fallback kernel path and the monitor-facing `\LIBERATION\KERNELX64.ELF` path, plus `BOOTINFO.TXT`, the active PSF font, and `MEMORYMGR.ELF`.
+- `clean.sh` now removes the extra staged direct-boot artifacts as well.
+
 Version 0.1.34
 
 This update clears the task-object request bookkeeping before the hosted service probe so attach diagnostics are no longer misreported as stage 1/detail 1 when the service never publishes real attach data.
@@ -199,8 +214,8 @@ From the project root:
 
 These now run the three boot methods separately:
 
-- `RunDir.sh` builds `BOOTX64.EFI` and `KERNELX64.ELF`, then boots from the EFI directory tree presented to QEMU as removable USB media.
-- `RunHD.sh` builds `BOOTX64.EFI` and `KERNELX64.ELF`, creates `Build/LiberationDisk.img`, and boots from the hard disk image.
+- `RunDir.sh` builds the boot payloads, mirrors `KERNELX64.ELF` into `Image/LIBERATION/KERNELX64.ELF`, writes a UTF-16 `BOOTINFO.TXT`, resets the writable OVMF vars file, and then boots from the EFI directory tree presented to QEMU as removable USB media. This keeps the direct directory run aligned with the kernel monitor's normal `\LIBERATION\KERNELX64.ELF` lookup path.
+- `RunHD.sh` builds the boot payloads, resets the writable OVMF vars file, creates `Build/LiberationDisk.img`, and then boots from the hard disk image. `MakeHardDisk.sh` now writes both `\EFI\BOOT\KERNELX64.ELF` and `\LIBERATION\KERNELX64.ELF` into the EFI filesystem image, along with `BOOTINFO.TXT` and the active boot font, so the kernel monitor can boot reliably in the direct hard-disk path too.
 - `RunISO.sh` builds the ISO installer `BOOTX64.EFI`, the installed-system `LOADERX64.EFI`, and `KERNELX64.ELF`, creates `Build/Liberation.iso`, creates blank install target disks at `Build/LiberationInstallTarget1.img` and `Build/LiberationInstallTarget2.img`, boots the ISO installer, lets the installer choose a writable raw disk target, partition it with GPT, format a real FAT32 ESP plus a FAT32 Liberation data partition, then relaunches QEMU from the installed disk only after the installer requests an EFI reboot. The installed loader stays on the ESP, but the installed kernel is written to the separate Liberation data partition.
 - `clean.sh` removes generated build output, installer media, logs, target disk images, and the writable OVMF vars file so the next `RunISO.sh` starts from a clean state instead of reusing stale firmware boot state.
 

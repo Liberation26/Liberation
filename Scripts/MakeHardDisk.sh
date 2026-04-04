@@ -4,12 +4,16 @@ set -euo pipefail
 RootDir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BuildDir="${RootDir}/Build"
 ImageDir="${RootDir}/Image"
-BootFile="${ImageDir}/EFI/BOOT/LOADERX64.EFI"
-MonitorFile="${ImageDir}/EFI/BOOT/MONITORX64.EFI"
-KernelFile="${ImageDir}/EFI/BOOT/KERNELX64.ELF"
-StartupScript="${BuildDir}/startup.nsh"
+BootDir="${ImageDir}/EFI/BOOT"
+LiberationDir="${ImageDir}/LIBERATION"
+LoaderFile="${BootDir}/LOADERX64.EFI"
+MonitorFile="${BootDir}/MONITORX64.EFI"
+KernelFile="${LiberationDir}/KERNELX64.ELF"
+BootFontFile="${LiberationDir}/FONTS/Boot.psf"
+MemoryManagerServiceFile="${LiberationDir}/SERVICES/MEMORYMGR.ELF"
 EspFile="${BuildDir}/LiberationEsp.img"
 DiskFile="${BuildDir}/LiberationDisk.img"
+BootInfoFile="${BuildDir}/BOOTINFO.TXT"
 
 DiskSizeMiB=64
 EspSizeMiB=62
@@ -23,6 +27,16 @@ RequireTool() {
     fi
 }
 
+WriteUtf16LeTextFile() {
+    local OutputFile="$1"
+    local Text="$2"
+    python3 - "$OutputFile" "$Text" <<'PY'
+import sys
+from pathlib import Path
+Path(sys.argv[1]).write_bytes(sys.argv[2].encode('utf-16le'))
+PY
+}
+
 RequireTool truncate
 RequireTool parted
 RequireTool mkfs.fat
@@ -31,10 +45,10 @@ RequireTool mcopy
 RequireTool dd
 RequireTool mkdir
 RequireTool rm
-RequireTool cat
+RequireTool python3
 
-if [[ ! -f "${BootFile}" ]]; then
-    echo "[Liberation] Missing installed loader file: ${BootFile}"
+if [[ ! -f "${LoaderFile}" ]]; then
+    echo "[Liberation] Missing installed loader file: ${LoaderFile}"
     exit 1
 fi
 
@@ -49,28 +63,32 @@ if [[ ! -f "${KernelFile}" ]]; then
 fi
 
 mkdir -p "${BuildDir}"
-rm -f "${EspFile}" "${DiskFile}"
+rm -f "${EspFile}" "${DiskFile}" "${BootInfoFile}"
+
+WriteUtf16LeTextFile "${BootInfoFile}" $'Booting from direct hard-disk media\r\n'
 
 echo "[Liberation] Creating EFI system partition image..."
 truncate -s "${EspSizeMiB}M" "${EspFile}"
 mkfs.fat -F 32 "${EspFile}" >/dev/null
-mmd -i "${EspFile}" ::/EFI ::/EFI/BOOT
-mcopy -i "${EspFile}" "${BootFile}" ::/EFI/BOOT/BOOTX64.EFI
+mmd -i "${EspFile}" ::/EFI ::/EFI/BOOT ::/LIBERATION
+if [[ -d "${LiberationDir}/FONTS" ]]; then
+    mmd -i "${EspFile}" ::/LIBERATION/FONTS
+fi
+if [[ -d "${LiberationDir}/SERVICES" ]]; then
+    mmd -i "${EspFile}" ::/LIBERATION/SERVICES
+fi
+mcopy -i "${EspFile}" "${LoaderFile}" ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i "${EspFile}" "${MonitorFile}" ::/EFI/BOOT/MONITORX64.EFI
 mcopy -i "${EspFile}" "${KernelFile}" ::/EFI/BOOT/KERNELX64.ELF
-cat > "${StartupScript}" <<'EOS'
-map -r
-if exist fs0:\EFI\BOOT\BOOTX64.EFI then
-  fs0:\EFI\BOOT\BOOTX64.EFI
-endif
-if exist fs1:\EFI\BOOT\BOOTX64.EFI then
-  fs1:\EFI\BOOT\BOOTX64.EFI
-endif
-if exist fs2:\EFI\BOOT\BOOTX64.EFI then
-  fs2:\EFI\BOOT\BOOTX64.EFI
-endif
-EOS
-mcopy -i "${EspFile}" "${StartupScript}" ::/startup.nsh
+mcopy -i "${EspFile}" "${KernelFile}" ::/LIBERATION/KERNELX64.ELF
+mcopy -i "${EspFile}" "${BootInfoFile}" ::/EFI/BOOT/BOOTINFO.TXT
+if [[ -f "${BootFontFile}" ]]; then
+    mcopy -i "${EspFile}" "${BootFontFile}" ::/EFI/BOOT/Boot.psf
+    mcopy -i "${EspFile}" "${BootFontFile}" ::/LIBERATION/FONTS/Boot.psf
+fi
+if [[ -f "${MemoryManagerServiceFile}" ]]; then
+    mcopy -i "${EspFile}" "${MemoryManagerServiceFile}" ::/LIBERATION/SERVICES/MEMORYMGR.ELF
+fi
 
 echo "[Liberation] Creating GPT hard disk image..."
 truncate -s "${DiskSizeMiB}M" "${DiskFile}"

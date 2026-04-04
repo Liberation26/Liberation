@@ -127,6 +127,8 @@ if [[ -z "${OsVersion}" ]]; then
 fi
 mkdir -p "${BuildDir}"
 mkdir -p "${BootDir}"
+mkdir -p "${ImageDir}/LIBERATION"
+mkdir -p "${ImageDir}/LIBERATION/FONTS"
 mkdir -p "${ImageDir}/LIBERATION/SERVICES"
 
 echo "[Liberation] Building memory-manager service ELF image..."
@@ -181,4 +183,8 @@ cp "${BuildDir}/BOOTX64.EFI" "${BootDir}/BOOTX64.EFI"
 cp "${BuildDir}/LOADERX64.EFI" "${BootDir}/LOADERX64.EFI"
 cp "${BuildDir}/MONITORX64.EFI" "${BootDir}/MONITORX64.EFI"
 cp "${BuildDir}/KernelX64.elf" "${BootDir}/KERNELX64.ELF"
+cp "${BuildDir}/KernelX64.elf" "${ImageDir}/LIBERATION/KERNELX64.ELF"
 cp "${BuildDir}/MEMORYMGR.ELF" "${ImageDir}/LIBERATION/SERVICES/MEMORYMGR.ELF"
+if [[ -f "${ImageDir}/LIBERATION/FONTS/Boot.psf" ]]; then
+    cp "${ImageDir}/LIBERATION/FONTS/Boot.psf" "${BootDir}/Boot.psf"
+fi
