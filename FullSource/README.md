@@ -1,3 +1,9 @@
+Version 0.1.71
+
+This delivery moves the visible bootstrap address-space notification into `KernelMain.c` immediately after `LosLaunchMemoryManagerBootstrap()` returns ready. That makes the message impossible to miss in the normal kernel bring-up flow: once the memory-manager bootstrap succeeds, the kernel now always emits `Bootstrap address space created.` through the standard trace path that writes to both the framebuffer status output and the serial log, followed by the bootstrap address-space object and root PML4 physical addresses.
+
+This avoids relying on earlier staging-time diagnostics or later attach-report helpers that can be easy to miss during rapid bring-up output. The notification now sits directly between successful memory-manager bootstrap and the final timer/idle transition, so it should remain visible near the end of the boot log on screen as well as in the serial capture.
+
 Version 0.1.70
 
 This delivery fixes the bootstrap address-space creation notification so it no longer depends on the mapped service-side address-space pointer already being live at the later attach-diagnostics stage. The kernel now announces the bootstrap address-space object immediately when it is staged during transport setup, writing the notification through the normal kernel trace and framebuffer status paths with the address-space ID and object physical address.
