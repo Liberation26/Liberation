@@ -5,6 +5,8 @@ const char LosMemoryManagerServiceBanner[] = "Liberation Memory Manager Service"
 
 static LOS_MEMORY_MANAGER_SERVICE_STATE LosMemoryManagerServiceGlobalState;
 
+#define LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE 0x3F8U
+
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_NONE 0ULL
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_LAUNCH_BLOCK 1ULL
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_DIRECT_MAP_OFFSET 2ULL
@@ -51,6 +53,113 @@ static void RecordAttachDiagnostic(LOS_MEMORY_MANAGER_TASK_OBJECT *TaskObject, U
 
     TaskObject->LastRequestId = Stage;
     TaskObject->Heartbeat = Detail;
+}
+
+static inline void ServiceOut8(UINT16 Port, UINT8 Value)
+{
+    __asm__ __volatile__("outb %0, %1" : : "a"(Value), "Nd"(Port));
+}
+
+static inline UINT8 ServiceIn8(UINT16 Port)
+{
+    UINT8 Value;
+
+    __asm__ __volatile__("inb %1, %0" : "=a"(Value) : "Nd"(Port));
+    return Value;
+}
+
+static void ServiceSerialInit(void)
+{
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 1U, 0x00U);
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 3U, 0x80U);
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 0U, 0x03U);
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 1U, 0x00U);
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 3U, 0x03U);
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 2U, 0xC7U);
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 4U, 0x0BU);
+}
+
+static void ServiceSerialWriteChar(char Character)
+{
+    while ((ServiceIn8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 5U) & 0x20U) == 0U)
+    {
+    }
+
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 0U, (UINT8)Character);
+}
+
+static void ServiceSerialWriteText(const char *Text)
+{
+    UINTN Index;
+
+    if (Text == 0)
+    {
+        return;
+    }
+
+    for (Index = 0U; Text[Index] != '\0'; ++Index)
+    {
+        if (Text[Index] == '\n')
+        {
+            ServiceSerialWriteChar('\r');
+        }
+        ServiceSerialWriteChar(Text[Index]);
+    }
+}
+
+static void ServiceSerialWriteUnsigned(UINT64 Value)
+{
+    char Buffer[32];
+    UINTN Index;
+
+    if (Value == 0ULL)
+    {
+        ServiceSerialWriteChar('0');
+        return;
+    }
+
+    Index = 0U;
+    while (Value > 0ULL && Index < sizeof(Buffer))
+    {
+        Buffer[Index] = (char)('0' + (Value % 10ULL));
+        Value /= 10ULL;
+        ++Index;
+    }
+
+    while (Index > 0U)
+    {
+        --Index;
+        ServiceSerialWriteChar(Buffer[Index]);
+    }
+}
+
+static void ServiceSerialWriteHex64(UINT64 Value)
+{
+    UINTN Shift;
+
+    ServiceSerialWriteText("0x");
+    for (Shift = 16U; Shift > 0U; --Shift)
+    {
+        UINT8 Nibble;
+
+        Nibble = (UINT8)((Value >> ((Shift - 1U) * 4U)) & 0xFULL);
+        ServiceSerialWriteChar((char)(Nibble < 10U ? ('0' + Nibble) : ('A' + (Nibble - 10U))));
+    }
+}
+
+static void ServiceSerialWriteLine(const char *Text)
+{
+    ServiceSerialWriteText(Text);
+    ServiceSerialWriteText("\n");
+}
+
+static void ServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
+{
+    ServiceSerialWriteText("[Service] ");
+    ServiceSerialWriteText(Name);
+    ServiceSerialWriteText(": ");
+    ServiceSerialWriteHex64(Value);
+    ServiceSerialWriteText("\n");
 }
 
 static void ZeroMemory(void *Buffer, UINTN ByteCount)
@@ -705,6 +814,13 @@ void LosMemoryManagerServicePoll(void)
         State->TaskObject->Heartbeat = State->Heartbeat;
         State->TaskObject->LastRequestId = State->LastRequestId;
     }
+
+    ServiceSerialWriteText("[Service] Request operation=");
+    ServiceSerialWriteUnsigned((UINT64)Slot->Message.Operation);
+    ServiceSerialWriteText(" id=");
+    ServiceSerialWriteHex64(Slot->Message.RequestId);
+    ServiceSerialWriteText("\n");
+
     PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_READY_FOR_REQUESTS, 0U, Slot->Message.Operation, Slot->Message.RequestId);
     CompleteRequestWithStatus(State, LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED);
 }
@@ -745,22 +861,33 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1003ULL, RegisterLaunchBlockAddressRsi);
     State = LosMemoryManagerServiceState();
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1004ULL, RegisterLaunchBlockAddressRcx);
+
+    ServiceSerialInit();
+    ServiceSerialWriteLine("[Service] Memory-manager bootstrap entry reached.");
+    ServiceSerialWriteNamedHex("Launch block", LaunchBlockAddress);
+
     if (State->Online == 0U)
     {
         RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1005ULL, RegisterLaunchBlockAddressRdx);
         if (!LosMemoryManagerServiceAttach(LaunchBlock))
         {
+            ServiceSerialWriteLine("[Service] Memory-manager attach failed. Halting in service context.");
             RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x10FFULL, 0xFFFFFFFFFFFFFFFFULL);
-            for (;;)
+            for (;; )
             {
                 __asm__ __volatile__("pause" : : : "memory");
             }
         }
         RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1006ULL, LaunchBlock->ServiceEntryVirtualAddress);
+        ServiceSerialWriteNamedHex("Service entry", LaunchBlock->ServiceEntryVirtualAddress);
+        ServiceSerialWriteNamedHex("Service stack top virtual", LaunchBlock->ServiceStackTopVirtualAddress);
+        ServiceSerialWriteNamedHex("Service root", LaunchBlock->ServicePageMapLevel4PhysicalAddress);
+        ServiceSerialWriteLine("[Service] Memory-manager attach complete.");
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
     }
 
     RecordEntryBreadcrumbFromLaunchBlock(LaunchBlockAddress, 0x1007ULL, LaunchBlock->ServiceStackTopVirtualAddress);
+    ServiceSerialWriteLine("[Service] Entering memory-manager service loop.");
     LosMemoryManagerServiceEntry();
 }
 
@@ -769,7 +896,7 @@ void LosMemoryManagerServiceEntry(void)
     LOS_MEMORY_MANAGER_SERVICE_STATE *State;
 
     State = LosMemoryManagerServiceState();
-    for (;;)
+    for (;; )
     {
         LosMemoryManagerServiceHeartbeat += 1ULL;
         State->Heartbeat = LosMemoryManagerServiceHeartbeat;
@@ -785,6 +912,20 @@ void LosMemoryManagerServiceEntry(void)
             }
             State->TaskObject->Heartbeat = State->Heartbeat;
         }
+
+        if (State->Heartbeat == 1ULL)
+        {
+            ServiceSerialWriteLine("[Service] Heartbeat started.");
+        }
+        else if ((State->Heartbeat & 0xFFFFULL) == 0ULL)
+        {
+            ServiceSerialWriteText("[Service] Heartbeat=");
+            ServiceSerialWriteUnsigned(State->Heartbeat);
+            ServiceSerialWriteText(" LastRequest=");
+            ServiceSerialWriteHex64(State->LastRequestId);
+            ServiceSerialWriteText("\n");
+        }
+
         LosMemoryManagerServicePoll();
         __asm__ __volatile__("pause" : : : "memory");
     }

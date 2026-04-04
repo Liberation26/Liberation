@@ -1,3 +1,7 @@
+Version 0.1.46
+
+This delivery adds service-side serial proof-of-life after the memory-manager task-transfer handoff. `MEMORYMGR.ELF` now writes explicit `[Service]` bootstrap-entry, attach-complete, and service-loop messages to COM1, logs periodic heartbeat updates from inside the live service context, and traces any bootstrap request that reaches the service mailbox.
+
 Version 0.1.45
 
 This delivery fixes the first memory-manager service handoff so the bootstrap entry no longer falls straight back into the kernel after a single attach/poll pass. The service bootstrap entry now transfers into the long-running service loop, keeps task heartbeat/request breadcrumbs updated from inside the service context, and hard-stops inside the service context if attach fails instead of returning to the kernel transfer helper.
