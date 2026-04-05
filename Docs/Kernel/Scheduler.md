@@ -1,3 +1,9 @@
+## 0.2.15
+
+- Scheduler thread stacks now come from the memory manager whenever the bootstrap transport is ready.
+- If the transport is not ready, scheduler threads fall back to bootstrap stacks instead of using untracked direct frame claims.
+- Task cleanup now only sends `FreeFrames` for memory-manager-owned stacks, which fixes the `freeing-unowned-pages` hard-fail seen when transient workers exited and the scheduler tried to reclaim their stacks.
+
 # Scheduler
 
 - 0.2.13: Added a one-shot pending-wake dispatch path plus a short resume window for freshly woken tasks. A task that wakes from scheduler sleep now keeps an explicit wake-pending marker until it is actually dispatched, and its first post-wake run can receive a slightly longer quantum so resume -> exit paths stay visible even under BusyWorker load.

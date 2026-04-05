@@ -332,6 +332,7 @@ static void InitializeTaskStackContext(LOS_KERNEL_SCHEDULER_TASK *Task, void *St
     Task->StackBaseVirtualAddress = (UINT64)(UINTN)StackBase;
     Task->StackTopVirtualAddress = Task->StackBaseVirtualAddress + LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES;
     Task->StackSizeBytes = LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES;
+    Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
 
     InitialStackPointer = (Task->StackTopVirtualAddress - 16ULL) & ~0xFULL;
     WriteStackReturnAddress(InitialStackPointer, (UINT64)(UINTN)LosKernelSchedulerThreadTrampoline);
@@ -366,6 +367,7 @@ static BOOLEAN AllocateBootstrapKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Tas
             LosX64TryTranslateKernelVirtualToPhysical((UINT64)(UINTN)StackBase, &PhysicalAddress);
             Task->BootstrapStackSlot = Index;
             InitializeTaskStackContext(Task, StackBase, PhysicalAddress);
+            Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_BOOTSTRAP;
             LosKernelTraceOk("Kernel scheduler using bootstrap stack fallback.");
             return 1;
         }
@@ -386,31 +388,48 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
     }
 
     Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
-    ZeroBytes(&ClaimRequest, sizeof(ClaimRequest));
-    ZeroBytes(&ClaimResult, sizeof(ClaimResult));
-    ClaimRequest.PageCount = LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES;
-    ClaimRequest.AlignmentBytes = 4096ULL;
-    ClaimRequest.Flags = LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS;
-    ClaimRequest.Owner = LOS_X64_MEMORY_REGION_OWNER_CLAIMED;
-    LosX64ClaimFrames(&ClaimRequest, &ClaimResult);
-    if (ClaimResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS &&
-        ClaimResult.BaseAddress != 0ULL &&
-        ClaimResult.PageCount == LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES)
-    {
-        StackBase = LosX64GetDirectMapVirtualAddress(ClaimResult.BaseAddress, LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES);
-        if (StackBase != 0)
-        {
-            InitializeTaskStackContext(Task, StackBase, ClaimResult.BaseAddress);
-            return 1;
-        }
+    Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
 
-        LosKernelTraceFail("Kernel scheduler could not direct-map claimed thread stack.");
-    }
-    else
+    if (LosIsMemoryManagerBootstrapReady() != 0U)
     {
-        LosKernelTraceFail("Kernel scheduler could not allocate thread stack frames.");
-        LosKernelTraceUnsigned("Kernel scheduler stack-claim status: ", ClaimResult.Status);
-        LosKernelTraceUnsigned("Kernel scheduler stack-claim pages returned: ", ClaimResult.PageCount);
+        ZeroBytes(&ClaimRequest, sizeof(ClaimRequest));
+        ZeroBytes(&ClaimResult, sizeof(ClaimResult));
+        ClaimRequest.PageCount = LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES;
+        ClaimRequest.AlignmentBytes = 4096ULL;
+        ClaimRequest.Flags = LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS;
+        ClaimRequest.Owner = LOS_X64_MEMORY_REGION_OWNER_CLAIMED;
+        LosMemoryManagerSendClaimFrames(&ClaimRequest, &ClaimResult);
+        if (ClaimResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS &&
+            ClaimResult.BaseAddress != 0ULL &&
+            ClaimResult.PageCount == LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES)
+        {
+            StackBase = LosX64GetDirectMapVirtualAddress(ClaimResult.BaseAddress, LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES);
+            if (StackBase != 0)
+            {
+                InitializeTaskStackContext(Task, StackBase, ClaimResult.BaseAddress);
+                Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_MEMORY_MANAGER;
+                return 1;
+            }
+
+            {
+                LOS_X64_FREE_FRAMES_REQUEST FreeRequest;
+                LOS_X64_FREE_FRAMES_RESULT FreeResult;
+
+                ZeroBytes(&FreeRequest, sizeof(FreeRequest));
+                ZeroBytes(&FreeResult, sizeof(FreeResult));
+                FreeRequest.PhysicalAddress = ClaimResult.BaseAddress;
+                FreeRequest.PageCount = ClaimResult.PageCount;
+                LosMemoryManagerSendFreeFrames(&FreeRequest, &FreeResult);
+            }
+
+            LosKernelTraceFail("Kernel scheduler could not direct-map memory-manager-backed thread stack.");
+        }
+        else
+        {
+            LosKernelTraceFail("Kernel scheduler could not allocate memory-manager-backed thread stack frames.");
+            LosKernelTraceUnsigned("Kernel scheduler stack-claim status: ", ClaimResult.Status);
+            LosKernelTraceUnsigned("Kernel scheduler stack-claim pages returned: ", ClaimResult.PageCount);
+        }
     }
 
     return AllocateBootstrapKernelThreadStack(Task);
@@ -431,27 +450,35 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
     }
     else if (Task->StackPhysicalAddress != 0ULL && Task->StackSizeBytes != 0ULL)
     {
-        LOS_X64_FREE_FRAMES_REQUEST FreeRequest;
-        LOS_X64_FREE_FRAMES_RESULT FreeResult;
-
-        ZeroBytes(&FreeRequest, sizeof(FreeRequest));
-        ZeroBytes(&FreeResult, sizeof(FreeResult));
-        FreeRequest.PhysicalAddress = Task->StackPhysicalAddress;
-        FreeRequest.PageCount = Task->StackSizeBytes / 4096ULL;
-
-        if (LosIsMemoryManagerBootstrapReady() != 0U)
+        if (Task->StackAllocationSource == LOS_KERNEL_SCHEDULER_STACK_SOURCE_MEMORY_MANAGER)
         {
-            LosMemoryManagerSendFreeFrames(&FreeRequest, &FreeResult);
-            if (FreeResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+            LOS_X64_FREE_FRAMES_REQUEST FreeRequest;
+            LOS_X64_FREE_FRAMES_RESULT FreeResult;
+
+            ZeroBytes(&FreeRequest, sizeof(FreeRequest));
+            ZeroBytes(&FreeResult, sizeof(FreeResult));
+            FreeRequest.PhysicalAddress = Task->StackPhysicalAddress;
+            FreeRequest.PageCount = Task->StackSizeBytes / 4096ULL;
+
+            if (LosIsMemoryManagerBootstrapReady() != 0U)
             {
-                LosKernelTraceFail("Kernel scheduler could not free terminated thread stack frames.");
-                LosKernelTraceUnsigned("Kernel scheduler stack-free status: ", FreeResult.Status);
-                LosKernelTraceHex64("Kernel scheduler stack-free base: ", FreeRequest.PhysicalAddress);
+                LosMemoryManagerSendFreeFrames(&FreeRequest, &FreeResult);
+                if (FreeResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+                {
+                    LosKernelTraceFail("Kernel scheduler could not free terminated thread stack frames.");
+                    LosKernelTraceUnsigned("Kernel scheduler stack-free status: ", FreeResult.Status);
+                    LosKernelTraceHex64("Kernel scheduler stack-free base: ", FreeRequest.PhysicalAddress);
+                }
+            }
+            else
+            {
+                LosKernelTraceFail("Kernel scheduler could not free terminated thread stack because the memory manager bootstrap is not ready.");
             }
         }
-        else
+        else if (Task->StackAllocationSource == LOS_KERNEL_SCHEDULER_STACK_SOURCE_DIRECT_CLAIM)
         {
-            LosKernelTraceFail("Kernel scheduler could not free terminated thread stack because the memory manager bootstrap is not ready.");
+            LosKernelTraceFail("Kernel scheduler retained a direct-claimed terminated thread stack because it is not memory-manager tracked.");
+            LosKernelTraceHex64("Kernel scheduler retained direct-claimed stack base: ", Task->StackPhysicalAddress);
         }
     }
 
@@ -459,6 +486,7 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
     Task->StackBaseVirtualAddress = 0ULL;
     Task->StackTopVirtualAddress = 0ULL;
     Task->StackSizeBytes = 0ULL;
+    Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
     ZeroBytes(&Task->ExecutionContext, sizeof(Task->ExecutionContext));
 }
 
@@ -730,6 +758,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
             Task->WakeDispatchPending = 0U;
             Task->ResumeBoostTicks = 0U;
+            Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
             Task->ThreadRoutine = ThreadRoutine;
             Task->Context = Context;
 

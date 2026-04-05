@@ -1,3 +1,5 @@
+- 0.2.15: Scheduler thread stacks are now memory-manager-backed whenever the bootstrap transport is ready, with bootstrap-stack fallback otherwise; terminated scheduler stacks are only returned through `FreeFrames` when the memory manager actually owns them, which fixes the `freeing-unowned-pages` hard-fail during ephemeral task cleanup.
+
 - 0.2.14: Memory-manager bootstrap readiness now stays valid after hosted service requests, so scheduler cleanup can free terminated thread stacks and destroy transient process address spaces; added `Scripts/Run.sh` to clear the screen, run `update.sh`, and then launch Dir, HD, or ISO based on `D`, `H`, or `I`.
 
 - 0.2.13: Scheduler wake-ups now carry an explicit pending-wake dispatch marker plus a short resume window, so a freshly woken task gets the next available post-wake run slice and the serial log can prove that slice with `resume-window`, `wake-pending`, and `resume-boost` diagnostics.
@@ -10,7 +12,7 @@
 
 - 0.2.9: Scheduler process creation now keeps distinct-root processes hidden until their address-space bind succeeds, and deferred bind spam was removed from the scheduler loop.
 
-Version 0.2.14
+Version 0.2.15
 - Serialized scheduler-side transient process address-space binding so only one `CreateAddressSpace` request can be in flight for a given process at a time. This closes the race where a just-created process could be bound twice and end up leaking the first address-space object.
 - Added a `bind-in-progress` process flag plus `bind-count` and `bind-deferred` scheduler counters, so the serial log can now prove whether a non-kernel process root was bound once, deferred, or already being handled by another path.
 - Kept the existing rule that transient lifecycle processes require a real distinct address space; this update makes that rule race-safe rather than letting the lifecycle thread and the scheduler binder compete on the same process object.

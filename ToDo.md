@@ -1,3 +1,5 @@
+- [x] Allocate scheduler thread stacks through the memory manager when the bootstrap transport is ready, and avoid sending `FreeFrames` for bootstrap-backed stacks that were never memory-manager owned.
+
 - [x] Treat memory-manager bootstrap states at or beyond READY as scheduler-usable so task/process cleanup can free stacks and destroy transient address spaces after the first hosted request.
 - [x] Add `Scripts/Run.sh` wrapper to clear the screen, run `update.sh`, and then launch `RunDir.sh`, `RunHD.sh`, or `RunISO.sh` from a single command.
 

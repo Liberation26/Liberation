@@ -88,6 +88,8 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteUnsigned(Task->WakeDispatchPending);
     LosKernelSerialWriteText(" resume-boost=");
     LosKernelSerialWriteUnsigned(Task->ResumeBoostTicks);
+    LosKernelSerialWriteText(" stack-source=");
+    LosKernelSerialWriteUnsigned(Task->StackAllocationSource);
     LosKernelSerialWriteText(" cleanup=");
     LosKernelSerialWriteUnsigned(Task->CleanupPending);
     LosKernelSerialWriteText(" exit=");
