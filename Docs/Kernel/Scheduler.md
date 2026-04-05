@@ -1,3 +1,5 @@
+Hosted memory-manager exchanges used during scaffold preparation are serialized with interrupts disabled, and the memory-manager `QueryMapping` probe is allowed to report `not found` for unmapped user virtual addresses rather than hard-failing the service. This keeps the scaffold image/stack mapping phase stable while the memory manager is still running through the hosted bootstrap pump.
+
 # 0.2.40
 
 Added the first **real x64 ring-transition substrate** for the scheduler user scaffold. LOS now installs a real TSS descriptor in the GDT, loads `TR`, refreshes `TSS.RSP0` with the current kernel-thread stack top before user dispatch, maps a staged user ELF plus a real user stack into the scaffold process's owned address space through the memory manager, and switches the scheduler bridge from staged metadata to a real `iretq` entry.

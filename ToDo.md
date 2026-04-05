@@ -1,3 +1,4 @@
+- 0.2.41: Fixed the hosted memory-manager pump used by the scheduler scaffold path by serializing hosted request/reply exchanges with interrupts disabled and by making `QueryMapping` safe on unmapped user addresses.
 - Wired the first real scheduler user-transition substrate: the kernel now installs a real x64 TSS, loads `TR`, refreshes `TSS.RSP0` before user dispatch, maps a staged user ELF plus a real user stack into the scaffold process's owned address space, and enters ring 3 with an actual `iretq` path.
 - Added a DPL3 vector 128 return path so the first user scaffold can trap back into ring 0 on the kernel interrupt stack, letting the scheduler prove the real user->kernel transition and reap the scaffold task instead of halting.
 - The scaffold is no longer kept behind the old live gate once handoff metadata is ready; it now becomes dispatchable so the scheduler can exercise the real ring-transition substrate.

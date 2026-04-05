@@ -102,6 +102,23 @@ static void ZeroMemory(void *Buffer, UINTN ByteCount)
     }
 }
 
+
+static UINT64 SaveInterruptFlagsAndDisable(void)
+{
+    UINT64 Flags;
+
+    __asm__ __volatile__("pushfq; popq %0" : "=r"(Flags) : : "memory");
+    __asm__ __volatile__("cli" : : : "memory");
+    return Flags;
+}
+
+static void RestoreInterruptFlags(UINT64 Flags)
+{
+    if ((Flags & 0x200ULL) != 0ULL)
+    {
+        __asm__ __volatile__("sti" : : : "memory");
+    }
+}
 static void CopyBytes(void *Destination, const void *Source, UINTN ByteCount)
 {
     UINT8 *DestinationBytes;
@@ -636,13 +653,16 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
     BOOLEAN ResponsePublishedByService;
     UINT32 Attempt;
     UINT32 AttemptBudget;
+    UINT64 InterruptFlags;
 
     InitializeResponse(Request, Response);
 
     TraceKernelToMemoryManagerRequest(Request);
+    InterruptFlags = SaveInterruptFlagsAndDisable();
     if (!LosMemoryManagerBootstrapEnqueueRequest(Request))
     {
         Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        RestoreInterruptFlags(InterruptFlags);
         LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to enqueue a request.");
     }
 
@@ -655,6 +675,7 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
             if (Attempt == 0U)
             {
                 Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+                RestoreInterruptFlags(InterruptFlags);
                 LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager hosted service step failed.");
             }
 
@@ -673,6 +694,7 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
         if (RequestRequiresRealServiceReply(Request->Operation))
         {
             Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+            RestoreInterruptFlags(InterruptFlags);
             LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap expected a real service reply and none was published.");
         }
 
@@ -680,10 +702,12 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
         if (!LosMemoryManagerBootstrapDequeueResponse(Request->RequestId, Response))
         {
             Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+            RestoreInterruptFlags(InterruptFlags);
             LosMemoryManagerBootstrapReportFailureAndHalt("Memory-manager bootstrap failed to dequeue a response.");
         }
     }
 
+    RestoreInterruptFlags(InterruptFlags);
     LosMemoryManagerBootstrapRecordCompletion(Response->Operation, Response->Status);
     TraceMemoryManagerToKernelResponse(Response);
 }

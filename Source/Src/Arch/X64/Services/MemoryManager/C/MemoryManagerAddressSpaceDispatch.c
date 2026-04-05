@@ -757,7 +757,7 @@ void LosMemoryManagerServiceQueryMapping(
             1ULL,
             0ULL,
             0,
-            1))
+            0))
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
         return;
