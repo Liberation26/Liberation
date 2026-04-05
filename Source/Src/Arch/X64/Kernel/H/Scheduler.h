@@ -50,7 +50,8 @@
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_REQUESTED 4U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ENTRY_READY 5U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY 6U
-#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE 7U
+#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY 7U
+#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE 8U
 
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_BOOTSTRAP 1U
@@ -108,6 +109,7 @@ typedef struct
     UINT64 UserCodeSegmentSelector;
     UINT64 UserStackSegmentSelector;
     UINT64 UserRflags;
+    UINT64 UserTransitionFrameStackPointer;
     UINT64 ExitStatus;
     UINT32 UserTransitionState;
     UINT32 Reserved1;
@@ -146,6 +148,7 @@ typedef struct
     UINT64 UserCodeSegmentSelector;
     UINT64 UserStackSegmentSelector;
     UINT64 UserRflags;
+    UINT64 UserTransitionFrameStackPointer;
     UINT64 PreemptionCount;
     UINT64 ExitStatus;
     UINT32 UserTransitionState;
@@ -209,6 +212,7 @@ typedef struct
     UINT64 UserTransitionLaunchRequestCount;
     UINT64 UserTransitionEntryReadyCount;
     UINT64 UserTransitionDescriptorReadyCount;
+    UINT64 UserTransitionFrameReadyCount;
     UINT64 UserTransitionLiveCount;
     UINT64 UserTransitionDispatchSkipCount;
     UINT64 UserTransitionScaffoldReblockCount;

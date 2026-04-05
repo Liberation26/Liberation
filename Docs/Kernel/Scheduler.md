@@ -1,3 +1,7 @@
+# 0.2.32
+
+Added an explicit **frame-ready** stage after **descriptor-ready** for the user-transition scaffold. The scheduler now writes a future `iretq` return-frame template onto the blocked scaffold task's kernel stack and records the prepared frame stack pointer as `user-frame-sp` on both the scaffold process/task traces. Scheduler heartbeats now expose `user-scaffold-frame-ready`, and the live-gate/live-marking helpers now require that non-zero prepared frame metadata to exist before any future real ring-transition handoff can mark the scaffold live.
+
 # 0.2.31
 
 Added an explicit **descriptor-ready** stage after **entry-ready** for the user-transition scaffold. The kernel GDT now carries user code/data descriptors, the scheduler records future user `CS`, `SS`, and `RFLAGS` values on the scaffold process/task objects, and scheduler heartbeats now expose `user-scaffold-descriptor-ready`. The scaffold still stops at the live gate and remains blocked until a future real ring-transition path marks it live.

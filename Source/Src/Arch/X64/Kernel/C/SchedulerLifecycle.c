@@ -140,6 +140,51 @@ static void WriteStackReturnAddress(UINT64 StackAddress, UINT64 ReturnAddress)
     *Pointer = ReturnAddress;
 }
 
+static UINT64 GetUserTransitionFrameStackPointer(const LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    UINT64 MinimumFrameAddress;
+
+    if (Task == 0 ||
+        Task->StackBaseVirtualAddress == 0ULL ||
+        Task->StackTopVirtualAddress == 0ULL ||
+        Task->StackTopVirtualAddress <= Task->StackBaseVirtualAddress)
+    {
+        return 0ULL;
+    }
+
+    MinimumFrameAddress = Task->StackBaseVirtualAddress + sizeof(LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME);
+    if (Task->StackTopVirtualAddress < MinimumFrameAddress + LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME_STACK_OFFSET_BYTES)
+    {
+        return 0ULL;
+    }
+
+    return (Task->StackTopVirtualAddress - LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME_STACK_OFFSET_BYTES) & ~0xFULL;
+}
+
+static void WriteUserTransitionFrame(
+    UINT64 FrameStackPointer,
+    UINT64 InstructionPointer,
+    UINT64 CodeSelector,
+    UINT64 Rflags,
+    UINT64 StackPointer,
+    UINT64 StackSelector)
+{
+    LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *Frame;
+
+    if (FrameStackPointer == 0ULL)
+    {
+        return;
+    }
+
+    Frame = (LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *)(UINTN)FrameStackPointer;
+    ZeroBytes(Frame, sizeof(*Frame));
+    Frame->Rip = InstructionPointer;
+    Frame->Cs = CodeSelector;
+    Frame->Rflags = Rflags;
+    Frame->Rsp = StackPointer;
+    Frame->Ss = StackSelector;
+}
+
 static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -801,6 +846,7 @@ BOOLEAN LosKernelSchedulerCreateProcess(
         Process->UserCodeSegmentSelector = 0ULL;
         Process->UserStackSegmentSelector = 0ULL;
         Process->UserRflags = 0ULL;
+        Process->UserTransitionFrameStackPointer = 0ULL;
         Process->ExitStatus = 0ULL;
         Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE;
         Process->CleanupPending = 0U;
@@ -969,6 +1015,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->UserCodeSegmentSelector = 0ULL;
             Task->UserStackSegmentSelector = 0ULL;
             Task->UserRflags = 0ULL;
+            Task->UserTransitionFrameStackPointer = 0ULL;
             Task->PreemptionCount = 0ULL;
             Task->ExitStatus = 0ULL;
             Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE;
@@ -1076,6 +1123,7 @@ BOOLEAN LosKernelSchedulerPrepareUserTransitionScaffold(void)
         Process->UserCodeSegmentSelector = 0ULL;
         Process->UserStackSegmentSelector = 0ULL;
         Process->UserRflags = 0ULL;
+        Process->UserTransitionFrameStackPointer = 0ULL;
         Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED;
     }
     if (Task != 0)
@@ -1091,6 +1139,7 @@ BOOLEAN LosKernelSchedulerPrepareUserTransitionScaffold(void)
         Task->UserCodeSegmentSelector = 0ULL;
         Task->UserStackSegmentSelector = 0ULL;
         Task->UserRflags = 0ULL;
+        Task->UserTransitionFrameStackPointer = 0ULL;
         Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED;
     }
     State->UserTransitionScaffoldReady = 1U;
@@ -1594,13 +1643,14 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldDescriptorReady(void)
 }
 
 
-BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
+BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldFrameReady(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
     LOS_KERNEL_SCHEDULER_PROCESS *Process;
     LOS_KERNEL_SCHEDULER_TASK *Task;
     UINT64 CriticalSectionFlags;
-    BOOLEAN Live;
+    UINT64 FrameStackPointer;
+    BOOLEAN FrameReady;
 
     State = LosKernelSchedulerState();
     if (State == 0 || State->UserTransitionScaffoldReady == 0U)
@@ -1626,12 +1676,13 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
         return 0;
     }
 
-    if (Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE &&
-        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE)
+    if (Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY)
     {
         return 1;
     }
 
+    FrameStackPointer = GetUserTransitionFrameStackPointer(Task);
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
@@ -1645,7 +1696,8 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
         Process->UserRflags == 0ULL ||
         Task->UserCodeSegmentSelector == 0ULL ||
         Task->UserStackSegmentSelector == 0ULL ||
-        Task->UserRflags == 0ULL)
+        Task->UserRflags == 0ULL ||
+        FrameStackPointer == 0ULL)
     {
         return 0;
     }
@@ -1654,7 +1706,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
     State = LosKernelSchedulerState();
     Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
     Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
-    Live = 0U;
+    FrameReady = 0U;
     if (Process != 0 && Task != 0 &&
         Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY &&
         Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY &&
@@ -1670,6 +1722,119 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
         Task->UserCodeSegmentSelector != 0ULL &&
         Task->UserStackSegmentSelector != 0ULL &&
         Task->UserRflags != 0ULL)
+    {
+        FrameStackPointer = GetUserTransitionFrameStackPointer(Task);
+        if (FrameStackPointer != 0ULL)
+        {
+            WriteUserTransitionFrame(
+                FrameStackPointer,
+                Task->UserInstructionPointer,
+                Task->UserCodeSegmentSelector,
+                Task->UserRflags,
+                Task->UserStackPointer,
+                Task->UserStackSegmentSelector);
+            Process->UserTransitionFrameStackPointer = FrameStackPointer;
+            Task->UserTransitionFrameStackPointer = FrameStackPointer;
+            Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY;
+            Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY;
+            State->UserTransitionFrameReadyCount += 1ULL;
+            FrameReady = 1U;
+        }
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    if (FrameReady != 0U)
+    {
+        LosKernelTraceOk("Scheduler user-transition scaffold frame-ready.");
+        LosKernelSchedulerTraceProcess("Frame-ready scheduler user-transition scaffold process", Process);
+        LosKernelSchedulerTraceTask("Frame-ready scheduler user-transition scaffold task", Task);
+        return 1;
+    }
+
+    return 0;
+}
+
+
+BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+    UINT64 CriticalSectionFlags;
+    BOOLEAN Live;
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || State->UserTransitionScaffoldReady == 0U)
+    {
+        return 0;
+    }
+
+    if (State->UserTransitionFrameReadyCount == 0ULL)
+    {
+        return 0;
+    }
+
+    if (State->UserTransitionScaffoldProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID ||
+        State->UserTransitionScaffoldTaskId == LOS_KERNEL_SCHEDULER_INVALID_TASK_ID)
+    {
+        return 0;
+    }
+
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    if (Process == 0 || Task == 0)
+    {
+        return 0;
+    }
+
+    if (Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE)
+    {
+        return 1;
+    }
+
+    if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
+        Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
+        Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
+        Task->UserInstructionPointer == 0ULL ||
+        Task->UserStackPointer == 0ULL ||
+        Process->UserEntryVirtualAddress == 0ULL ||
+        Process->UserStackTopVirtualAddress == 0ULL ||
+        Process->UserCodeSegmentSelector == 0ULL ||
+        Process->UserStackSegmentSelector == 0ULL ||
+        Process->UserRflags == 0ULL ||
+        Task->UserCodeSegmentSelector == 0ULL ||
+        Task->UserStackSegmentSelector == 0ULL ||
+        Task->UserRflags == 0ULL ||
+        Process->UserTransitionFrameStackPointer == 0ULL ||
+        Task->UserTransitionFrameStackPointer == 0ULL)
+    {
+        return 0;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    Live = 0U;
+    if (Process != 0 && Task != 0 &&
+        Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY &&
+        Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
+        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
+        Task->UserInstructionPointer != 0ULL &&
+        Task->UserStackPointer != 0ULL &&
+        Process->UserEntryVirtualAddress != 0ULL &&
+        Process->UserStackTopVirtualAddress != 0ULL &&
+        Process->UserCodeSegmentSelector != 0ULL &&
+        Process->UserStackSegmentSelector != 0ULL &&
+        Process->UserRflags != 0ULL &&
+        Task->UserCodeSegmentSelector != 0ULL &&
+        Task->UserStackSegmentSelector != 0ULL &&
+        Task->UserRflags != 0ULL &&
+        Process->UserTransitionFrameStackPointer != 0ULL &&
+        Task->UserTransitionFrameStackPointer != 0ULL)
     {
         Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE;
         Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE;
@@ -1704,7 +1869,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void)
         return 0;
     }
 
-    if (State->UserTransitionDescriptorReadyCount == 0ULL ||
+    if (State->UserTransitionFrameReadyCount == 0ULL ||
         State->UserTransitionLiveCount != 0ULL)
     {
         return 0;
@@ -1728,10 +1893,12 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void)
         return 0;
     }
 
-    if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY ||
-        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY ||
+    if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
-        Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
+        Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
+        Process->UserTransitionFrameStackPointer == 0ULL ||
+        Task->UserTransitionFrameStackPointer == 0ULL)
     {
         return 0;
     }
@@ -1742,13 +1909,15 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void)
     Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
     Closed = 0U;
     if (Process != 0 && Task != 0 &&
-        State->UserTransitionDescriptorReadyCount != 0ULL &&
+        State->UserTransitionFrameReadyCount != 0ULL &&
         State->UserTransitionLiveCount == 0ULL &&
         State->UserTransitionLiveGateClosed == 0U &&
-        Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY &&
-        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY &&
+        Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY &&
         Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
-        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
+        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
+        Process->UserTransitionFrameStackPointer != 0ULL &&
+        Task->UserTransitionFrameStackPointer != 0ULL)
     {
         State->UserTransitionLiveGateClosed = 1U;
         Closed = 1U;
@@ -1938,6 +2107,7 @@ void LosKernelSchedulerInitialize(void)
     State->UserTransitionLaunchRequestCount = 0ULL;
     State->UserTransitionEntryReadyCount = 0ULL;
     State->UserTransitionDescriptorReadyCount = 0ULL;
+    State->UserTransitionFrameReadyCount = 0ULL;
     State->UserTransitionLiveCount = 0ULL;
     State->UserTransitionDispatchSkipCount = 0ULL;
     State->UserTransitionScaffoldReblockCount = 0ULL;
