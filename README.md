@@ -762,3 +762,6 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 
 
 - 0.2.34: added a bridge-ready user-transition scaffold stage that stages a dedicated future dispatch-bridge address on the blocked scaffold stack before the live gate closes, while keeping the scaffold non-live until the real ring-transition path exists.
+
+
+- 0.2.37: added a seal-ready user-transition scaffold stage that writes and verifies a non-zero `user-seal` marker on the staged dispatch chain before the live gate closes.

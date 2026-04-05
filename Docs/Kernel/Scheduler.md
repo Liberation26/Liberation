@@ -263,3 +263,11 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 - The blocked scaffold task now carries a dedicated future dispatch-bridge entry address in addition to the staged kernel-entry and user return-frame metadata.
 - Diagnostics now report `user-bridge=` in detailed task/process traces and `user-scaffold-bridge-ready=` in heartbeat output.
 - The live gate still stays closed until the real ring-transition entry path exists, so this remains scaffold hardening rather than actual user-mode dispatch.
+
+
+## 0.2.37
+
+- Added a `seal-ready` user-transition scaffold stage after `contract-ready`.
+- The scheduler now writes and verifies a non-zero `user-seal` value on the staged dispatch chain so the blocked scaffold carries an explicit sealed handoff marker before the live gate closes.
+- Diagnostics now report `user-seal=` in detailed task/process traces and `user-scaffold-seal-ready=` in heartbeat output.
+- The live gate still remains closed until the real ring-transition entry path exists, and both live-gating and future `LIVE` promotion now require the prepared seal metadata.

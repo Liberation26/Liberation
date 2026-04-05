@@ -17,3 +17,13 @@
 - Review whether `stack-pool-used` stays bounded while transient workers continue to be created and reaped.
 - Continue hardening scheduler/user transition work now that the scheduler can report runtime, dispatch latency, run-slice behaviour, explicit scaffold blocking state, selector metadata, a prepared user return-frame stack pointer, a dedicated non-live kernel-entry address, and a staged future dispatch bridge address.
 - Wire the user-transition scaffold from bridge-ready/live-gated into a real ring transition path that calls `LosKernelSchedulerMarkUserTransitionScaffoldLive()` only when the actual `iretq` entry path exists.
+
+- Added an explicit `seal-ready` user-transition scaffold stage after `contract-ready`.
+- The scheduler now writes and verifies a non-zero `user-seal` marker on the staged dispatch chain, records it on both the scaffold process and task, and reports `user-scaffold-seal-ready` plus `user-seal=` in diagnostics.
+- The live gate still remains closed; both live-gating and future `LIVE` promotion now require the prepared seal metadata.
+
+# ToDo
+
+- Review the new `user-scaffold-seal-ready` diagnostic plus the seal-ready one-time log to confirm the blocked scaffold now carries a verified non-zero `user-seal` marker before the live gate closes.
+- Confirm the detailed scaffold process/task traces now report a non-zero `user-seal=` value alongside the existing chain and contract metadata.
+- Verify the live-gate-closed one-time line still appears only after `contract-ready` and `seal-ready` have both completed, while `user-scaffold-live` remains `0`.
