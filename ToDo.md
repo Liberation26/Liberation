@@ -1,3 +1,7 @@
+# 0.2.44
+
+Fixed the hosted-bootstrap memory-manager fallback path used by the scheduler user-transition scaffold. `QueryMapping` no longer halts before its local fallback can run, fallback completions are no longer double-counted, and local `MapPages`/`UnmapPages` now walk through the resolved address-space object so they use the real PML4 root instead of the object physical address. The local address-space resolver was also loosened to accept ready service-created objects by structure/state instead of insisting on bootstrap signature/version constants, the dispatcher now null-checks before zeroing the response, and hosted task readiness now blocks re-entry while the task is already marked RUNNING.
+
 - 0.2.43: Added kernel-side hosted-bootstrap fallbacks for `AttachStagedImage` and `AllocateAddressSpaceStack`, so the scheduler scaffold can keep moving through first-user image and stack setup even when the hosted memory-manager pump does not publish a reply for those operations.
 - 0.2.42: Added a kernel-side hosted-bootstrap `QueryMapping` fallback so scheduler scaffold mapping probes can continue even when the hosted memory-manager pump does not publish a reply for that operation.
 - 0.2.41: Fixed the hosted memory-manager pump used by the scheduler scaffold path by serializing hosted request/reply exchanges with interrupts disabled and by making `QueryMapping` safe on unmapped user addresses.

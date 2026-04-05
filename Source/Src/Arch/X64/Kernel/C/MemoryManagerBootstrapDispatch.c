@@ -189,6 +189,33 @@ static BOOLEAN QueryLookupLeafPageEntry(UINT64 RootTablePhysicalAddress, UINT64 
     return 1;
 }
 
+static LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *ResolveAddressSpaceObjectLocal(UINT64 AddressSpaceObjectPhysicalAddress)
+{
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
+
+    if (AddressSpaceObjectPhysicalAddress == 0ULL)
+    {
+        return 0;
+    }
+
+    AddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)LosX64GetDirectMapVirtualAddress(
+        AddressSpaceObjectPhysicalAddress,
+        sizeof(LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT));
+    if (AddressSpaceObject == 0)
+    {
+        return 0;
+    }
+    if (AddressSpaceObject->State < LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY ||
+        AddressSpaceObject->ReservedVirtualRegionCount > LOS_MEMORY_MANAGER_MAX_RESERVED_VIRTUAL_REGIONS ||
+        AddressSpaceObject->RootTablePhysicalAddress == 0ULL ||
+        (AddressSpaceObject->RootTablePhysicalAddress & 0xFFFULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    return AddressSpaceObject;
+}
+
 static void DispatchLocalQueryMapping(
     const LOS_MEMORY_MANAGER_QUERY_MAPPING_REQUEST *Request,
     LOS_MEMORY_MANAGER_QUERY_MAPPING_RESULT *Result,
@@ -221,14 +248,8 @@ static void DispatchLocalQueryMapping(
 
     Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
     Result->VirtualAddress = Request->VirtualAddress;
-    AddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)LosX64GetDirectMapVirtualAddress(
-        Request->AddressSpaceObjectPhysicalAddress,
-        sizeof(LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT));
-    if (AddressSpaceObject == 0 ||
-        AddressSpaceObject->Signature != LOS_MEMORY_MANAGER_BOOTSTRAP_SIGNATURE ||
-        AddressSpaceObject->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION ||
-        AddressSpaceObject->State < LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY ||
-        AddressSpaceObject->RootTablePhysicalAddress == 0ULL)
+    AddressSpaceObject = ResolveAddressSpaceObjectLocal(Request->AddressSpaceObjectPhysicalAddress);
+    if (AddressSpaceObject == 0)
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
         if (Status != 0)
@@ -913,14 +934,8 @@ static void DispatchLocalAttachStagedImage(
     }
 
     Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
-    AddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)LosX64GetDirectMapVirtualAddress(
-        Request->AddressSpaceObjectPhysicalAddress,
-        sizeof(LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT));
-    if (AddressSpaceObject == 0 ||
-        AddressSpaceObject->Signature != LOS_MEMORY_MANAGER_BOOTSTRAP_SIGNATURE ||
-        AddressSpaceObject->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION ||
-        AddressSpaceObject->State < LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY ||
-        AddressSpaceObject->RootTablePhysicalAddress == 0ULL)
+    AddressSpaceObject = ResolveAddressSpaceObjectLocal(Request->AddressSpaceObjectPhysicalAddress);
+    if (AddressSpaceObject == 0)
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
         if (Status != 0)
@@ -1100,14 +1115,8 @@ static void DispatchLocalAllocateAddressSpaceStack(
     }
 
     Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
-    AddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)LosX64GetDirectMapVirtualAddress(
-        Request->AddressSpaceObjectPhysicalAddress,
-        sizeof(LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT));
-    if (AddressSpaceObject == 0 ||
-        AddressSpaceObject->Signature != LOS_MEMORY_MANAGER_BOOTSTRAP_SIGNATURE ||
-        AddressSpaceObject->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION ||
-        AddressSpaceObject->State < LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY ||
-        AddressSpaceObject->RootTablePhysicalAddress == 0ULL)
+    AddressSpaceObject = ResolveAddressSpaceObjectLocal(Request->AddressSpaceObjectPhysicalAddress);
+    if (AddressSpaceObject == 0)
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
         if (Status != 0)
@@ -1306,11 +1315,14 @@ BOOLEAN LosMemoryManagerBootstrapDequeueResponse(UINT64 RequestId, LOS_MEMORY_MA
 static BOOLEAN HostedServiceTaskReady(void)
 {
     LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State;
+    UINT32 TaskState;
 
     State = LosMemoryManagerBootstrapState();
+    TaskState = State->ServiceTaskObject != 0 ? State->ServiceTaskObject->State : LOS_MEMORY_MANAGER_TASK_STATE_OFFLINE;
     return State->ServiceTaskObject != 0 &&
            State->ServiceAddressSpaceObject != 0 &&
-           State->ServiceTaskObject->State >= LOS_MEMORY_MANAGER_TASK_STATE_READY &&
+           TaskState >= LOS_MEMORY_MANAGER_TASK_STATE_READY &&
+           TaskState != LOS_MEMORY_MANAGER_TASK_STATE_RUNNING &&
            State->ServiceAddressSpaceObject->State >= LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY;
 }
 
@@ -1359,12 +1371,12 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
     LOS_MEMORY_MANAGER_REQUEST_MAILBOX *RequestMailbox;
     LOS_MEMORY_MANAGER_REQUEST_SLOT *Slot;
 
-    InitializeResponse(Request, Response);
-
     if (Request == 0 || Response == 0)
     {
         return;
     }
+
+    InitializeResponse(Request, Response);
 
     RequestMailbox = LosMemoryManagerBootstrapGetRequestMailbox();
     if (!LosMemoryManagerBootstrapEndpointsReady() || RequestMailbox == 0)
@@ -1386,7 +1398,6 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
         Slot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_FREE;
         Slot->Sequence = 0ULL;
         RequestMailbox->Header.ConsumeIndex += 1ULL;
-        LosMemoryManagerBootstrapRecordCompletion(Slot->Message.Operation, Response->Status);
         PostResponse(Response);
         return;
     }
@@ -1424,11 +1435,21 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
             break;
         case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
         {
+            LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
             LOS_X64_MAP_PAGES_REQUEST MapRequest;
             LOS_X64_MAP_PAGES_RESULT MapResult;
 
             ZeroMemory(&MapRequest, sizeof(MapRequest));
-            MapRequest.PageMapLevel4PhysicalAddress = Slot->Message.Payload.MapPages.AddressSpaceObjectPhysicalAddress;
+            AddressSpaceObject = ResolveAddressSpaceObjectLocal(Slot->Message.Payload.MapPages.AddressSpaceObjectPhysicalAddress);
+            if (AddressSpaceObject == 0)
+            {
+                Response->Payload.MapPages.Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+                Response->Payload.MapPages.AddressSpaceObjectPhysicalAddress = Slot->Message.Payload.MapPages.AddressSpaceObjectPhysicalAddress;
+                Response->Status = Response->Payload.MapPages.Status;
+                break;
+            }
+
+            MapRequest.PageMapLevel4PhysicalAddress = AddressSpaceObject->RootTablePhysicalAddress;
             MapRequest.VirtualAddress = Slot->Message.Payload.MapPages.VirtualAddress;
             MapRequest.PhysicalAddress = Slot->Message.Payload.MapPages.PhysicalAddress;
             MapRequest.PageCount = Slot->Message.Payload.MapPages.PageCount;
@@ -1444,11 +1465,21 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
         }
         case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
         {
+            LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
             LOS_X64_UNMAP_PAGES_REQUEST UnmapRequest;
             LOS_X64_UNMAP_PAGES_RESULT UnmapResult;
 
             ZeroMemory(&UnmapRequest, sizeof(UnmapRequest));
-            UnmapRequest.PageMapLevel4PhysicalAddress = Slot->Message.Payload.UnmapPages.AddressSpaceObjectPhysicalAddress;
+            AddressSpaceObject = ResolveAddressSpaceObjectLocal(Slot->Message.Payload.UnmapPages.AddressSpaceObjectPhysicalAddress);
+            if (AddressSpaceObject == 0)
+            {
+                Response->Payload.UnmapPages.Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+                Response->Payload.UnmapPages.AddressSpaceObjectPhysicalAddress = Slot->Message.Payload.UnmapPages.AddressSpaceObjectPhysicalAddress;
+                Response->Status = Response->Payload.UnmapPages.Status;
+                break;
+            }
+
+            UnmapRequest.PageMapLevel4PhysicalAddress = AddressSpaceObject->RootTablePhysicalAddress;
             UnmapRequest.VirtualAddress = Slot->Message.Payload.UnmapPages.VirtualAddress;
             UnmapRequest.PageCount = Slot->Message.Payload.UnmapPages.PageCount;
             UnmapRequest.Flags = Slot->Message.Payload.UnmapPages.Flags;
@@ -1503,7 +1534,6 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
 
     Slot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_COMPLETE;
     RequestMailbox->Header.ConsumeIndex += 1ULL;
-    LosMemoryManagerBootstrapRecordCompletion(Slot->Message.Operation, Response->Status);
     PostResponse(Response);
     Slot->SlotState = LOS_MEMORY_MANAGER_MAILBOX_SLOT_FREE;
     Slot->Sequence = 0ULL;
@@ -1725,7 +1755,8 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
     {
         if (!LosMemoryManagerBootstrapHostedServiceStep())
         {
-            if (Attempt == 0U)
+            if (Attempt == 0U && !RequestMayUseBootstrapFallback(Request->Operation) &&
+                RequestRequiresRealServiceReply(Request->Operation))
             {
                 Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
                 RestoreInterruptFlags(InterruptFlags);

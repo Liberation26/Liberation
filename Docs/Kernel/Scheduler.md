@@ -1,3 +1,11 @@
+## 0.2.44
+
+- Fixed the hosted-bootstrap fallback path used during scheduler scaffold bring-up. `QueryMapping` fallback can now actually execute when the hosted step does not publish a reply, instead of halting on the first failed hosted step.
+- Local bootstrap-fallback accounting now records each completed request exactly once, which keeps `messages-completed` diagnostics aligned with the real number of serviced requests.
+- Local `MapPages` and `UnmapPages` dispatch now resolve the target address-space object and pass its real `RootTablePhysicalAddress` into the x64 virtual-memory mapper, rather than accidentally passing the object physical address itself.
+- Local address-space resolution for scaffold probes/attach/stack fallback now keys off a ready object with a valid root table instead of hard-rejecting future service-created objects that may not preserve bootstrap signature/version constants exactly.
+- The dispatcher now guards null request/response pointers before initializing the response buffer, and hosted-service readiness now refuses re-entry while the hosted task is already marked `RUNNING`.
+
 Hosted bootstrap now has kernel-side fallbacks for `AttachStagedImage` and `AllocateAddressSpaceStack` too. If the memory-manager hosted pump stops publishing a reply while the scheduler scaffold is staging the first user image or first user stack, the kernel now builds those mappings directly into the target address space so scaffold bring-up can continue toward `entry-ready`, `handoff-ready`, and the first real ring-3 proof path.
 
 Hosted bootstrap now has a kernel-side `QueryMapping` fallback as well: if the memory-manager hosted pump does not publish a reply while the scheduler is probing scaffold mappings, the kernel resolves the address-space object directly and walks the target page tables itself. That keeps the image/stack presence checks moving instead of fatal-halting on a missing hosted reply.
