@@ -1248,6 +1248,81 @@ BOOLEAN LosKernelSchedulerArmUserTransitionScaffold(void)
     return 0;
 }
 
+BOOLEAN LosKernelSchedulerRequestUserTransitionScaffold(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+    UINT64 CriticalSectionFlags;
+    BOOLEAN Requested;
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || State->UserTransitionScaffoldReady == 0U)
+    {
+        return 0;
+    }
+
+    if (State->UserTransitionArmedCount == 0ULL)
+    {
+        return 0;
+    }
+
+    if (State->UserTransitionScaffoldProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID ||
+        State->UserTransitionScaffoldTaskId == LOS_KERNEL_SCHEDULER_INVALID_TASK_ID)
+    {
+        return 0;
+    }
+
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    if (Process == 0 || Task == 0)
+    {
+        return 0;
+    }
+
+    if (Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_REQUESTED &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_REQUESTED)
+    {
+        return 1;
+    }
+
+    if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED ||
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED ||
+        Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
+        Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
+    {
+        return 0;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    Requested = 0U;
+    if (Process != 0 && Task != 0 &&
+        Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED &&
+        Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
+        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
+    {
+        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_REQUESTED;
+        Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_REQUESTED;
+        State->UserTransitionLaunchRequestCount += 1ULL;
+        Requested = 1U;
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    if (Requested != 0U)
+    {
+        LosKernelTraceOk("Scheduler user-transition scaffold launch requested.");
+        LosKernelSchedulerTraceProcess("Launch-requested scheduler user-transition scaffold process", Process);
+        LosKernelSchedulerTraceTask("Launch-requested scheduler user-transition scaffold task", Task);
+        return 1;
+    }
+
+    return 0;
+}
+
 void LosKernelSchedulerCleanupTerminatedTasks(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;

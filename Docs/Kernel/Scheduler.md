@@ -219,3 +219,6 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 - The scheduler no longer exposes half-created transient processes to the main bind-pending sweep.
 - Deferred address-space-bind logging was removed from the hot scheduler loop to avoid serial spam; the deferred counter remains.
 
+
+
+- Added a launch-requested stage to the user-transition scaffold. The scaffold remains blocked, but now records that the kernel has accepted the next entry request before any future ring-transition implementation.
