@@ -1,3 +1,6 @@
+- [x] Treat memory-manager bootstrap states at or beyond READY as scheduler-usable so task/process cleanup can free stacks and destroy transient address spaces after the first hosted request.
+- [x] Add `Scripts/Run.sh` wrapper to clear the screen, run `update.sh`, and then launch `RunDir.sh`, `RunHD.sh`, or `RunISO.sh` from a single command.
+
 - Verify the 0.2.13 pending-wake resume-window path by proving transient owned-root workers wake, get an immediate post-wake slice, resume, exit, reap, and destroy their address spaces cleanly under sustained busy-thread load.
 # ToDo
 

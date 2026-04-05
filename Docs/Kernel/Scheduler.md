@@ -164,6 +164,11 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 - let IPC paths block and wake scheduled threads
 - move the memory manager from hosted bootstrap steps to a real scheduled task
 
+## 0.2.14
+
+- The memory-manager bootstrap readiness check now treats all states at or beyond `READY` as scheduler-usable. That matters because a hosted service request advances the bootstrap state to `SERVICE_ONLINE`; without this, scheduler cleanup could create and run a transient process successfully, then fail to free its terminated thread stack or destroy its owned address space during reap.
+- Added `Scripts/Run.sh` as a single entry wrapper that clears the screen, runs `update.sh`, and then launches directory, hard-disk, or ISO boot depending on whether the user passes `D`, `H`, or `I`.
+
 ## 0.2.8
 
 - Transient non-kernel process address-space binding is now serialized per process. The scheduler marks a process as `bind-in-progress` before sending `CreateAddressSpace`, so the lifecycle thread and the scheduler bind pass cannot both issue separate create requests for the same process.
