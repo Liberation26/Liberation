@@ -1651,6 +1651,122 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void)
 }
 
 
+BOOLEAN LosKernelSchedulerIsUserTransitionScaffoldBlocked(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || State->UserTransitionScaffoldReady == 0U)
+    {
+        return 0U;
+    }
+
+    if (State->UserTransitionScaffoldTaskId == LOS_KERNEL_SCHEDULER_INVALID_TASK_ID)
+    {
+        return 0U;
+    }
+
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    if (Task == 0)
+    {
+        return 0U;
+    }
+
+    return (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
+            Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
+        ? 1U
+        : 0U;
+}
+
+BOOLEAN LosKernelSchedulerGuardUserTransitionScaffold(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+    UINT64 CriticalSectionFlags;
+    BOOLEAN Reblocked;
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || State->UserTransitionScaffoldReady == 0U)
+    {
+        return 0U;
+    }
+
+    if (State->UserTransitionLiveCount != 0ULL)
+    {
+        return 0U;
+    }
+
+    if (State->UserTransitionScaffoldProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID ||
+        State->UserTransitionScaffoldTaskId == LOS_KERNEL_SCHEDULER_INVALID_TASK_ID)
+    {
+        return 0U;
+    }
+
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    if (Process == 0 || Task == 0)
+    {
+        return 0U;
+    }
+
+    if (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING)
+    {
+        LosKernelTraceFail("Scheduler user-transition scaffold reached RUNNING before the live handoff existed.");
+        LosKernelSchedulerTraceProcess("Invalid running scheduler user-transition scaffold process", Process);
+        LosKernelSchedulerTraceTask("Invalid running scheduler user-transition scaffold task", Task);
+        LosKernelHaltForever();
+    }
+
+    if (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
+        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
+    {
+        return 1U;
+    }
+
+    if (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED ||
+        Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_UNUSED)
+    {
+        return 0U;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    Reblocked = 0U;
+    if (Process != 0 && Task != 0 &&
+        State->UserTransitionLiveCount == 0ULL &&
+        Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING &&
+        Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED &&
+        Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_UNUSED &&
+        (Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
+         Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION))
+    {
+        Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED;
+        Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION;
+        Task->ReadySinceTick = 0ULL;
+        Task->NextWakeTick = 0ULL;
+        Task->WakeDispatchPending = 0U;
+        Task->ResumeBoostTicks = 0U;
+        Task->RemainingQuantumTicks = Task->QuantumTicks;
+        State->UserTransitionScaffoldReblockCount += 1ULL;
+        Reblocked = 1U;
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    if (Reblocked != 0U)
+    {
+        LosKernelTraceOk("Scheduler user-transition scaffold guard re-blocked a non-live task before dispatch.");
+        LosKernelSchedulerTraceProcess("Guarded scheduler user-transition scaffold process", Process);
+        LosKernelSchedulerTraceTask("Guarded scheduler user-transition scaffold task", Task);
+    }
+
+    return 1U;
+}
+
+
 void LosKernelSchedulerInitialize(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -1707,6 +1823,7 @@ void LosKernelSchedulerInitialize(void)
     State->UserTransitionEntryReadyCount = 0ULL;
     State->UserTransitionLiveCount = 0ULL;
     State->UserTransitionDispatchSkipCount = 0ULL;
+    State->UserTransitionScaffoldReblockCount = 0ULL;
     State->UserTransitionScaffoldProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
     State->UserTransitionScaffoldTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
     State->DirectClaimStackPoolPhysicalAddress = 0ULL;

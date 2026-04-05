@@ -1,3 +1,7 @@
+# 0.2.30
+
+Added an explicit **non-live scaffold guard** for the user-transition ladder. Scheduler heartbeats now expose `user-scaffold-blocked` and `user-scaffold-reblocked`, and the lifecycle thread now force-reblocks the scaffold task if anything accidentally makes it ready before the future real ring-transition path marks it live. That keeps the scaffold visible, proves it remains intentionally blocked after `entry-ready`, and turns accidental premature readiness into an explicit diagnostic instead of a silent risk.
+
 # 0.2.29
 
 Added an explicit **live-gate-closed** stop after the user-transition scaffold reaches **entry-ready**. The lifecycle thread now emits a one-time `Scheduler user-transition scaffold live gate closed...` line, scheduler diagnostics expose `user-scaffold-live` and `user-live-gate-closed`, and a dedicated `LosKernelSchedulerMarkUserTransitionScaffoldLive()` helper is now in place for the future real ring-transition entry path to flip the scaffold to LIVE without reopening dispatch early.

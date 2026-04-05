@@ -211,6 +211,10 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-live-gate-closed=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveGateClosed);
+    LosKernelSerialWriteText(" user-scaffold-blocked=");
+    LosKernelSerialWriteUnsigned(LosKernelSchedulerIsUserTransitionScaffoldBlocked());
+    LosKernelSerialWriteText(" user-scaffold-reblocked=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReblockCount);
     LosKernelSerialWriteText(" user-dispatch-skip=");
     LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
     LosKernelSerialWriteText(" user-scaffold-proc=");
@@ -316,6 +320,10 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-live-gate-closed=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveGateClosed);
+            LosKernelSerialWriteText(" user-scaffold-blocked=");
+            LosKernelSerialWriteUnsigned(LosKernelSchedulerIsUserTransitionScaffoldBlocked());
+            LosKernelSerialWriteText(" user-scaffold-reblocked=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReblockCount);
             LosKernelSerialWriteText(" user-dispatch-skip=");
             LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
             LosKernelSerialWriteText(" user-scaffold-proc=");
@@ -370,6 +378,12 @@ void LosKernelSchedulerLifecycleThread(void *Context)
                  LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed();
+        }
+
+        if (LosKernelSchedulerState()->UserTransitionScaffoldReady != 0U &&
+            LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
+        {
+            (void)LosKernelSchedulerGuardUserTransitionScaffold();
         }
 
         if (LosKernelSchedulerHasActiveTransientProcess() != 0U)

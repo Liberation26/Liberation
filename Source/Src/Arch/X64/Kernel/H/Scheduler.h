@@ -41,7 +41,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION 5U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 27U
+#define LOS_KERNEL_SCHEDULER_VERSION 28U
 
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED 1U
@@ -203,6 +203,7 @@ typedef struct
     UINT64 UserTransitionEntryReadyCount;
     UINT64 UserTransitionLiveCount;
     UINT64 UserTransitionDispatchSkipCount;
+    UINT64 UserTransitionScaffoldReblockCount;
     UINT64 UserTransitionScaffoldProcessId;
     UINT64 UserTransitionScaffoldTaskId;
     UINT64 DirectClaimStackPoolPhysicalAddress;
