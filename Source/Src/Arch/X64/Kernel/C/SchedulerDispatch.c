@@ -374,6 +374,20 @@ void LosKernelSchedulerThreadTrampoline(void)
     LosKernelHaltForever();
 }
 
+void LosKernelSchedulerUserTransitionKernelEntry(void)
+{
+    const LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    Task = LosKernelSchedulerGetCurrentTask();
+    if (Task != 0)
+    {
+        LosKernelSchedulerTraceTask("Scheduler user-transition kernel-entry scaffold task", Task);
+    }
+
+    LosKernelTraceFail("Kernel scheduler reached the user-transition kernel-entry scaffold before the real ring-transition handoff existed.");
+    LosKernelHaltForever();
+}
+
 void LosKernelSchedulerEnter(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;

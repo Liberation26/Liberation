@@ -1,3 +1,7 @@
+# 0.2.33
+
+Added an explicit **trampoline-ready** stage after **frame-ready** for the user-transition scaffold. The scheduler now rewrites the blocked scaffold task's first kernel return address to a dedicated non-live kernel-entry helper, records that address as `user-kentry` on both the scaffold process/task objects, and exposes `user-scaffold-trampoline-ready` in the heartbeat. The live gate now closes only after that trampoline metadata is present, so the future real ring-transition path has a dedicated kernel-entry landing point ready before anything can be marked live.
+
 # 0.2.32
 
 Added an explicit **frame-ready** stage after **descriptor-ready** for the user-transition scaffold. The scheduler now writes a future `iretq` return-frame template onto the blocked scaffold task's kernel stack and records the prepared frame stack pointer as `user-frame-sp` on both the scaffold process/task traces. Scheduler heartbeats now expose `user-scaffold-frame-ready`, and the live-gate/live-marking helpers now require that non-zero prepared frame metadata to exist before any future real ring-transition handoff can mark the scaffold live.

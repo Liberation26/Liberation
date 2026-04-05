@@ -755,3 +755,5 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 - 0.1.90: Added MemoryManagerBootstrap.h to ChangedFiles so update-only syncs pick up the corrected LosMemoryManagerSendMapPages/UnmapPages prototypes and avoid the conflicting declaration build error.
 
 - Added a launch-requested stage for the user-transition scaffold while keeping the scaffold blocked until the real ring-transition entry path exists.
+
+- 0.2.33: added a trampoline-ready user-transition scaffold stage that plants a dedicated kernel-entry return address on the blocked scaffold stack before the live gate closes.
