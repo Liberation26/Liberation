@@ -13,6 +13,8 @@ The current scheduler is still intentionally small, but it has moved beyond the 
 - saved execution context for scheduler and threads
 - timer-driven wake-up for sleeping work
 - scheduler ownership of the post-init idle path
+- scheduler initialization moved to the post-bootstrap stage, after the memory-manager bootstrap address space exists
+- early boot fallback stacks reserved inside the kernel image so scheduler bring-up does not halt if physical-frame claiming is temporarily unavailable
 
 ## What It Does Today
 

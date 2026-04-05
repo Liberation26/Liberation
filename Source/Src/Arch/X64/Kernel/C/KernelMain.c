@@ -317,8 +317,6 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
 
     LosX64InitializeTimer();
     LosKernelTraceOk("Programmable interval timer started at 100 Hz.");
-    LosKernelSchedulerInitialize();
-    LosKernelSchedulerRegisterBootstrapTasks();
 
     LosKernelTraceOk("ExitBootServices complete. Kernel owns firmware memory map.");
     LosKernelSerialWriteText("[Kernel] The EFI monitor was handoff-only and does not remain a live UEFI application.\n");
@@ -381,6 +379,10 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
             LosKernelTraceHex64("Memory-manager bootstrap address-space root: ", 0ULL);
         }
     }
+
+    LosKernelSchedulerInitialize();
+    LosKernelSchedulerRegisterBootstrapTasks();
+
     LosKernelTraceUnsigned("Timer tick count before enabling interrupts: ", LosX64GetTimerTickCount());
     LosKernelScreenUpdateTimer(LosX64GetTimerTickCount(), 100ULL, 0U);
     LosKernelEnableInterrupts();

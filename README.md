@@ -1,3 +1,10 @@
+Version 0.1.94
+
+- Moved scheduler initialization and bootstrap-task registration later in kernel bring-up, so the scheduler is created only after the memory-manager bootstrap address space has been staged.
+- Hardened scheduler stack bring-up by keeping the normal claimed-frame path first, but falling back to reserved in-image bootstrap stacks if early frame claiming is not yet available.
+- Added explicit scheduler stack-claim diagnostics so failures now report the returned claim status and page count before the fallback path is used.
+- Updated `Docs/Kernel/Scheduler.md` and `ToDo.md` to reflect the early-boot scheduler hardening work.
+
 Version 0.1.93
 
 - Replaced the first scheduler step-loop model with saved-context kernel threads, so LOS now switches between the scheduler context and dedicated per-thread kernel stacks.

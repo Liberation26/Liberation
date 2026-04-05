@@ -49,7 +49,7 @@ Success criteria:
 ## Kernel Milestone: Minimum Real Kernel
 
 - [x] Scheduler runs after kernel init instead of ending in a simple idle-only path
-- [ ] Kernel can create and schedule tasks and threads
+- [x] Kernel can create and schedule basic kernel threads
 - [ ] Kernel can enter and return from user mode safely
 - [ ] Kernel IPC can block, wake, reply, and time out correctly
 - [ ] Capabilities are enforced by object type and operation
