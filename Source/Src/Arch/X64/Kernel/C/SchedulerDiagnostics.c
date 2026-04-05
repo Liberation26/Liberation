@@ -40,6 +40,8 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteUnsigned((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) != 0U ? 1U : 0U);
     LosKernelSerialWriteText(" bind-in-progress=");
     LosKernelSerialWriteUnsigned((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_BIND_IN_PROGRESS) != 0U ? 1U : 0U);
+    LosKernelSerialWriteText(" create-in-progress=");
+    LosKernelSerialWriteUnsigned((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_CREATE_IN_PROGRESS) != 0U ? 1U : 0U);
     LosKernelSerialWriteText(" cleanup=");
     LosKernelSerialWriteUnsigned(Process->CleanupPending);
     LosKernelSerialWriteText(" exit=");

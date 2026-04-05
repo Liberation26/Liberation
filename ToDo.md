@@ -85,3 +85,4 @@ Success criteria:
 - [ ] User commands available for files, services, logs, and capabilities
 - [ ] Persistent loading from storage works
 - [ ] Service crash and restart behaviour is defined
+- Validate ephemeral process exit, reaping, and address-space destroy after the 0.2.9 process-creation gating change.
