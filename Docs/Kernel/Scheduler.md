@@ -1,3 +1,7 @@
+# 0.2.28
+
+Added an explicit **entry-ready** stage to the user-transition scaffold. After launch is requested, the scaffold now advances to an entry-ready state once the blocked user task and its distinct address space still carry non-zero user entry and user-stack values. Scheduler diagnostics now expose `user-scaffold-entry-ready`, and dispatch eligibility stays closed to user-mode tasks until a future real ring-transition path marks them live.
+
 Added a first-stage **user-transition scaffold**. The scheduler lifecycle path now prepares a dedicated `UserScaffoldProcess` with its own distinct address space plus a blocked `UserScaffoldTask` that records the future user entry and user-stack top without attempting a ring transition yet. Scheduler-wide diagnostics now expose `user-scaffold-ready`, `user-scaffold-prepared`, `user-scaffold-proc`, and `user-scaffold-task`, while task/process traces now include the recorded user entry, user stack, and user-transition state. That gives LOS a concrete launch object to harden before the first real kernel-to-user transfer path is wired.
 
 ## 0.2.20

@@ -106,7 +106,7 @@ static BOOLEAN IsTaskDispatchEligible(LOS_KERNEL_SCHEDULER_STATE *State, const L
     }
 
     if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) != 0U &&
-        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED)
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE)
     {
         if (State != 0)
         {

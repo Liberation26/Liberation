@@ -41,6 +41,7 @@ BOOLEAN LosKernelSchedulerPrepareUserTransitionScaffold(void);
 BOOLEAN LosKernelSchedulerValidateUserTransitionScaffold(void);
 BOOLEAN LosKernelSchedulerArmUserTransitionScaffold(void);
 BOOLEAN LosKernelSchedulerRequestUserTransitionScaffold(void);
+BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldEntryReady(void);
 void LosKernelSchedulerCleanupTerminatedProcesses(void);
 void LosKernelSchedulerBindPendingProcessAddressSpaces(void);
 BOOLEAN LosKernelSchedulerCreateTask(

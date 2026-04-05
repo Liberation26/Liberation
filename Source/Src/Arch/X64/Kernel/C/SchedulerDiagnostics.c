@@ -205,6 +205,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionArmedCount);
     LosKernelSerialWriteText(" user-scaffold-requested=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-scaffold-entry-ready=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-dispatch-skip=");
     LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
     LosKernelSerialWriteText(" user-scaffold-proc=");
@@ -304,6 +306,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionArmedCount);
             LosKernelSerialWriteText(" user-scaffold-requested=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-scaffold-entry-ready=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-dispatch-skip=");
             LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
             LosKernelSerialWriteText(" user-scaffold-proc=");
@@ -349,6 +353,10 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         else if (LosKernelSchedulerState()->UserTransitionLaunchRequestCount == 0ULL)
         {
             (void)LosKernelSchedulerRequestUserTransitionScaffold();
+        }
+        else if (LosKernelSchedulerState()->UserTransitionEntryReadyCount == 0ULL)
+        {
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldEntryReady();
         }
 
         if (LosKernelSchedulerHasActiveTransientProcess() != 0U)
