@@ -330,6 +330,10 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         {
             (void)LosKernelSchedulerPrepareUserTransitionScaffold();
         }
+        else if (LosKernelSchedulerState()->UserTransitionValidatedCount == 0ULL)
+        {
+            (void)LosKernelSchedulerValidateUserTransitionScaffold();
+        }
 
         if (LosKernelSchedulerHasActiveTransientProcess() != 0U)
         {

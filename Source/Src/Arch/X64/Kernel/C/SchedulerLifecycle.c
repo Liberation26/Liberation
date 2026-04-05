@@ -937,7 +937,9 @@ BOOLEAN LosKernelSchedulerCreateTask(
             ZeroBytes(Task, sizeof(*Task));
             Task->Signature = LOS_KERNEL_SCHEDULER_SIGNATURE;
             Task->Version = LOS_KERNEL_SCHEDULER_VERSION;
-            Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
+            Task->State = ((Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_SCAFFOLD) != 0U)
+                ? LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED
+                : LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
             Task->TaskId = State->NextTaskId;
             Task->OwnerTaskId = GetCreatingOwnerTaskId();
             Task->ProcessId = ProcessId;
@@ -952,9 +954,13 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->DispatchCount = 0ULL;
             Task->TotalTicks = 0ULL;
             Task->LastRunTick = 0ULL;
-            Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
+            Task->LastBlockReason = ((Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_SCAFFOLD) != 0U)
+                ? LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION
+                : LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
             Task->LastWakeTick = 0ULL;
-            Task->ReadySinceTick = State->TickCount;
+            Task->ReadySinceTick = ((Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_SCAFFOLD) != 0U)
+                ? 0ULL
+                : State->TickCount;
             Task->UserInstructionPointer = 0ULL;
             Task->UserStackPointer = 0ULL;
             Task->PreemptionCount = 0ULL;
