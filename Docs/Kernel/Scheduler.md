@@ -26,6 +26,10 @@ Scheduler bootstrap threads now stay on bootstrap fallback stacks until the sche
 
 # Scheduler
 
+## 0.2.21
+
+- Added dispatch-latency accounting for tasks, processes, and the scheduler as a whole. LOS now records the worst observed `max-ready-delay` and `max-wake-delay` values so the serial log can show not just CPU usage totals, but also how long work waited before it was actually dispatched.
+
 - 0.2.13: Added a one-shot pending-wake dispatch path plus a short resume window for freshly woken tasks. A task that wakes from scheduler sleep now keeps an explicit wake-pending marker until it is actually dispatched, and its first post-wake run can receive a slightly longer quantum so resume -> exit paths stay visible even under BusyWorker load.
 
 ## 0.2.12 update

@@ -38,6 +38,10 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteUnsigned(Process->TotalTicks);
     LosKernelSerialWriteText(" last-run=");
     LosKernelSerialWriteUnsigned(Process->LastRunTick);
+    LosKernelSerialWriteText(" max-ready-delay=");
+    LosKernelSerialWriteUnsigned(Process->MaxReadyDelayTicks);
+    LosKernelSerialWriteText(" max-wake-delay=");
+    LosKernelSerialWriteUnsigned(Process->MaxWakeDelayTicks);
     LosKernelSerialWriteText(" root=");
     LosKernelSerialWriteHex64(Process->RootTablePhysicalAddress);
     LosKernelSerialWriteText(" inherited-root=");
@@ -90,6 +94,10 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteUnsigned(Task->TotalTicks);
     LosKernelSerialWriteText(" ready-since=");
     LosKernelSerialWriteUnsigned(Task->ReadySinceTick);
+    LosKernelSerialWriteText(" max-ready-delay=");
+    LosKernelSerialWriteUnsigned(Task->MaxReadyDelayTicks);
+    LosKernelSerialWriteText(" max-wake-delay=");
+    LosKernelSerialWriteUnsigned(Task->MaxWakeDelayTicks);
     LosKernelSerialWriteText(" last-wake=");
     LosKernelSerialWriteUnsigned(Task->LastWakeTick);
     LosKernelSerialWriteText(" preemptions=");
@@ -157,6 +165,10 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
     LosKernelSerialWriteText(" resume-window=");
     LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
+    LosKernelSerialWriteText(" max-ready-delay=");
+    LosKernelSerialWriteUnsigned(State->MaxReadyDelayTicks);
+    LosKernelSerialWriteText(" max-wake-delay=");
+    LosKernelSerialWriteUnsigned(State->MaxWakeDelayTicks);
     LosKernelSerialWriteText(" idle-ticks=");
     LosKernelSerialWriteUnsigned(State->IdleTicks);
     LosKernelSerialWriteText(" busy-ticks=");

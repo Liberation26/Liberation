@@ -37,7 +37,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED 4U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 19U
+#define LOS_KERNEL_SCHEDULER_VERSION 20U
 
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_BOOTSTRAP 1U
@@ -86,6 +86,8 @@ typedef struct
     UINT64 DispatchCount;
     UINT64 TotalTicks;
     UINT64 LastRunTick;
+    UINT64 MaxReadyDelayTicks;
+    UINT64 MaxWakeDelayTicks;
     UINT64 ExitStatus;
     UINT32 CleanupPending;
     UINT32 Reserved0;
@@ -113,6 +115,8 @@ typedef struct
     UINT64 LastBlockReason;
     UINT64 LastWakeTick;
     UINT64 ReadySinceTick;
+    UINT64 MaxReadyDelayTicks;
+    UINT64 MaxWakeDelayTicks;
     UINT64 PreemptionCount;
     UINT64 ExitStatus;
     UINT32 CleanupPending;
@@ -164,6 +168,8 @@ typedef struct
     UINT64 WakeupCount;
     UINT64 WakePriorityDispatchCount;
     UINT64 WakeResumeWindowDispatchCount;
+    UINT64 MaxReadyDelayTicks;
+    UINT64 MaxWakeDelayTicks;
     UINT64 IdleTicks;
     UINT64 BusyTicks;
     UINT64 DirectClaimStackPoolPhysicalAddress;

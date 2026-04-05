@@ -6,6 +6,60 @@ static void LoadPageMapLevel4PhysicalAddress(UINT64 RootTablePhysicalAddress)
 }
 
 
+static void UpdateDispatchLatencyAccounting(LOS_KERNEL_SCHEDULER_STATE *State,
+                                          LOS_KERNEL_SCHEDULER_TASK *Task,
+                                          LOS_KERNEL_SCHEDULER_PROCESS *Process)
+{
+    UINT64 ReadyDelayTicks;
+    UINT64 WakeDelayTicks;
+
+    if (State == 0 || Task == 0)
+    {
+        return;
+    }
+
+    ReadyDelayTicks = 0ULL;
+    if (Task->ReadySinceTick != 0ULL && State->TickCount >= Task->ReadySinceTick)
+    {
+        ReadyDelayTicks = State->TickCount - Task->ReadySinceTick;
+    }
+
+    WakeDelayTicks = 0ULL;
+    if (Task->LastWakeTick != 0ULL && State->TickCount >= Task->LastWakeTick)
+    {
+        WakeDelayTicks = State->TickCount - Task->LastWakeTick;
+    }
+
+    if (ReadyDelayTicks > Task->MaxReadyDelayTicks)
+    {
+        Task->MaxReadyDelayTicks = ReadyDelayTicks;
+    }
+    if (WakeDelayTicks > Task->MaxWakeDelayTicks)
+    {
+        Task->MaxWakeDelayTicks = WakeDelayTicks;
+    }
+    if (ReadyDelayTicks > State->MaxReadyDelayTicks)
+    {
+        State->MaxReadyDelayTicks = ReadyDelayTicks;
+    }
+    if (WakeDelayTicks > State->MaxWakeDelayTicks)
+    {
+        State->MaxWakeDelayTicks = WakeDelayTicks;
+    }
+
+    if (Process != 0)
+    {
+        if (ReadyDelayTicks > Process->MaxReadyDelayTicks)
+        {
+            Process->MaxReadyDelayTicks = ReadyDelayTicks;
+        }
+        if (WakeDelayTicks > Process->MaxWakeDelayTicks)
+        {
+            Process->MaxWakeDelayTicks = WakeDelayTicks;
+        }
+    }
+}
+
 static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -323,6 +377,7 @@ void LosKernelSchedulerEnter(void)
         State->ReschedulePending = 0U;
 
         Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING;
+        UpdateDispatchLatencyAccounting(State, Task, Process);
         Task->ReadySinceTick = 0ULL;
         Task->DispatchCount += 1ULL;
         Task->LastRunTick = State->TickCount;
