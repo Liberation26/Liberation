@@ -60,6 +60,7 @@ Success criteria:
 - [x] Lower-priority ready tasks can still reach dispatch under sustained higher-priority busy load
 - [x] Kernel process objects exist above threads and can be reclaimed when transient work exits
 - [ ] Kernel can enter and return from user mode safely
+- [x] Scheduler activates the selected process root and restores the kernel root on return
 - [ ] Kernel IPC can block, wake, reply, and time out correctly
 - [ ] Capabilities are enforced by object type and operation
 - [ ] Exceptions and faults are reported against the owning task

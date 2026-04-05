@@ -2,7 +2,7 @@
 
 ## Current State
 
-LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, and a **first-stage starvation-relief policy** for lower-priority ready work.
+LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, and **scheduler-managed process root activation** so dispatch now carries explicit address-space-root ownership even before user mode exists.
 
 The scheduler is still intentionally small, but it now provides:
 
@@ -20,6 +20,8 @@ The scheduler is still intentionally small, but it now provides:
 - early boot fallback stacks reserved inside the kernel image so scheduler bring-up does not halt if physical-frame claiming is temporarily unavailable
 - per-task ownership, generation, termination, and deferred cleanup bookkeeping
 - first-stage process objects with process ids, owner process ids, thread counts, and address-space metadata
+- inherited process root-table tracking so transient processes no longer carry a zero root while they still share the kernel mappings
+- scheduler-side CR3 activation accounting on dispatch and restore back to the kernel process root on return to the scheduler
 - deferred reclamation of terminated thread stacks, task slots, and now transient process objects from the scheduler loop
 - ready-time tracking plus bounded aging so lower-priority ready tasks can still reach dispatch under sustained busy-thread load
 
@@ -35,7 +37,7 @@ After kernel initialization completes:
 6. the heartbeat thread continues to run even while the busy worker spins forever without calling yield or sleep
 7. the lifecycle manager can create a short-lived worker, let it run even while a higher-priority busy worker is spinning, let it exit, and the scheduler then reclaims its stack and task slot for reuse
 
-This means LOS now has a preemptive kernel-thread substrate, explicit task-lifetime rules, and a first process object layer that can own groups of threads.
+This means LOS now has a preemptive kernel-thread substrate, explicit task-lifetime rules, a first process object layer that can own groups of threads, and explicit root-table activation points in the dispatch path.
 
 ## How Preemption Works In This Stage
 
@@ -96,8 +98,11 @@ Each process carries:
 - address-space id metadata
 - root-table metadata
 - cleanup state and exit status
+- an inherited-root marker when it is intentionally sharing an existing root rather than owning a distinct one yet
 
 The kernel bootstrap work now runs inside a persistent `KernelProcess`, while the lifecycle manager spawns short-lived `EphemeralProcess` objects that each own one ephemeral worker thread. When the worker exits, the scheduler reclaims the thread and then reclaims the now-empty transient process object.
+
+When a process is created without its own root yet, the scheduler now inherits the creator root and records that fact explicitly. During dispatch, the scheduler activates the selected process root before entering the thread context and restores the kernel-process root when control returns to the scheduler loop.
 
 That gives LOS a real place to hang later address-space ownership, fault accounting, IPC ownership, and user-mode launch state without pretending that a thread alone is the whole execution object.
 
@@ -105,14 +110,13 @@ That gives LOS a real place to hang later address-space ownership, fault account
 
 The current scheduler still does **not** yet provide:
 
-- separate process objects above the thread layer
 - user-mode scheduling or ring transitions
 - IPC block/wake integration
 - endpoint wait queues and timeout objects
 - SMP run queues or cross-core reschedule IPIs
-- process/address-space ownership above the thread owner field
+- distinct user process address spaces being entered from the scheduler
 
-So this stage is now a **small preemptive kernel-thread scheduler with first-stage process ownership and lifecycle cleanup**, not yet a full user/process scheduler.
+So this stage is now a **small preemptive kernel-thread scheduler with first-stage process ownership, lifecycle cleanup, and dispatch-time root activation**, not yet a full user/process scheduler.
 
 ## Why This Stage Matters
 
@@ -124,11 +128,12 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 4. non-cooperative work can no longer monopolize the CPU forever
 5. terminated thread resources can now be reclaimed instead of being leaked forever
 6. transient process objects can now be reclaimed once their last thread exits
-7. later IPC blocking, timeout delivery, address-space ownership, and user-mode entry can build on a real preemptive base with explicit task and process lifetime rules
+7. dispatch now has an explicit place to install a process root table before the thread runs
+8. later IPC blocking, timeout delivery, distinct address-space ownership, and user-mode entry can build on a real preemptive base with explicit task and process lifetime rules
 
 ## Immediate Next Steps
 
-- add a process/address-space ownership layer above threads
+- bind real non-kernel address spaces to process objects
 - add safe kernel-to-user transition and return paths
 - let IPC paths block and wake scheduled threads
 - move the memory manager from hosted bootstrap steps to a real scheduled task

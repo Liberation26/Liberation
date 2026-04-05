@@ -1,3 +1,10 @@
+Version 0.1.99
+
+- Added scheduler-side **process root activation plumbing** so dispatch now explicitly installs the selected process root-table physical address before entering a thread and restores the kernel-process root when control returns to the scheduler loop.
+- Added **root inheritance** for processes created without their own address space yet. Transient processes spawned by the lifecycle thread now inherit the creator root instead of carrying a zero root, and diagnostics show this with an `inherited-root` marker.
+- Extended scheduler diagnostics with `root-switches`, `root-reuse`, and `active-root`, giving direct proof in the serial log that address-space-root ownership is now part of dispatch accounting even though LOS is still running kernel threads only.
+- This is still not a true user-mode transition. It is the last small kernel-side staging step before binding a process to a distinct non-kernel address space and entering it safely.
+
 Version 0.1.98
 
 - Added a first-stage **process layer above scheduler threads**. The scheduler now creates a persistent `KernelProcess` during initialization, attaches all bootstrap kernel threads to it, and keeps explicit per-process bookkeeping alongside the existing per-task bookkeeping.

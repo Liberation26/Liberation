@@ -30,6 +30,7 @@ rm -f \
     "${BootDir}/KERNELX64.BIN" \
     "${BootDir}/BOOTINFO.TXT" \
     "${BootDir}/Boot.psf" \
-    "${ImageDir}/LIBERATION/KERNELX64.ELF"
+    "${ImageDir}/LIBERATION/KERNELX64.ELF" \
+    "${ImageDir}/LIBERATION/SERVICES/MEMORYMGR.ELF"
 
 echo "[Liberation] Clean complete. The next ISO run will rebuild all output from scratch."

@@ -1,5 +1,11 @@
 #include "SchedulerInternal.h"
 
+static void LoadPageMapLevel4PhysicalAddress(UINT64 RootTablePhysicalAddress)
+{
+    __asm__ __volatile__("mov %0, %%cr3" : : "r"(RootTablePhysicalAddress) : "memory");
+}
+
+
 static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -12,6 +18,75 @@ static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void)
     }
 
     return &State->Tasks[State->CurrentTaskIndex];
+}
+
+static const LOS_KERNEL_SCHEDULER_PROCESS *FindProcessForDispatch(UINT64 ProcessId)
+{
+    const LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+
+    State = LosKernelSchedulerGetState();
+    if (State == 0 || ProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID)
+    {
+        return 0;
+    }
+
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_PROCESSES; ++Index)
+    {
+        const LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+        Process = &State->Processes[Index];
+        if (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED)
+        {
+            continue;
+        }
+        if (Process->ProcessId == ProcessId)
+        {
+            return Process;
+        }
+    }
+
+    return 0;
+}
+
+void LosKernelSchedulerActivateProcessAddressSpace(const LOS_KERNEL_SCHEDULER_PROCESS *Process)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT64 TargetRoot;
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || Process == 0)
+    {
+        return;
+    }
+
+    TargetRoot = Process->RootTablePhysicalAddress;
+    if (TargetRoot == LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS)
+    {
+        LosKernelTraceFail("Kernel scheduler found no root table for dispatchable process.");
+        LosKernelHaltForever();
+    }
+
+    if (State->ActiveRootTablePhysicalAddress == TargetRoot)
+    {
+        State->AddressSpaceReuseCount += 1ULL;
+        return;
+    }
+
+    LoadPageMapLevel4PhysicalAddress(TargetRoot);
+    State->ActiveRootTablePhysicalAddress = TargetRoot;
+    State->AddressSpaceSwitchCount += 1ULL;
+}
+
+void LosKernelSchedulerRestoreKernelAddressSpace(void)
+{
+    const LOS_KERNEL_SCHEDULER_PROCESS *KernelProcess;
+
+    KernelProcess = FindProcessForDispatch(LosKernelSchedulerState()->KernelProcessId);
+    if (KernelProcess != 0)
+    {
+        LosKernelSchedulerActivateProcessAddressSpace(KernelProcess);
+    }
 }
 
 void LosKernelSchedulerRequestReschedule(void)
@@ -192,6 +267,7 @@ void LosKernelSchedulerEnter(void)
         }
 
         Task = &State->Tasks[SelectedIndex];
+        LosKernelSchedulerActivateProcessAddressSpace(FindProcessForDispatch(Task->ProcessId));
         State->CurrentTaskIndex = SelectedIndex;
         State->CurrentTaskId = Task->TaskId;
         State->CurrentProcessId = Task->ProcessId;
@@ -208,6 +284,7 @@ void LosKernelSchedulerEnter(void)
         LosKernelSchedulerSwitchContext(&State->SchedulerContext, &Task->ExecutionContext);
 
         State->InScheduler = 1U;
+        LosKernelSchedulerRestoreKernelAddressSpace();
         State->CurrentTaskIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
         State->CurrentTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
         State->CurrentProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;

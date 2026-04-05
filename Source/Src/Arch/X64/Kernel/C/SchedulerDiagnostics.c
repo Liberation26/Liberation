@@ -32,6 +32,8 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteUnsigned(Process->AddressSpaceId);
     LosKernelSerialWriteText(" root=");
     LosKernelSerialWriteHex64(Process->RootTablePhysicalAddress);
+    LosKernelSerialWriteText(" inherited-root=");
+    LosKernelSerialWriteUnsigned((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT) != 0U ? 1U : 0U);
     LosKernelSerialWriteText(" cleanup=");
     LosKernelSerialWriteUnsigned(Process->CleanupPending);
     LosKernelSerialWriteText(" exit=");
@@ -115,6 +117,12 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->TerminatedProcessCount);
     LosKernelSerialWriteText(" proc-reaped=");
     LosKernelSerialWriteUnsigned(State->ReapedProcessCount);
+    LosKernelSerialWriteText(" root-switches=");
+    LosKernelSerialWriteUnsigned(State->AddressSpaceSwitchCount);
+    LosKernelSerialWriteText(" root-reuse=");
+    LosKernelSerialWriteUnsigned(State->AddressSpaceReuseCount);
+    LosKernelSerialWriteText(" active-root=");
+    LosKernelSerialWriteHex64(State->ActiveRootTablePhysicalAddress);
     LosKernelSerialWriteText(" current=");
     LosKernelSerialWriteUnsigned(State->CurrentTaskId);
     LosKernelSerialWriteText(" current-proc=");
@@ -168,6 +176,10 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->TerminatedProcessCount);
             LosKernelSerialWriteText(" proc-reaped=");
             LosKernelSerialWriteUnsigned(State->ReapedProcessCount);
+            LosKernelSerialWriteText(" root-switches=");
+            LosKernelSerialWriteUnsigned(State->AddressSpaceSwitchCount);
+            LosKernelSerialWriteText(" root-reuse=");
+            LosKernelSerialWriteUnsigned(State->AddressSpaceReuseCount);
             LosKernelSerialWriteText("\n");
         }
 

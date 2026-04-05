@@ -32,6 +32,7 @@ BOOLEAN LosKernelSchedulerCreateProcess(
 BOOLEAN LosKernelSchedulerMarkProcessTerminated(
     UINT64 ProcessId,
     UINT64 ExitStatus);
+const LOS_KERNEL_SCHEDULER_PROCESS *LosKernelSchedulerGetCurrentProcess(void);
 void LosKernelSchedulerCleanupTerminatedProcesses(void);
 BOOLEAN LosKernelSchedulerCreateTask(
     const char *Name,
@@ -46,6 +47,8 @@ BOOLEAN LosKernelSchedulerCreateTask(
 void LosKernelSchedulerWakeDueTasks(void);
 void LosKernelSchedulerCleanupTerminatedTasks(void);
 UINT32 LosKernelSchedulerSelectNextTaskIndex(void);
+void LosKernelSchedulerActivateProcessAddressSpace(const LOS_KERNEL_SCHEDULER_PROCESS *Process);
+void LosKernelSchedulerRestoreKernelAddressSpace(void);
 void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDULER_PROCESS *Process);
 void LosKernelSchedulerTraceState(const char *Prefix);
 void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_TASK *Task);

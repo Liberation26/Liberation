@@ -82,6 +82,42 @@ static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId)
     return 0;
 }
 
+static const LOS_KERNEL_SCHEDULER_PROCESS *FindProcessById(UINT64 ProcessId)
+{
+    return (const LOS_KERNEL_SCHEDULER_PROCESS *)FindProcessByIdMutable(ProcessId);
+}
+
+static UINT64 GetKernelRootTablePhysicalAddress(void);
+
+static UINT64 ResolveProcessRootTablePhysicalAddress(UINT64 RequestedRootTablePhysicalAddress, UINT32 *ResolvedFlags)
+{
+    const LOS_KERNEL_SCHEDULER_PROCESS *CurrentProcess;
+    UINT64 ResolvedRoot;
+
+    ResolvedRoot = RequestedRootTablePhysicalAddress;
+    if (ResolvedRoot != LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS)
+    {
+        return ResolvedRoot;
+    }
+
+    CurrentProcess = LosKernelSchedulerGetCurrentProcess();
+    if (CurrentProcess != 0 &&
+        CurrentProcess->RootTablePhysicalAddress != LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS)
+    {
+        ResolvedRoot = CurrentProcess->RootTablePhysicalAddress;
+    }
+    else
+    {
+        ResolvedRoot = GetKernelRootTablePhysicalAddress();
+    }
+
+    if (ResolvedFlags != 0)
+    {
+        *ResolvedFlags |= LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT;
+    }
+
+    return ResolvedRoot;
+}
 
 static UINT64 GetCreatingOwnerTaskId(void)
 {
@@ -295,9 +331,9 @@ BOOLEAN LosKernelSchedulerCreateProcess(
         Process->Generation = State->CreatedProcessCount + 1ULL;
         Process->Name = Name;
         Process->Flags = Flags;
+        Process->RootTablePhysicalAddress = ResolveProcessRootTablePhysicalAddress(RootTablePhysicalAddress, &Process->Flags);
         Process->ThreadCount = 0U;
         Process->AddressSpaceId = AddressSpaceId;
-        Process->RootTablePhysicalAddress = RootTablePhysicalAddress;
         Process->CreatedTick = State->TickCount;
         Process->TerminatedTick = 0ULL;
         Process->ExitStatus = 0ULL;
@@ -577,6 +613,9 @@ void LosKernelSchedulerInitialize(void)
     State->CreatedProcessCount = 0ULL;
     State->TerminatedProcessCount = 0ULL;
     State->ReapedProcessCount = 0ULL;
+    State->ActiveRootTablePhysicalAddress = GetKernelRootTablePhysicalAddress();
+    State->AddressSpaceSwitchCount = 0ULL;
+    State->AddressSpaceReuseCount = 0ULL;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
 
@@ -686,6 +725,19 @@ const LOS_KERNEL_SCHEDULER_TASK *LosKernelSchedulerGetCurrentTask(void)
     }
 
     return &State->Tasks[State->CurrentTaskIndex];
+}
+
+const LOS_KERNEL_SCHEDULER_PROCESS *LosKernelSchedulerGetCurrentProcess(void)
+{
+    const LOS_KERNEL_SCHEDULER_STATE *State;
+
+    State = LosKernelSchedulerGetState();
+    if (State == 0 || State->CurrentProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID)
+    {
+        return 0;
+    }
+
+    return FindProcessById(State->CurrentProcessId);
 }
 
 const LOS_KERNEL_SCHEDULER_STATE *LosKernelSchedulerGetState(void)
