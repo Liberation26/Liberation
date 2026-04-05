@@ -61,11 +61,13 @@ static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 
 static void ApplyLineIndent(UINT32 IndentColumns);
 static UINT32 GetWritableColumnLimit(void);
+static UINT32 GetLastWritableLogRow(void);
 static void ClearRow(UINT32 Row);
 static void FillCellBackground(UINT32 Column, UINT32 Row, UINT32 Color);
 static void DrawStaticScreenDecorations(void);
 static void DrawTimerOverlayFrame(void);
 static void ResetLogCursor(void);
+static void ScrollLogRegionUp(void);
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -276,6 +278,76 @@ static void ResetLogCursor(void)
     ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);
 }
 
+static UINT32 GetLastWritableLogRow(void)
+{
+    if (LosKernelScreenState.MaxRows == 0U)
+    {
+        return 0U;
+    }
+
+    if (LosKernelScreenState.MaxRows <= (LOS_KERNEL_SCREEN_FIRST_LOG_ROW + 1U))
+    {
+        return LOS_KERNEL_SCREEN_FIRST_LOG_ROW;
+    }
+
+    return LosKernelScreenState.MaxRows - 2U;
+}
+
+static void ScrollLogRegionUp(void)
+{
+    UINT32 StartY;
+    UINT32 EndY;
+    UINT32 RowPixelHeight;
+    UINT32 ScanLine;
+    UINT32 Column;
+
+    if (LosKernelScreenState.Ready == 0U ||
+        LosKernelScreenState.FrameBuffer == 0 ||
+        LosKernelScreenState.PixelsPerScanLine == 0U)
+    {
+        return;
+    }
+
+    RowPixelHeight = LosKernelScreenState.CellHeight * LosKernelScreenState.FontScale;
+    if (RowPixelHeight == 0U)
+    {
+        return;
+    }
+
+    StartY = LOS_KERNEL_SCREEN_FIRST_LOG_ROW * RowPixelHeight;
+    EndY = (GetLastWritableLogRow() + 1U) * RowPixelHeight;
+    if (EndY <= StartY || (EndY - StartY) <= RowPixelHeight)
+    {
+        ClearRow(GetLastWritableLogRow());
+        return;
+    }
+
+    for (ScanLine = StartY; ScanLine < (EndY - RowPixelHeight); ++ScanLine)
+    {
+        UINT32 DestinationIndex;
+        UINT32 SourceIndex;
+
+        DestinationIndex = ScanLine * LosKernelScreenState.PixelsPerScanLine;
+        SourceIndex = (ScanLine + RowPixelHeight) * LosKernelScreenState.PixelsPerScanLine;
+        for (Column = 0U; Column < LosKernelScreenState.PixelsPerScanLine; ++Column)
+        {
+            LosKernelScreenState.FrameBuffer[DestinationIndex + Column] =
+                LosKernelScreenState.FrameBuffer[SourceIndex + Column];
+        }
+    }
+
+    for (ScanLine = EndY - RowPixelHeight; ScanLine < EndY; ++ScanLine)
+    {
+        UINT32 DestinationIndex;
+
+        DestinationIndex = ScanLine * LosKernelScreenState.PixelsPerScanLine;
+        for (Column = 0U; Column < LosKernelScreenState.PixelsPerScanLine; ++Column)
+        {
+            LosKernelScreenState.FrameBuffer[DestinationIndex + Column] = 0x00000000U;
+        }
+    }
+}
+
 static void AdvanceLine(void)
 {
     UINT32 LastWritableLogRow;
@@ -283,15 +355,11 @@ static void AdvanceLine(void)
     LosKernelScreenState.CursorColumn = 0U;
     LosKernelScreenState.CursorRow += 1U;
 
-    LastWritableLogRow = LosKernelScreenState.MaxRows > 0U
-        ? (LosKernelScreenState.MaxRows - 1U)
-        : 0U;
-    if (LosKernelScreenState.CursorRow >= LastWritableLogRow)
+    LastWritableLogRow = GetLastWritableLogRow();
+    if (LosKernelScreenState.CursorRow > LastWritableLogRow)
     {
-        ClearScreen();
-        DrawStaticScreenDecorations();
-        ResetLogCursor();
-        return;
+        ScrollLogRegionUp();
+        LosKernelScreenState.CursorRow = LastWritableLogRow;
     }
 
     ApplyLineIndent(LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS);

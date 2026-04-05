@@ -1,3 +1,9 @@
+Version 0.1.81
+
+- Fixed the kernel-screen log advance path so reaching the bottom of the visible log area no longer clears the whole framebuffer immediately after the final newline.
+- The status-screen log region now scrolls upward inside the reserved log rows while preserving the top title row, live timer row, and bottom screen-geometry row.
+- This keeps the final memory-manager and idle-loop notifications visible on screen instead of dropping back to a nearly blank screen once the log fills.
+
 Version 0.1.80
 
 - Added an explicit `Heap subsystem ready.` notification on both the memory-manager service serial path and the kernel bootstrap diagnostics path, so heap bring-up is now visible alongside the existing frame-allocator readiness line.
