@@ -22,7 +22,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED 4U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 3U
+#define LOS_KERNEL_SCHEDULER_VERSION 4U
 
 typedef void (*LOS_KERNEL_SCHEDULER_THREAD_ROUTINE)(void *Context);
 
@@ -57,6 +57,7 @@ typedef struct
     UINT64 TotalTicks;
     UINT64 LastRunTick;
     UINT64 LastBlockReason;
+    UINT64 ReadySinceTick;
     UINT64 PreemptionCount;
     UINT64 ExitStatus;
     UINT32 CleanupPending;
@@ -86,6 +87,7 @@ typedef struct
     UINT32 InScheduler;
     UINT32 Reserved0;
     UINT64 InterruptPreemptionCount;
+    UINT64 StarvationReliefDispatchCount;
     UINT64 CreatedTaskCount;
     UINT64 TerminatedTaskCount;
     UINT64 ReapedTaskCount;

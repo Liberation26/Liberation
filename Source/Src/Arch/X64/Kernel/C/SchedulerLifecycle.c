@@ -258,6 +258,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->TotalTicks = 0ULL;
             Task->LastRunTick = 0ULL;
             Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
+            Task->ReadySinceTick = State->TickCount;
             Task->PreemptionCount = 0ULL;
             Task->ExitStatus = 0ULL;
             Task->CleanupPending = 0U;
@@ -346,6 +347,7 @@ void LosKernelSchedulerInitialize(void)
     State->InScheduler = 0U;
     State->Reserved0 = 0U;
     State->InterruptPreemptionCount = 0ULL;
+    State->StarvationReliefDispatchCount = 0ULL;
     State->CreatedTaskCount = 0ULL;
     State->TerminatedTaskCount = 0ULL;
     State->ReapedTaskCount = 0ULL;

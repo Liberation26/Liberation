@@ -7,6 +7,7 @@
 - [x] Evolve the scheduler from step tasks into saved-context kernel threads
 - [x] Add first-stage timer-driven preemption for kernel threads
 - [x] Add persistent task and thread objects with saved CPU context and ownership/lifetime rules
+- [x] Prevent starvation of lower-priority kernel work under sustained busy-thread load
 - [ ] Add a real user-mode transition path for first user tasks
 - [ ] Add real IPC: send, receive, reply, notifications, blocking, wake, and timeouts
 - [ ] Add capability enforcement tied to kernel objects and IPC operations
@@ -55,6 +56,7 @@ Success criteria:
 - [x] Kernel can create and schedule basic kernel threads
 - [x] Kernel can preempt kernel threads from timer interrupts
 - [x] Kernel can reclaim terminated kernel-thread objects and stacks safely
+- [x] Lower-priority ready tasks can still reach dispatch under sustained higher-priority busy load
 - [ ] Kernel can enter and return from user mode safely
 - [ ] Kernel IPC can block, wake, reply, and time out correctly
 - [ ] Capabilities are enforced by object type and operation

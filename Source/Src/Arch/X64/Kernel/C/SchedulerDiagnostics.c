@@ -32,6 +32,8 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->StackBaseVirtualAddress);
     LosKernelSerialWriteText(" stack-top=");
     LosKernelSerialWriteHex64(Task->StackTopVirtualAddress);
+    LosKernelSerialWriteText(" ready-since=");
+    LosKernelSerialWriteUnsigned(Task->ReadySinceTick);
     LosKernelSerialWriteText(" preemptions=");
     LosKernelSerialWriteUnsigned(Task->PreemptionCount);
     LosKernelSerialWriteText(" cleanup=");
@@ -59,6 +61,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->DispatchCount);
     LosKernelSerialWriteText(" preemptions=");
     LosKernelSerialWriteUnsigned(State->InterruptPreemptionCount);
+    LosKernelSerialWriteText(" starvation-relief=");
+    LosKernelSerialWriteUnsigned(State->StarvationReliefDispatchCount);
     LosKernelSerialWriteText(" tasks=");
     LosKernelSerialWriteUnsigned(State->TaskCount);
     LosKernelSerialWriteText(" created=");
@@ -102,6 +106,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->DispatchCount);
             LosKernelSerialWriteText(" tasks=");
             LosKernelSerialWriteUnsigned(State->TaskCount);
+            LosKernelSerialWriteText(" starvation-relief=");
+            LosKernelSerialWriteUnsigned(State->StarvationReliefDispatchCount);
             LosKernelSerialWriteText(" created=");
             LosKernelSerialWriteUnsigned(State->CreatedTaskCount);
             LosKernelSerialWriteText(" terminated=");

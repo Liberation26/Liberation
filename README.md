@@ -1,3 +1,10 @@
+Version 0.1.97
+
+- Fixed the next live scheduler issue shown by your serial log: lower-priority `EphemeralWorker` tasks were being created successfully but were starving behind the higher-priority non-yielding `BusyWorker`, so they never reached their enter/sleep/exit path.
+- Added scheduler ready-time tracking plus a small aging-based starvation-relief policy, so long-waiting ready tasks can temporarily gain enough effective priority to run even while a higher-priority busy thread keeps getting preempted and re-queued.
+- Added `ready-since` and `starvation-relief` diagnostics to scheduler task/state tracing, so the serial log now shows when starvation recovery is taking effect.
+- Updated `Docs/Kernel/Scheduler.md` and `ToDo.md` to reflect that the scheduler now has first-stage starvation control as well as preemption and task cleanup.
+
 Version 0.1.96
 
 - Added first-stage persistent task-object ownership and lifecycle bookkeeping to the kernel scheduler, including owner task id, generation, exit status, cleanup-pending state, and cumulative created/terminated/reaped counters.

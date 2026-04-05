@@ -2,11 +2,11 @@
 
 ## Current State
 
-LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads** and **reclaimable task objects**.
+LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, and a **first-stage starvation-relief policy** for lower-priority ready work.
 
 The scheduler is still intentionally small, but it now provides:
 
-- fixed-priority task selection
+- fixed-priority task selection with ready-time aging for starvation relief
 - one always-runnable idle thread
 - one periodic heartbeat kernel thread
 - one non-cooperative busy worker thread to prove involuntary preemption
@@ -20,6 +20,7 @@ The scheduler is still intentionally small, but it now provides:
 - early boot fallback stacks reserved inside the kernel image so scheduler bring-up does not halt if physical-frame claiming is temporarily unavailable
 - per-task ownership, generation, termination, and deferred cleanup bookkeeping
 - deferred reclamation of terminated thread stacks and task slots from the scheduler loop
+- ready-time tracking plus bounded aging so lower-priority ready tasks can still reach dispatch under sustained busy-thread load
 
 ## What It Does Today
 
@@ -31,7 +32,7 @@ After kernel initialization completes:
 4. timer interrupts advance global tick time and wake sleeping threads
 5. a running thread can be preempted from the timer interrupt path even if it never yields voluntarily
 6. the heartbeat thread continues to run even while the busy worker spins forever without calling yield or sleep
-7. the lifecycle manager can create a short-lived worker, let it exit, and the scheduler then reclaims its stack and task slot for reuse
+7. the lifecycle manager can create a short-lived worker, let it run even while a higher-priority busy worker is spinning, let it exit, and the scheduler then reclaims its stack and task slot for reuse
 
 This means LOS now has both a preemptive kernel-thread substrate and the first real task-lifetime rules above it.
 
@@ -67,6 +68,19 @@ When a thread terminates:
 4. the scheduler zeroes the task slot and makes it reusable for later creations
 
 That keeps lifetime transitions explicit and avoids trying to free a task's own stack while that task is still executing on it.
+
+## How Starvation Relief Works In This Stage
+
+The live serial log exposed a real policy bug: a continuously ready higher-priority busy thread could keep a lower-priority ready thread from ever being chosen, even though timer preemption was working correctly.
+
+To fix that, ready tasks now carry a `ReadySinceTick` timestamp. During task selection, the scheduler computes a small bounded aging boost from how long each ready task has been waiting. That boost only affects dispatch choice; it does not permanently rewrite the task's base priority.
+
+This gives LOS a simple first-stage starvation control policy:
+
+- base priority still decides the normal dispatch order
+- timer preemption still stops one busy thread from running forever uninterrupted
+- long-waiting lower-priority tasks can now eventually outrank a frequently re-queued busy thread long enough to run
+- diagnostics expose `ready-since` and `starvation-relief` counters so the serial log shows when this rescue path is active
 
 ## What It Still Does Not Do
 

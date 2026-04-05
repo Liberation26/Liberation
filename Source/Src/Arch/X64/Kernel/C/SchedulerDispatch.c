@@ -69,6 +69,7 @@ void LosKernelSchedulerPreemptIfNeededFromInterrupt(void)
 
     Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
     Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED;
+    Task->ReadySinceTick = State->TickCount;
     Task->PreemptionCount += 1ULL;
     State->InterruptPreemptionCount += 1ULL;
     LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
@@ -88,6 +89,7 @@ void LosKernelSchedulerYieldCurrent(void)
 
     Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
     Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_YIELD;
+    Task->ReadySinceTick = State->TickCount;
     State->ReschedulePending = 1U;
     LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
 }
@@ -196,6 +198,7 @@ void LosKernelSchedulerEnter(void)
         State->ReschedulePending = 0U;
 
         Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING;
+        Task->ReadySinceTick = 0ULL;
         Task->DispatchCount += 1ULL;
         Task->LastRunTick = State->TickCount;
         Task->RemainingQuantumTicks = Task->QuantumTicks == 0U ? 1U : Task->QuantumTicks;
