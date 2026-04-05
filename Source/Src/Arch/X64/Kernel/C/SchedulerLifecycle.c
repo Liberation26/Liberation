@@ -117,20 +117,43 @@ static BOOLEAN BindOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Proces
 {
     LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_REQUEST Request;
     LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_RESULT Result;
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT64 CriticalSectionFlags;
+    UINT64 ProcessId;
 
     if (Process == 0)
     {
         return 0;
     }
-    if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) != 0U ||
+
+    State = LosKernelSchedulerState();
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    if (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED ||
+        (Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) != 0U ||
         (Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) != 0U ||
         Process->AddressSpaceObjectPhysicalAddress != 0ULL)
     {
+        LeaveSchedulerCriticalSection(CriticalSectionFlags);
         return 1;
     }
+    if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_BIND_IN_PROGRESS) != 0U)
+    {
+        State->AddressSpaceBindDeferredCount += 1ULL;
+        LeaveSchedulerCriticalSection(CriticalSectionFlags);
+        return 0;
+    }
+
+    Process->Flags |= LOS_KERNEL_SCHEDULER_PROCESS_FLAG_BIND_IN_PROGRESS;
+    ProcessId = Process->ProcessId;
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
     if (LosIsMemoryManagerBootstrapReady() == 0U)
     {
-        LosKernelTraceUnsigned("Kernel scheduler deferred process address-space binding because the memory manager bootstrap is not ready for process id: ", Process->ProcessId);
+        CriticalSectionFlags = EnterSchedulerCriticalSection();
+        Process->Flags &= ~LOS_KERNEL_SCHEDULER_PROCESS_FLAG_BIND_IN_PROGRESS;
+        State->AddressSpaceBindDeferredCount += 1ULL;
+        LeaveSchedulerCriticalSection(CriticalSectionFlags);
+        LosKernelTraceUnsigned("Kernel scheduler deferred process address-space binding because the memory manager bootstrap is not ready for process id: ", ProcessId);
         return 0;
     }
 
@@ -142,17 +165,29 @@ static BOOLEAN BindOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Proces
         Result.RootTablePhysicalAddress == 0ULL ||
         Result.AddressSpaceId == 0ULL)
     {
+        CriticalSectionFlags = EnterSchedulerCriticalSection();
+        Process->Flags &= ~LOS_KERNEL_SCHEDULER_PROCESS_FLAG_BIND_IN_PROGRESS;
+        State->AddressSpaceBindDeferredCount += 1ULL;
+        LeaveSchedulerCriticalSection(CriticalSectionFlags);
         LosKernelTraceFail("Kernel scheduler could not bind a distinct process address space.");
         LosKernelTraceUnsigned("Kernel scheduler process address-space-create status: ", Result.Status);
-        LosKernelTraceUnsigned("Kernel scheduler process id awaiting root binding: ", Process->ProcessId);
+        LosKernelTraceUnsigned("Kernel scheduler process id awaiting root binding: ", ProcessId);
         return 0;
     }
 
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    if (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED)
+    {
+        LeaveSchedulerCriticalSection(CriticalSectionFlags);
+        return 0;
+    }
     Process->AddressSpaceId = Result.AddressSpaceId;
     Process->AddressSpaceObjectPhysicalAddress = Result.AddressSpaceObjectPhysicalAddress;
     Process->RootTablePhysicalAddress = Result.RootTablePhysicalAddress;
-    Process->Flags &= ~LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT;
+    Process->Flags &= ~(LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT | LOS_KERNEL_SCHEDULER_PROCESS_FLAG_BIND_IN_PROGRESS);
     Process->Flags |= LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE;
+    State->AddressSpaceBindCount += 1ULL;
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
     return 1;
 }
 
@@ -782,6 +817,8 @@ void LosKernelSchedulerInitialize(void)
     State->ActiveRootTablePhysicalAddress = GetKernelRootTablePhysicalAddress();
     State->AddressSpaceSwitchCount = 0ULL;
     State->AddressSpaceReuseCount = 0ULL;
+    State->AddressSpaceBindCount = 0ULL;
+    State->AddressSpaceBindDeferredCount = 0ULL;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
 

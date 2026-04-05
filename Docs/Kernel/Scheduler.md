@@ -141,3 +141,9 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 - map a first executable image and user stack into one of those process objects
 - let IPC paths block and wake scheduled threads
 - move the memory manager from hosted bootstrap steps to a real scheduled task
+
+## 0.2.8
+
+- Transient non-kernel process address-space binding is now serialized per process. The scheduler marks a process as `bind-in-progress` before sending `CreateAddressSpace`, so the lifecycle thread and the scheduler bind pass cannot both issue separate create requests for the same process.
+- Scheduler diagnostics now expose `bind-in-progress`, `bind-count`, and `bind-deferred`, making it possible to prove in the serial log that a process root was bound once rather than racing and leaking the first address-space object.
+- This still is not user-mode execution yet. It is process/root ownership hardening ahead of the first kernel-to-user transition.

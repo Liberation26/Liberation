@@ -1,3 +1,4 @@
+- Verify one-bind-per-process behavior for memory-manager-created transient roots and then continue into the first user-mode transition path.
 # ToDo
 
 ## Priority Order
