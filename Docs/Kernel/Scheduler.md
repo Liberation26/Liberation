@@ -246,3 +246,11 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 
 
 - Added a launch-requested stage to the user-transition scaffold. The scaffold remains blocked, but now records that the kernel has accepted the next entry request before any future ring-transition implementation.
+
+
+## 0.2.34
+
+- Added a `bridge-ready` user-transition scaffold stage after `trampoline-ready`.
+- The blocked scaffold task now carries a dedicated future dispatch-bridge entry address in addition to the staged kernel-entry and user return-frame metadata.
+- Diagnostics now report `user-bridge=` in detailed task/process traces and `user-scaffold-bridge-ready=` in heartbeat output.
+- The live gate still stays closed until the real ring-transition entry path exists, so this remains scaffold hardening rather than actual user-mode dispatch.

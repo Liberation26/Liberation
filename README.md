@@ -757,3 +757,6 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 - Added a launch-requested stage for the user-transition scaffold while keeping the scaffold blocked until the real ring-transition entry path exists.
 
 - 0.2.33: added a trampoline-ready user-transition scaffold stage that plants a dedicated kernel-entry return address on the blocked scaffold stack before the live gate closes.
+
+
+- 0.2.34: added a bridge-ready user-transition scaffold stage that stages a dedicated future dispatch-bridge address on the blocked scaffold stack before the live gate closes, while keeping the scaffold non-live until the real ring-transition path exists.

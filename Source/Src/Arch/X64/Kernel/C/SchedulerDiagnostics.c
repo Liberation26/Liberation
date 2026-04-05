@@ -60,6 +60,8 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteHex64(Process->UserTransitionFrameStackPointer);
     LosKernelSerialWriteText(" user-kentry=");
     LosKernelSerialWriteHex64(Process->UserTransitionKernelEntryVirtualAddress);
+    LosKernelSerialWriteText(" user-bridge=");
+    LosKernelSerialWriteHex64(Process->UserTransitionBridgeVirtualAddress);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Process->UserTransitionState);
     LosKernelSerialWriteText(" root=");
@@ -136,6 +138,8 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->UserTransitionFrameStackPointer);
     LosKernelSerialWriteText(" user-kentry=");
     LosKernelSerialWriteHex64(Task->UserTransitionKernelEntryVirtualAddress);
+    LosKernelSerialWriteText(" user-bridge=");
+    LosKernelSerialWriteHex64(Task->UserTransitionBridgeVirtualAddress);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Task->UserTransitionState);
     LosKernelSerialWriteText(" last-wake=");
@@ -233,6 +237,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionFrameReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-trampoline-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionTrampolineReadyCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-scaffold-bridge-ready=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionBridgeReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-live=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -348,6 +354,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionFrameReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-trampoline-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionTrampolineReadyCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-scaffold-bridge-ready=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionBridgeReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-live=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -417,6 +425,10 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         else if (LosKernelSchedulerState()->UserTransitionTrampolineReadyCount == 0ULL)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldTrampolineReady();
+        }
+        else if (LosKernelSchedulerState()->UserTransitionBridgeReadyCount == 0ULL)
+        {
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady();
         }
         else if (LosKernelSchedulerState()->UserTransitionLiveGateClosed == 0U &&
                  LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
@@ -543,6 +555,23 @@ void LosKernelSchedulerUserTransitionTrapThread(void *Context)
     LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
     LosKernelSerialWriteText("\n");
     LosKernelSchedulerTerminateCurrent();
+    LosKernelHaltForever();
+}
+
+
+void LosKernelSchedulerUserTransitionBridgeTrap(UINT64 KernelStackPointer)
+{
+    const LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    Task = LosKernelSchedulerGetCurrentTask();
+    LosKernelTraceFail("Scheduler user-transition bridge ran before the real ring-transition entry path existed.");
+    LosKernelSerialWriteText("[Kernel] User-transition bridge task=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+    LosKernelSerialWriteText(" process=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
+    LosKernelSerialWriteText(" rsp=");
+    LosKernelSerialWriteHex64(KernelStackPointer);
+    LosKernelSerialWriteText("\n");
     LosKernelHaltForever();
 }
 
