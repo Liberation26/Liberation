@@ -650,3 +650,8 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 - Fixed first memory-manager userland image staging so overlapping ELF PT_LOAD pages are staged into one claimed image range before mapping into the isolated service root.
 - Updated bootstrap launch diagnostics to record the staged image base and per-page map failures for the first service attach path.
 - Published the staged service image physical base into the address-space object and launch block so the first service sees a consistent bootstrap contract.
+
+
+## 0.1.88
+- Added MemoryManagerMemoryDatabase.c to ChangedFiles so update-only syncs include the split frame-database implementation unit.
+- Fixes unresolved memory-manager link symbols introduced by partial file-splitting rollout.
