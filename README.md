@@ -1,4 +1,4 @@
-Version 0.1.89
+Version 0.1.90
 
 - Fixed the split-memory packaging hole by adding `Source/Src/Arch/X64/Services/MemoryManager/C/MemoryManagerMemory.c` to `ChangedFiles` as the stub/marker file that replaces the old monolithic implementation during update-only syncs.
 - This prevents duplicate-symbol link failures where the repository still had the pre-split `MemoryManagerMemory.c` while also compiling the new `MemoryManagerMemoryDispatch.c` and `MemoryManagerMemoryLifecycle.c` units.
@@ -656,6 +656,8 @@ This package corrects the memory-manager bootstrap update set so ChangedFiles-on
 - Added MemoryManagerMemoryDatabase.c to ChangedFiles so update-only syncs include the split frame-database implementation unit.
 - Fixes unresolved memory-manager link symbols introduced by partial file-splitting rollout.
 
-## 0.1.89
+## 0.1.90
 - Added MemoryManagerBootstrapDispatch.c to ChangedFiles so update-only syncs carry the kernel-side request translation layer for MapPages, UnmapPages, and ProtectPages.
 - Fixes the mixed-tree kernel build warning where older bootstrap dispatch code passed memory-manager ABI payload types directly into LosX64* page-operation functions expecting LOS_X64_* request/result structures.
+
+- 0.1.90: Added MemoryManagerBootstrap.h to ChangedFiles so update-only syncs pick up the corrected LosMemoryManagerSendMapPages/UnmapPages prototypes and avoid the conflicting declaration build error.
