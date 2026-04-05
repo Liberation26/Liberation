@@ -26,6 +26,11 @@ Scheduler bootstrap threads now stay on bootstrap fallback stacks until the sche
 
 # Scheduler
 
+## 0.2.22
+
+- Added first-stage **run-slice accounting** for tasks, processes, and the scheduler as a whole. LOS now records `last-run-slice` and `max-run-slice` so the serial log can show the longest observed uninterrupted run segment for BusyWorker, transient workers, and the scheduler overall.
+- Fixed the scheduler heartbeat summary so it now actually emits `max-ready-delay` and `max-wake-delay` alongside the new `max-run-slice` field. That makes the lightweight heartbeat line match the richer scheduler state trace more closely.
+
 ## 0.2.21
 
 - Added dispatch-latency accounting for tasks, processes, and the scheduler as a whole. LOS now records the worst observed `max-ready-delay` and `max-wake-delay` values so the serial log can show not just CPU usage totals, but also how long work waited before it was actually dispatched.

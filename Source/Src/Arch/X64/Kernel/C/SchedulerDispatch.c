@@ -60,6 +60,43 @@ static void UpdateDispatchLatencyAccounting(LOS_KERNEL_SCHEDULER_STATE *State,
     }
 }
 
+static void FinalizeRunSliceAccounting(LOS_KERNEL_SCHEDULER_STATE *State,
+                                      LOS_KERNEL_SCHEDULER_TASK *Task,
+                                      LOS_KERNEL_SCHEDULER_PROCESS *Process)
+{
+    UINT64 RunSliceTicks;
+
+    if (State == 0 || Task == 0)
+    {
+        return;
+    }
+
+    RunSliceTicks = 0ULL;
+    if (Task->LastRunTick != 0ULL && State->TickCount >= Task->LastRunTick)
+    {
+        RunSliceTicks = State->TickCount - Task->LastRunTick;
+    }
+
+    Task->LastRunSliceTicks = RunSliceTicks;
+    if (RunSliceTicks > Task->MaxRunSliceTicks)
+    {
+        Task->MaxRunSliceTicks = RunSliceTicks;
+    }
+    if (RunSliceTicks > State->MaxRunSliceTicks)
+    {
+        State->MaxRunSliceTicks = RunSliceTicks;
+    }
+
+    if (Process != 0)
+    {
+        Process->LastRunSliceTicks = RunSliceTicks;
+        if (RunSliceTicks > Process->MaxRunSliceTicks)
+        {
+            Process->MaxRunSliceTicks = RunSliceTicks;
+        }
+    }
+}
+
 static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -405,6 +442,7 @@ void LosKernelSchedulerEnter(void)
         LosKernelSchedulerSwitchContext(&State->SchedulerContext, &Task->ExecutionContext);
 
         State->InScheduler = 1U;
+        FinalizeRunSliceAccounting(State, Task, Process);
         LosKernelSchedulerRestoreKernelAddressSpace();
         State->CurrentTaskIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
         State->CurrentTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;

@@ -42,6 +42,10 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteUnsigned(Process->MaxReadyDelayTicks);
     LosKernelSerialWriteText(" max-wake-delay=");
     LosKernelSerialWriteUnsigned(Process->MaxWakeDelayTicks);
+    LosKernelSerialWriteText(" last-run-slice=");
+    LosKernelSerialWriteUnsigned(Process->LastRunSliceTicks);
+    LosKernelSerialWriteText(" max-run-slice=");
+    LosKernelSerialWriteUnsigned(Process->MaxRunSliceTicks);
     LosKernelSerialWriteText(" root=");
     LosKernelSerialWriteHex64(Process->RootTablePhysicalAddress);
     LosKernelSerialWriteText(" inherited-root=");
@@ -98,6 +102,10 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteUnsigned(Task->MaxReadyDelayTicks);
     LosKernelSerialWriteText(" max-wake-delay=");
     LosKernelSerialWriteUnsigned(Task->MaxWakeDelayTicks);
+    LosKernelSerialWriteText(" last-run-slice=");
+    LosKernelSerialWriteUnsigned(Task->LastRunSliceTicks);
+    LosKernelSerialWriteText(" max-run-slice=");
+    LosKernelSerialWriteUnsigned(Task->MaxRunSliceTicks);
     LosKernelSerialWriteText(" last-wake=");
     LosKernelSerialWriteUnsigned(Task->LastWakeTick);
     LosKernelSerialWriteText(" preemptions=");
@@ -169,6 +177,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->MaxReadyDelayTicks);
     LosKernelSerialWriteText(" max-wake-delay=");
     LosKernelSerialWriteUnsigned(State->MaxWakeDelayTicks);
+    LosKernelSerialWriteText(" max-run-slice=");
+    LosKernelSerialWriteUnsigned(State->MaxRunSliceTicks);
     LosKernelSerialWriteText(" idle-ticks=");
     LosKernelSerialWriteUnsigned(State->IdleTicks);
     LosKernelSerialWriteText(" busy-ticks=");
@@ -246,6 +256,12 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
             LosKernelSerialWriteText(" resume-window=");
             LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
+            LosKernelSerialWriteText(" max-ready-delay=");
+            LosKernelSerialWriteUnsigned(State->MaxReadyDelayTicks);
+            LosKernelSerialWriteText(" max-wake-delay=");
+            LosKernelSerialWriteUnsigned(State->MaxWakeDelayTicks);
+            LosKernelSerialWriteText(" max-run-slice=");
+            LosKernelSerialWriteUnsigned(State->MaxRunSliceTicks);
             LosKernelSerialWriteText(" idle-ticks=");
             LosKernelSerialWriteUnsigned(State->IdleTicks);
             LosKernelSerialWriteText(" busy-ticks=");
