@@ -4,8 +4,8 @@
 
 - [ ] Prove timer and interrupt stability
 - [x] Add a real scheduler
-- [ ] Evolve the scheduler from step tasks into saved-context kernel threads
-- [ ] Add persistent task and thread objects with saved CPU context
+- [x] Evolve the scheduler from step tasks into saved-context kernel threads
+- [ ] Add persistent task and thread objects with saved CPU context and ownership/lifetime rules
 - [ ] Add a real user-mode transition path for first user tasks
 - [ ] Add real IPC: send, receive, reply, notifications, blocking, wake, and timeouts
 - [ ] Add capability enforcement tied to kernel objects and IPC operations

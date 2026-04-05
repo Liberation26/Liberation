@@ -17,11 +17,25 @@
 
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE 0U
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_WAIT_PERIOD 1U
+#define LOS_KERNEL_SCHEDULER_BLOCK_REASON_YIELD 2U
+#define LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED 3U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 1U
+#define LOS_KERNEL_SCHEDULER_VERSION 2U
 
-typedef void (*LOS_KERNEL_SCHEDULER_STEP_ROUTINE)(void *Context);
+typedef void (*LOS_KERNEL_SCHEDULER_THREAD_ROUTINE)(void *Context);
+
+typedef struct
+{
+    UINT64 StackPointer;
+    UINT64 Rbx;
+    UINT64 Rbp;
+    UINT64 R12;
+    UINT64 R13;
+    UINT64 R14;
+    UINT64 R15;
+    UINT64 Rflags;
+} LOS_KERNEL_SCHEDULER_CONTEXT;
 
 typedef struct
 {
@@ -40,8 +54,13 @@ typedef struct
     UINT64 TotalTicks;
     UINT64 LastRunTick;
     UINT64 LastBlockReason;
-    LOS_KERNEL_SCHEDULER_STEP_ROUTINE StepRoutine;
+    LOS_KERNEL_SCHEDULER_THREAD_ROUTINE ThreadRoutine;
     void *Context;
+    LOS_KERNEL_SCHEDULER_CONTEXT ExecutionContext;
+    UINT64 StackPhysicalAddress;
+    UINT64 StackBaseVirtualAddress;
+    UINT64 StackTopVirtualAddress;
+    UINT64 StackSizeBytes;
 } LOS_KERNEL_SCHEDULER_TASK;
 
 typedef struct
@@ -57,7 +76,7 @@ typedef struct
     UINT32 CurrentTaskIndex;
     UINT32 LastSelectedIndex;
     UINT32 ReschedulePending;
-    UINT32 Reserved0;
+    LOS_KERNEL_SCHEDULER_CONTEXT SchedulerContext;
     LOS_KERNEL_SCHEDULER_TASK Tasks[LOS_KERNEL_SCHEDULER_MAX_TASKS];
 } LOS_KERNEL_SCHEDULER_STATE;
 

@@ -1,5 +1,19 @@
 #include "SchedulerInternal.h"
 
+static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+
+    State = LosKernelSchedulerState();
+    if (State->CurrentTaskIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX ||
+        State->CurrentTaskIndex >= LOS_KERNEL_SCHEDULER_MAX_TASKS)
+    {
+        return 0;
+    }
+
+    return &State->Tasks[State->CurrentTaskIndex];
+}
+
 void LosKernelSchedulerRequestReschedule(void)
 {
     LosKernelSchedulerState()->ReschedulePending = 1U;
@@ -12,14 +26,8 @@ void LosKernelSchedulerOnTimerTick(void)
 
     State = LosKernelSchedulerState();
     State->TickCount += 1ULL;
-    if (State->CurrentTaskIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX ||
-        State->CurrentTaskIndex >= LOS_KERNEL_SCHEDULER_MAX_TASKS)
-    {
-        return;
-    }
-
-    Task = &State->Tasks[State->CurrentTaskIndex];
-    if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) != 0U)
+    Task = GetCurrentTaskMutable();
+    if (Task == 0)
     {
         return;
     }
@@ -33,6 +41,91 @@ void LosKernelSchedulerOnTimerTick(void)
     {
         State->ReschedulePending = 1U;
     }
+}
+
+void LosKernelSchedulerYieldCurrent(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    State = LosKernelSchedulerState();
+    Task = GetCurrentTaskMutable();
+    if (Task == 0)
+    {
+        return;
+    }
+
+    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
+    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_YIELD;
+    State->ReschedulePending = 1U;
+    LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
+}
+
+void LosKernelSchedulerSleepCurrent(UINT64 TickCount)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    State = LosKernelSchedulerState();
+    Task = GetCurrentTaskMutable();
+    if (Task == 0)
+    {
+        return;
+    }
+
+    if (TickCount == 0ULL)
+    {
+        LosKernelSchedulerYieldCurrent();
+        return;
+    }
+
+    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED;
+    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_WAIT_PERIOD;
+    Task->NextWakeTick = State->TickCount + TickCount;
+    State->ReschedulePending = 1U;
+    LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
+}
+
+void LosKernelSchedulerTerminateCurrent(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    State = LosKernelSchedulerState();
+    Task = GetCurrentTaskMutable();
+    if (Task == 0)
+    {
+        LosKernelTraceFail("Kernel scheduler terminate requested without a current task.");
+        LosKernelHaltForever();
+    }
+
+    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED;
+    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED;
+    if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) == 0U && State->TaskCount > 0U)
+    {
+        State->TaskCount -= 1U;
+    }
+    State->ReschedulePending = 1U;
+    LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
+    LosKernelTraceFail("Kernel scheduler terminate path returned unexpectedly.");
+    LosKernelHaltForever();
+}
+
+void LosKernelSchedulerThreadTrampoline(void)
+{
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    Task = GetCurrentTaskMutable();
+    if (Task == 0 || Task->ThreadRoutine == 0)
+    {
+        LosKernelTraceFail("Kernel scheduler thread trampoline has no current task.");
+        LosKernelHaltForever();
+    }
+
+    Task->ThreadRoutine(Task->Context);
+    LosKernelTraceFail("Kernel scheduler thread returned unexpectedly.");
+    LosKernelSchedulerTerminateCurrent();
+    LosKernelHaltForever();
 }
 
 void LosKernelSchedulerEnter(void)
@@ -68,25 +161,7 @@ void LosKernelSchedulerEnter(void)
         Task->DispatchCount += 1ULL;
         Task->LastRunTick = State->TickCount;
         Task->RemainingQuantumTicks = Task->QuantumTicks == 0U ? 1U : Task->QuantumTicks;
-        Task->StepRoutine(Task->Context);
-
-        if (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING)
-        {
-            if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) != 0U)
-            {
-                Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
-            }
-            else if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC) != 0U)
-            {
-                Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED;
-                Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_WAIT_PERIOD;
-                Task->NextWakeTick = State->TickCount + Task->WakePeriodTicks;
-            }
-            else
-            {
-                Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
-            }
-        }
+        LosKernelSchedulerSwitchContext(&State->SchedulerContext, &Task->ExecutionContext);
 
         State->CurrentTaskIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
         State->CurrentTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;

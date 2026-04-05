@@ -1,3 +1,10 @@
+Version 0.1.93
+
+- Replaced the first scheduler step-loop model with saved-context kernel threads, so LOS now switches between the scheduler context and dedicated per-thread kernel stacks.
+- Added an X64 scheduler context-switch assembly path, per-thread stack allocation from claimed physical frames, a thread trampoline, and explicit yield/sleep/terminate scheduler operations.
+- Converted the bootstrap heartbeat work into a real sleeping kernel thread and the idle path into a dedicated idle thread that yields back to the scheduler after timer wakeups.
+- Updated `Docs/Kernel/Scheduler.md` and `ToDo.md` to reflect that the scheduler has now reached the cooperative saved-context kernel-thread stage and that true preemption/user-mode work is next.
+
 Version 0.1.92
 
 - Added a kernel-internal scheduler subsystem split into `Scheduler.h`, `SchedulerInternal.h`, `SchedulerDispatch.c`, `SchedulerLifecycle.c`, `SchedulerPolicy.c`, and `SchedulerDiagnostics.c` so LOS now has a dedicated scheduling authority instead of ending in a pure idle-only path.

@@ -15,17 +15,14 @@ void LosKernelSchedulerWakeDueTasks(void)
         {
             continue;
         }
-        if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC) == 0U)
-        {
-            continue;
-        }
-        if (Task->WakePeriodTicks == 0ULL || State->TickCount < Task->NextWakeTick)
+        if (Task->NextWakeTick == 0ULL || State->TickCount < Task->NextWakeTick)
         {
             continue;
         }
 
         Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
         Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
+        Task->NextWakeTick = 0ULL;
     }
 }
 
@@ -70,7 +67,8 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
             const LOS_KERNEL_SCHEDULER_TASK *Task;
 
             Task = &State->Tasks[Offset];
-            if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) != 0U)
+            if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) != 0U &&
+                Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED)
             {
                 BestIndex = Offset;
                 break;

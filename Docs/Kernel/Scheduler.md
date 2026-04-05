@@ -2,20 +2,17 @@
 
 ## Current State
 
-LOS now has a kernel-internal scheduler instead of ending in a plain idle-only halt path.
+LOS now has a kernel-internal scheduler with **saved-context kernel threads**.
 
-The current scheduler is intentionally small:
+The current scheduler is still intentionally small, but it has moved beyond the earlier step-only model:
 
 - fixed-priority task selection
-- one always-runnable idle task
-- one periodic kernel heartbeat task
-- timer-driven wake-up for periodic work
-- explicit scheduler state and task objects in kernel memory
+- one always-runnable idle thread
+- one heartbeat kernel thread
+- dedicated kernel stack per scheduled thread
+- saved execution context for scheduler and threads
+- timer-driven wake-up for sleeping work
 - scheduler ownership of the post-init idle path
-
-This is a **step scheduler**.
-Each task runs a short kernel step and returns to the scheduler.
-That keeps the first implementation small and easy to verify while the rest of the task/thread model is still being built.
 
 ## What It Does Today
 
@@ -23,41 +20,38 @@ After kernel initialization completes:
 
 1. interrupts are enabled
 2. the scheduler enters its dispatch loop
-3. the idle task sleeps with `hlt`
+3. the scheduler switches onto a dedicated idle-thread stack
 4. timer interrupts wake the CPU
-5. periodic kernel work can be dispatched by priority
+5. runnable threads can yield or sleep and later resume from their saved context
 
-The heartbeat task proves that the scheduler is live and can dispatch non-idle work on a timer cadence.
+The heartbeat thread now proves more than basic dispatch. It proves that LOS can switch onto a separate kernel-thread stack, block that thread on a timer-based sleep, and later resume it from saved scheduler context.
 
-## What It Does Not Yet Do
+## What It Still Does Not Do
 
-The current scheduler does **not** yet provide:
+The current scheduler still does **not** yet provide:
 
-- saved CPU-context thread switching
-- separate kernel thread stacks per runnable thread
+- involuntary preemption of running kernel threads
+- separate process objects above the thread layer
 - user-mode scheduling
 - IPC block/wake integration
 - timeout queues for endpoint waits
 - SMP run queues
 
-Those are the next scheduler stages, not part of this first scheduler delivery.
+So this stage is now a **cooperative saved-context kernel-thread scheduler**, not yet a full preemptive tasking system.
 
-## Why This Split Is Useful
+## Why This Stage Matters
 
-This step gives LOS a real scheduling authority now, without forcing a rushed thread/context-switch design into the tree.
+This gives LOS the first real thread substrate inside the kernel:
 
-It lets the kernel move forward in a clean order:
-
-1. scheduler core
-2. persistent thread objects and saved CPU context
-3. kernel/user transition
-4. IPC wake/block/timeouts
-5. userland services running under the scheduler
+1. per-thread stacks exist
+2. context is preserved across yields and sleeps
+3. the scheduler can resume work instead of re-entering a one-shot step routine
+4. later user-mode and IPC work can build on a real thread base instead of a synthetic dispatch loop
 
 ## Immediate Next Steps
 
-- replace step tasks with saved-context kernel threads
-- add explicit thread and process objects
-- add timer sleep and timeout queues
-- let IPC paths block and wake scheduled tasks
+- add true timer-driven preemption at safe scheduler boundaries
+- add explicit thread objects distinct from higher-level task/process ownership
+- add timer timeout queues for waits and sleeps
+- let IPC paths block and wake scheduled threads
 - move the memory manager from hosted bootstrap steps to a real scheduled task

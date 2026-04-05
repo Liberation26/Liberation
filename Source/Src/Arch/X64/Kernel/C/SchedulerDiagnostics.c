@@ -24,6 +24,10 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteUnsigned(Task->Priority);
     LosKernelSerialWriteText(" flags=");
     LosKernelSerialWriteUnsigned(Task->Flags);
+    LosKernelSerialWriteText(" stack-base=");
+    LosKernelSerialWriteHex64(Task->StackBaseVirtualAddress);
+    LosKernelSerialWriteText(" stack-top=");
+    LosKernelSerialWriteHex64(Task->StackTopVirtualAddress);
     LosKernelSerialWriteText("\n");
 }
 
@@ -50,28 +54,39 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteText("\n");
 }
 
-void LosKernelSchedulerIdleStep(void *Context)
+void LosKernelSchedulerIdleThread(void *Context)
 {
     (void)Context;
-    __asm__ __volatile__("hlt" : : : "memory");
+
+    for (;;)
+    {
+        __asm__ __volatile__("hlt" : : : "memory");
+        if (LosKernelSchedulerState()->ReschedulePending != 0U)
+        {
+            LosKernelSchedulerYieldCurrent();
+        }
+    }
 }
 
-void LosKernelSchedulerHeartbeatStep(void *Context)
+void LosKernelSchedulerHeartbeatThread(void *Context)
 {
     const LOS_KERNEL_SCHEDULER_STATE *State;
 
     (void)Context;
-    State = LosKernelSchedulerGetState();
-    if (State == 0)
+    for (;;)
     {
-        return;
-    }
+        State = LosKernelSchedulerGetState();
+        if (State != 0)
+        {
+            LosKernelSerialWriteText("[Kernel] Scheduler heartbeat ticks=");
+            LosKernelSerialWriteUnsigned(State->TickCount);
+            LosKernelSerialWriteText(" dispatches=");
+            LosKernelSerialWriteUnsigned(State->DispatchCount);
+            LosKernelSerialWriteText(" tasks=");
+            LosKernelSerialWriteUnsigned(State->TaskCount);
+            LosKernelSerialWriteText("\n");
+        }
 
-    LosKernelSerialWriteText("[Kernel] Scheduler heartbeat ticks=");
-    LosKernelSerialWriteUnsigned(State->TickCount);
-    LosKernelSerialWriteText(" dispatches=");
-    LosKernelSerialWriteUnsigned(State->DispatchCount);
-    LosKernelSerialWriteText(" tasks=");
-    LosKernelSerialWriteUnsigned(State->TaskCount);
-    LosKernelSerialWriteText("\n");
+        LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_HEARTBEAT_PERIOD_TICKS);
+    }
 }
