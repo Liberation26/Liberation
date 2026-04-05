@@ -1,3 +1,8 @@
+Version 0.1.86
+
+- Fixed a packaging completeness error in 0.1.85 by adding `Source/Include/Public/MemoryManagerServiceAbi.h` to `ChangedFiles`, so update-only syncs now carry the `MapPages`, `UnmapPages`, and `ProtectPages` ABI request/result types needed by the split address-space dispatch code.
+- This prevents mixed-tree builds where the updated memory-manager C files are present but the repository still has the older ABI header, which caused unknown-type compile failures in `MemoryManagerAddressSpaceDispatch.c`.
+
 Version 0.1.85
 
 - Added explicit hard-failure guards in the memory-manager service for overlapping physical ranges, freeing unowned or bootstrap-reserved pages, mapping outside reserved virtual regions, invalid protection flags, address-space root mismatches, page-count overflow, and base+size wraparound.
