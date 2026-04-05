@@ -6,26 +6,32 @@ static const char *OperationName(UINT32 Operation)
     {
         case LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH:
             return "BootstrapAttach";
-        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
-            return "QueryMemoryRegions";
-        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
-            return "ReserveFrames";
-        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
-            return "ClaimFrames";
-        case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
-            return "MapPages";
-        case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
-            return "UnmapPages";
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_FRAMES:
+            return "AllocateFrames";
         case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
             return "FreeFrames";
         case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
             return "CreateAddressSpace";
         case LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE:
             return "DestroyAddressSpace";
+        case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
+            return "MapPages";
+        case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
+            return "UnmapPages";
+        case LOS_MEMORY_MANAGER_OPERATION_PROTECT_PAGES:
+            return "ProtectPages";
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING:
+            return "QueryMapping";
         case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
             return "AttachStagedImage";
         case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
             return "AllocateAddressSpaceStack";
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
+            return "QueryMemoryRegions";
+        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
+            return "ReserveFrames";
+        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
+            return "ClaimFrames";
         default:
             return "Unknown";
     }
@@ -331,6 +337,76 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
             Response->Payload.BootstrapAttach.BootstrapResult = LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT_INVALID_REQUEST;
             Response->Payload.BootstrapAttach.BootstrapState = LosGetMemoryManagerBootstrapInfo()->State;
             break;
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_FRAMES:
+        {
+            LOS_X64_CLAIM_FRAMES_REQUEST ClaimRequest;
+            LOS_X64_CLAIM_FRAMES_RESULT ClaimResult;
+
+            ZeroMemory(&ClaimRequest, sizeof(ClaimRequest));
+            ClaimRequest.DesiredPhysicalAddress = Slot->Message.Payload.AllocateFrames.DesiredPhysicalAddress;
+            ClaimRequest.MinimumPhysicalAddress = Slot->Message.Payload.AllocateFrames.MinimumPhysicalAddress;
+            ClaimRequest.MaximumPhysicalAddress = Slot->Message.Payload.AllocateFrames.MaximumPhysicalAddress;
+            ClaimRequest.AlignmentBytes = Slot->Message.Payload.AllocateFrames.AlignmentBytes;
+            ClaimRequest.PageCount = Slot->Message.Payload.AllocateFrames.PageCount;
+            ClaimRequest.Flags = Slot->Message.Payload.AllocateFrames.Flags;
+            ClaimRequest.Owner = Slot->Message.Payload.AllocateFrames.Owner;
+            LosX64ClaimFrames(&ClaimRequest, &ClaimResult);
+            Response->Payload.AllocateFrames.Status = ClaimResult.Status;
+            Response->Payload.AllocateFrames.BaseAddress = ClaimResult.BaseAddress;
+            Response->Payload.AllocateFrames.PageCount = ClaimResult.PageCount;
+            Response->Status = Response->Payload.AllocateFrames.Status;
+            break;
+        }
+        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.FreeFrames.Status = Response->Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
+        {
+            LOS_X64_MAP_PAGES_REQUEST MapRequest;
+            LOS_X64_MAP_PAGES_RESULT MapResult;
+
+            ZeroMemory(&MapRequest, sizeof(MapRequest));
+            MapRequest.PageMapLevel4PhysicalAddress = Slot->Message.Payload.MapPages.AddressSpaceObjectPhysicalAddress;
+            MapRequest.VirtualAddress = Slot->Message.Payload.MapPages.VirtualAddress;
+            MapRequest.PhysicalAddress = Slot->Message.Payload.MapPages.PhysicalAddress;
+            MapRequest.PageCount = Slot->Message.Payload.MapPages.PageCount;
+            MapRequest.PageFlags = Slot->Message.Payload.MapPages.PageFlags;
+            MapRequest.Flags = Slot->Message.Payload.MapPages.Flags;
+            LosX64MapPages(&MapRequest, &MapResult);
+            Response->Payload.MapPages.Status = MapResult.Status;
+            Response->Payload.MapPages.AddressSpaceObjectPhysicalAddress = Slot->Message.Payload.MapPages.AddressSpaceObjectPhysicalAddress;
+            Response->Payload.MapPages.PagesProcessed = MapResult.PagesProcessed;
+            Response->Payload.MapPages.LastVirtualAddress = MapResult.LastVirtualAddress;
+            Response->Status = Response->Payload.MapPages.Status;
+            break;
+        }
+        case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
+        {
+            LOS_X64_UNMAP_PAGES_REQUEST UnmapRequest;
+            LOS_X64_UNMAP_PAGES_RESULT UnmapResult;
+
+            ZeroMemory(&UnmapRequest, sizeof(UnmapRequest));
+            UnmapRequest.PageMapLevel4PhysicalAddress = Slot->Message.Payload.UnmapPages.AddressSpaceObjectPhysicalAddress;
+            UnmapRequest.VirtualAddress = Slot->Message.Payload.UnmapPages.VirtualAddress;
+            UnmapRequest.PageCount = Slot->Message.Payload.UnmapPages.PageCount;
+            UnmapRequest.Flags = Slot->Message.Payload.UnmapPages.Flags;
+            LosX64UnmapPages(&UnmapRequest, &UnmapResult);
+            Response->Payload.UnmapPages.Status = UnmapResult.Status;
+            Response->Payload.UnmapPages.AddressSpaceObjectPhysicalAddress = Slot->Message.Payload.UnmapPages.AddressSpaceObjectPhysicalAddress;
+            Response->Payload.UnmapPages.PagesProcessed = UnmapResult.PagesProcessed;
+            Response->Payload.UnmapPages.LastVirtualAddress = UnmapResult.LastVirtualAddress;
+            Response->Status = Response->Payload.UnmapPages.Status;
+            break;
+        }
+        case LOS_MEMORY_MANAGER_OPERATION_PROTECT_PAGES:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.ProtectPages.Status = Response->Status;
+            break;
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING:
+            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
+            Response->Payload.QueryMapping.Status = Response->Status;
+            break;
         case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
             LosX64QueryMemoryRegions(
                 Slot->Message.Payload.QueryMemoryRegions.Buffer,
@@ -345,18 +421,6 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
         case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
             LosX64ClaimFrames(&Slot->Message.Payload.ClaimFrames, &Response->Payload.ClaimFrames);
             Response->Status = Response->Payload.ClaimFrames.Status;
-            break;
-        case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
-            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
-            Response->Payload.FreeFrames.Status = Response->Status;
-            break;
-        case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
-            LosX64MapPages(&Slot->Message.Payload.MapPages, &Response->Payload.MapPages);
-            Response->Status = Response->Payload.MapPages.Status;
-            break;
-        case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
-            LosX64UnmapPages(&Slot->Message.Payload.UnmapPages, &Response->Payload.UnmapPages);
-            Response->Status = Response->Payload.UnmapPages.Status;
             break;
         case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
             Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
@@ -392,14 +456,19 @@ static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
     switch (Operation)
     {
         case LOS_MEMORY_MANAGER_OPERATION_BOOTSTRAP_ATTACH:
-        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
-        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
-        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_FREE_FRAMES:
         case LOS_MEMORY_MANAGER_OPERATION_CREATE_ADDRESS_SPACE:
         case LOS_MEMORY_MANAGER_OPERATION_DESTROY_ADDRESS_SPACE:
+        case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
+        case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
+        case LOS_MEMORY_MANAGER_OPERATION_PROTECT_PAGES:
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING:
         case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
         case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
+        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
+        case LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES:
+        case LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES:
             return 1;
         default:
             return 0;
@@ -703,24 +772,51 @@ void LosMemoryManagerSendReserveFrames(const LOS_X64_RESERVE_FRAMES_REQUEST *Req
     }
 }
 
-void LosMemoryManagerSendClaimFrames(const LOS_X64_CLAIM_FRAMES_REQUEST *RequestData, LOS_X64_CLAIM_FRAMES_RESULT *Result)
+void LosMemoryManagerSendAllocateFrames(const LOS_MEMORY_MANAGER_ALLOCATE_FRAMES_REQUEST *RequestData, LOS_MEMORY_MANAGER_ALLOCATE_FRAMES_RESULT *Result)
 {
     LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
     LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
 
     ZeroMemory(&Request, sizeof(Request));
-    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES;
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_FRAMES;
     Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
     if (RequestData != 0)
     {
-        CopyBytes(&Request.Payload.ClaimFrames, RequestData, sizeof(*RequestData));
+        CopyBytes(&Request.Payload.AllocateFrames, RequestData, sizeof(*RequestData));
     }
     LosMemoryManagerBootstrapRecordRequest(Request.Operation);
     SendRequestAndAwaitResponse(&Request, &Response);
     if (Result != 0)
     {
-        CopyBytes(Result, &Response.Payload.ClaimFrames, sizeof(*Result));
+        CopyBytes(Result, &Response.Payload.AllocateFrames, sizeof(*Result));
         Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendClaimFrames(const LOS_X64_CLAIM_FRAMES_REQUEST *RequestData, LOS_X64_CLAIM_FRAMES_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_ALLOCATE_FRAMES_REQUEST AllocateRequest;
+    LOS_MEMORY_MANAGER_ALLOCATE_FRAMES_RESULT AllocateResult;
+
+    ZeroMemory(&AllocateRequest, sizeof(AllocateRequest));
+    ZeroMemory(&AllocateResult, sizeof(AllocateResult));
+    if (RequestData != 0)
+    {
+        AllocateRequest.DesiredPhysicalAddress = RequestData->DesiredPhysicalAddress;
+        AllocateRequest.MinimumPhysicalAddress = RequestData->MinimumPhysicalAddress;
+        AllocateRequest.MaximumPhysicalAddress = RequestData->MaximumPhysicalAddress;
+        AllocateRequest.AlignmentBytes = RequestData->AlignmentBytes;
+        AllocateRequest.PageCount = RequestData->PageCount;
+        AllocateRequest.Flags = RequestData->Flags;
+        AllocateRequest.Owner = RequestData->Owner;
+    }
+    LosMemoryManagerSendAllocateFrames(&AllocateRequest, &AllocateResult);
+    if (Result != 0)
+    {
+        Result->Status = AllocateResult.Status;
+        Result->Reserved = 0U;
+        Result->BaseAddress = AllocateResult.BaseAddress;
+        Result->PageCount = AllocateResult.PageCount;
     }
 }
 
@@ -745,7 +841,7 @@ void LosMemoryManagerSendFreeFrames(const LOS_X64_FREE_FRAMES_REQUEST *RequestDa
     }
 }
 
-void LosMemoryManagerSendMapPages(const LOS_X64_MAP_PAGES_REQUEST *RequestData, LOS_X64_MAP_PAGES_RESULT *Result)
+void LosMemoryManagerSendMapPages(const LOS_MEMORY_MANAGER_MAP_PAGES_REQUEST *RequestData, LOS_MEMORY_MANAGER_MAP_PAGES_RESULT *Result)
 {
     LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
     LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
@@ -766,7 +862,7 @@ void LosMemoryManagerSendMapPages(const LOS_X64_MAP_PAGES_REQUEST *RequestData, 
     }
 }
 
-void LosMemoryManagerSendUnmapPages(const LOS_X64_UNMAP_PAGES_REQUEST *RequestData, LOS_X64_UNMAP_PAGES_RESULT *Result)
+void LosMemoryManagerSendUnmapPages(const LOS_MEMORY_MANAGER_UNMAP_PAGES_REQUEST *RequestData, LOS_MEMORY_MANAGER_UNMAP_PAGES_RESULT *Result)
 {
     LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
     LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
@@ -783,6 +879,48 @@ void LosMemoryManagerSendUnmapPages(const LOS_X64_UNMAP_PAGES_REQUEST *RequestDa
     if (Result != 0)
     {
         CopyBytes(Result, &Response.Payload.UnmapPages, sizeof(*Result));
+        Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendProtectPages(const LOS_MEMORY_MANAGER_PROTECT_PAGES_REQUEST *RequestData, LOS_MEMORY_MANAGER_PROTECT_PAGES_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    ZeroMemory(&Request, sizeof(Request));
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_PROTECT_PAGES;
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    if (RequestData != 0)
+    {
+        CopyBytes(&Request.Payload.ProtectPages, RequestData, sizeof(*RequestData));
+    }
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.ProtectPages, sizeof(*Result));
+        Result->Status = Response.Status;
+    }
+}
+
+void LosMemoryManagerSendQueryMapping(const LOS_MEMORY_MANAGER_QUERY_MAPPING_REQUEST *RequestData, LOS_MEMORY_MANAGER_QUERY_MAPPING_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_REQUEST_MESSAGE Request;
+    LOS_MEMORY_MANAGER_RESPONSE_MESSAGE Response;
+
+    ZeroMemory(&Request, sizeof(Request));
+    Request.Operation = LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING;
+    Request.RequestId = LosMemoryManagerBootstrapAllocateRequestId();
+    if (RequestData != 0)
+    {
+        CopyBytes(&Request.Payload.QueryMapping, RequestData, sizeof(*RequestData));
+    }
+    LosMemoryManagerBootstrapRecordRequest(Request.Operation);
+    SendRequestAndAwaitResponse(&Request, &Response);
+    if (Result != 0)
+    {
+        CopyBytes(Result, &Response.Payload.QueryMapping, sizeof(*Result));
         Result->Status = Response.Status;
     }
 }
