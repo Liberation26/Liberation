@@ -271,3 +271,11 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 - The scheduler now writes and verifies a non-zero `user-seal` value on the staged dispatch chain so the blocked scaffold carries an explicit sealed handoff marker before the live gate closes.
 - Diagnostics now report `user-seal=` in detailed task/process traces and `user-scaffold-seal-ready=` in heartbeat output.
 - The live gate still remains closed until the real ring-transition entry path exists, and both live-gating and future `LIVE` promotion now require the prepared seal metadata.
+
+
+## 0.2.38
+
+- Added a `handoff-ready` user-transition scaffold stage after `seal-ready`.
+- The scheduler now freezes the final blocked-task handoff stack pointer as non-zero `user-handoff-sp` metadata after verifying it still matches the staged chain stack pointer and current saved execution stack pointer.
+- Diagnostics now report `user-handoff-sp=` in detailed task/process traces and `user-scaffold-handoff-ready=` in heartbeat output.
+- The live gate still remains closed until the real ring-transition entry path exists, and both live-gating and future `LIVE` promotion now require the prepared handoff stack metadata.

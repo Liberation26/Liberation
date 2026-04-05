@@ -61,6 +61,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldContractReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldSealReady(void);
+BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldHandoffReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void);
 BOOLEAN LosKernelSchedulerGuardUserTransitionScaffold(void);

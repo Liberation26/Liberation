@@ -1,3 +1,14 @@
+- Added an explicit `handoff-ready` user-transition scaffold stage after `seal-ready`.
+- The scheduler now records and verifies the final blocked scaffold task handoff stack pointer as non-zero `user-handoff-sp` metadata, matching the staged chain stack pointer and current saved execution stack pointer.
+- Heartbeat output now exposes `user-scaffold-handoff-ready`, and detailed process/task traces now expose `user-handoff-sp=` so the serial log can prove the blocked scaffold carries a final saved handoff stack before the live gate closes.
+- The live gate still remains closed; both live-gating and future `LIVE` promotion now require the prepared handoff-stack metadata.
+
+# ToDo
+
+- Review the new `user-scaffold-handoff-ready` diagnostic plus the handoff-ready one-time log to confirm the blocked scaffold now carries a verified non-zero `user-handoff-sp` value before the live gate closes.
+- Confirm the detailed scaffold process/task traces now report a non-zero `user-handoff-sp=` value alongside the existing chain, contract, and seal metadata.
+- Verify the live-gate-closed one-time line still appears only after `seal-ready` and `handoff-ready` have both completed, while `user-scaffold-live` remains `0`.
+
 - Added an explicit `contract-ready` user-transition scaffold stage after `chain-ready`.
 - The scheduler now re-reads the staged `iretq` frame plus bridge/kernel-entry chain, computes a frozen non-zero `user-contract` signature over that metadata, and records it on both the scaffold process and task.
 - Heartbeat output now exposes `user-scaffold-contract-ready`, and detailed process/task traces now expose `user-contract=` so the serial log can prove that the staged handoff metadata was verified before the real ring-transition path exists.

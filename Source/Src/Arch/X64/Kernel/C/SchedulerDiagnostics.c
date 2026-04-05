@@ -68,6 +68,8 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteHex64(Process->UserTransitionContractSignature);
     LosKernelSerialWriteText(" user-seal=");
     LosKernelSerialWriteHex64(Process->UserTransitionSealValue);
+    LosKernelSerialWriteText(" user-handoff-sp=");
+    LosKernelSerialWriteHex64(Process->UserTransitionHandoffStackPointer);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Process->UserTransitionState);
     LosKernelSerialWriteText(" root=");
@@ -152,6 +154,8 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->UserTransitionContractSignature);
     LosKernelSerialWriteText(" user-seal=");
     LosKernelSerialWriteHex64(Task->UserTransitionSealValue);
+    LosKernelSerialWriteText(" user-handoff-sp=");
+    LosKernelSerialWriteHex64(Task->UserTransitionHandoffStackPointer);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Task->UserTransitionState);
     LosKernelSerialWriteText(" last-wake=");
@@ -257,6 +261,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionContractReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-seal-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionSealReadyCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-scaffold-handoff-ready=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionHandoffReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-live=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -380,6 +386,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionContractReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-seal-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionSealReadyCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-scaffold-handoff-ready=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionHandoffReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-live=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -465,6 +473,10 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         else if (LosKernelSchedulerState()->UserTransitionSealReadyCount == 0ULL)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldSealReady();
+        }
+        else if (LosKernelSchedulerState()->UserTransitionHandoffReadyCount == 0ULL)
+        {
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldHandoffReady();
         }
         else if (LosKernelSchedulerState()->UserTransitionLiveGateClosed == 0U &&
                  LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
@@ -609,6 +621,8 @@ void LosKernelSchedulerUserTransitionBridgeTrap(UINT64 KernelStackPointer)
     LosKernelSerialWriteHex64(KernelStackPointer);
     LosKernelSerialWriteText(" seal=");
     LosKernelSerialWriteHex64(KernelStackPointer != 0ULL ? *((const UINT64 *)(UINTN)(KernelStackPointer + 16ULL)) : 0ULL);
+    LosKernelSerialWriteText(" handoff=");
+    LosKernelSerialWriteHex64(Task != 0 ? Task->UserTransitionHandoffStackPointer : 0ULL);
     LosKernelSerialWriteText("\n");
     LosKernelHaltForever();
 }

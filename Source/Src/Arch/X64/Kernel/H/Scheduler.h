@@ -41,7 +41,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION 5U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 34U
+#define LOS_KERNEL_SCHEDULER_VERSION 35U
 
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED 1U
@@ -56,7 +56,8 @@
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY 10U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CONTRACT_READY 11U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_SEAL_READY 12U
-#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE 13U
+#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY 13U
+#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE 14U
 
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_BOOTSTRAP 1U
@@ -120,6 +121,7 @@ typedef struct
     UINT64 UserTransitionChainStackPointer;
     UINT64 UserTransitionContractSignature;
     UINT64 UserTransitionSealValue;
+    UINT64 UserTransitionHandoffStackPointer;
     UINT64 ExitStatus;
     UINT32 UserTransitionState;
     UINT32 Reserved1;
@@ -164,6 +166,7 @@ typedef struct
     UINT64 UserTransitionChainStackPointer;
     UINT64 UserTransitionContractSignature;
     UINT64 UserTransitionSealValue;
+    UINT64 UserTransitionHandoffStackPointer;
     UINT64 PreemptionCount;
     UINT64 ExitStatus;
     UINT32 UserTransitionState;
@@ -233,6 +236,7 @@ typedef struct
     UINT64 UserTransitionChainReadyCount;
     UINT64 UserTransitionContractReadyCount;
     UINT64 UserTransitionSealReadyCount;
+    UINT64 UserTransitionHandoffReadyCount;
     UINT64 UserTransitionLiveCount;
     UINT64 UserTransitionDispatchSkipCount;
     UINT64 UserTransitionScaffoldReblockCount;
