@@ -30,10 +30,14 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteUnsigned(Process->ThreadCount);
     LosKernelSerialWriteText(" address-space=");
     LosKernelSerialWriteUnsigned(Process->AddressSpaceId);
+    LosKernelSerialWriteText(" address-space-object=");
+    LosKernelSerialWriteHex64(Process->AddressSpaceObjectPhysicalAddress);
     LosKernelSerialWriteText(" root=");
     LosKernelSerialWriteHex64(Process->RootTablePhysicalAddress);
     LosKernelSerialWriteText(" inherited-root=");
     LosKernelSerialWriteUnsigned((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT) != 0U ? 1U : 0U);
+    LosKernelSerialWriteText(" owns-address-space=");
+    LosKernelSerialWriteUnsigned((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) != 0U ? 1U : 0U);
     LosKernelSerialWriteText(" cleanup=");
     LosKernelSerialWriteUnsigned(Process->CleanupPending);
     LosKernelSerialWriteText(" exit=");

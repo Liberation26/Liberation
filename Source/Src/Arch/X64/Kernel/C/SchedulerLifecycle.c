@@ -88,6 +88,89 @@ static const LOS_KERNEL_SCHEDULER_PROCESS *FindProcessById(UINT64 ProcessId)
 }
 
 static UINT64 GetKernelRootTablePhysicalAddress(void);
+static BOOLEAN BindOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Process)
+{
+    LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_REQUEST Request;
+    LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_RESULT Result;
+
+    if (Process == 0)
+    {
+        return 0;
+    }
+    if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) != 0U ||
+        (Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) != 0U ||
+        Process->AddressSpaceObjectPhysicalAddress != 0ULL)
+    {
+        return 1;
+    }
+    if (LosIsMemoryManagerBootstrapReady() == 0U)
+    {
+        return 0;
+    }
+
+    ZeroBytes(&Request, sizeof(Request));
+    ZeroBytes(&Result, sizeof(Result));
+    LosMemoryManagerSendCreateAddressSpace(&Request, &Result);
+    if (Result.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS ||
+        Result.AddressSpaceObjectPhysicalAddress == 0ULL ||
+        Result.RootTablePhysicalAddress == 0ULL ||
+        Result.AddressSpaceId == 0ULL)
+    {
+        LosKernelTraceFail("Kernel scheduler could not bind a distinct process address space.");
+        LosKernelTraceUnsigned("Kernel scheduler process address-space-create status: ", Result.Status);
+        LosKernelTraceUnsigned("Kernel scheduler process id awaiting root binding: ", Process->ProcessId);
+        return 0;
+    }
+
+    Process->AddressSpaceId = Result.AddressSpaceId;
+    Process->AddressSpaceObjectPhysicalAddress = Result.AddressSpaceObjectPhysicalAddress;
+    Process->RootTablePhysicalAddress = Result.RootTablePhysicalAddress;
+    Process->Flags &= ~LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT;
+    Process->Flags |= LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE;
+    return 1;
+}
+
+static BOOLEAN DestroyOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Process)
+{
+    LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_REQUEST Request;
+    LOS_MEMORY_MANAGER_DESTROY_ADDRESS_SPACE_RESULT Result;
+
+    if (Process == 0)
+    {
+        return 0;
+    }
+    if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) == 0U ||
+        Process->AddressSpaceObjectPhysicalAddress == 0ULL)
+    {
+        return 1;
+    }
+    if (LosIsMemoryManagerBootstrapReady() == 0U)
+    {
+        LosKernelTraceFail("Kernel scheduler could not destroy a process address space because the memory manager bootstrap is not ready.");
+        LosKernelTraceUnsigned("Kernel scheduler process awaiting address-space destroy: ", Process->ProcessId);
+        return 0;
+    }
+
+    ZeroBytes(&Request, sizeof(Request));
+    ZeroBytes(&Result, sizeof(Result));
+    Request.AddressSpaceObjectPhysicalAddress = Process->AddressSpaceObjectPhysicalAddress;
+    LosMemoryManagerSendDestroyAddressSpace(&Request, &Result);
+    if (Result.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+    {
+        LosKernelTraceFail("Kernel scheduler could not destroy a terminated process address space.");
+        LosKernelTraceUnsigned("Kernel scheduler process address-space-destroy status: ", Result.Status);
+        LosKernelTraceUnsigned("Kernel scheduler process awaiting destroy completion: ", Process->ProcessId);
+        LosKernelTraceHex64("Kernel scheduler address-space object awaiting destroy: ", Process->AddressSpaceObjectPhysicalAddress);
+        return 0;
+    }
+
+    Process->AddressSpaceObjectPhysicalAddress = 0ULL;
+    Process->AddressSpaceId = 0ULL;
+    Process->RootTablePhysicalAddress = GetKernelRootTablePhysicalAddress();
+    Process->Flags &= ~LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE;
+    Process->Flags |= LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT;
+    return 1;
+}
 
 static UINT64 ResolveProcessRootTablePhysicalAddress(UINT64 RequestedRootTablePhysicalAddress, UINT32 *ResolvedFlags)
 {
@@ -334,6 +417,7 @@ BOOLEAN LosKernelSchedulerCreateProcess(
         Process->RootTablePhysicalAddress = ResolveProcessRootTablePhysicalAddress(RootTablePhysicalAddress, &Process->Flags);
         Process->ThreadCount = 0U;
         Process->AddressSpaceId = AddressSpaceId;
+        Process->AddressSpaceObjectPhysicalAddress = 0ULL;
         Process->CreatedTick = State->TickCount;
         Process->TerminatedTick = 0ULL;
         Process->ExitStatus = 0ULL;
@@ -355,6 +439,12 @@ BOOLEAN LosKernelSchedulerCreateProcess(
         if (ProcessId != 0)
         {
             *ProcessId = LocalProcessId;
+        }
+        if ((CreatedProcess->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) == 0U &&
+            RootTablePhysicalAddress == LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS &&
+            AddressSpaceId == 0ULL)
+        {
+            (void)BindOwnedProcessAddressSpace(CreatedProcess);
         }
         LosKernelSchedulerTraceProcess("Registered scheduler process", CreatedProcess);
         return 1;
@@ -564,6 +654,11 @@ void LosKernelSchedulerCleanupTerminatedProcesses(void)
         if (Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED ||
             Process->CleanupPending == 0U ||
             Process->ThreadCount != 0U)
+        {
+            continue;
+        }
+
+        if (!DestroyOwnedProcessAddressSpace(Process))
         {
             continue;
         }

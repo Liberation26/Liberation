@@ -1,9 +1,9 @@
-Version 0.1.99
+Version 0.2.6
 
-- Added scheduler-side **process root activation plumbing** so dispatch now explicitly installs the selected process root-table physical address before entering a thread and restores the kernel-process root when control returns to the scheduler loop.
-- Added **root inheritance** for processes created without their own address space yet. Transient processes spawned by the lifecycle thread now inherit the creator root instead of carrying a zero root, and diagnostics show this with an `inherited-root` marker.
-- Extended scheduler diagnostics with `root-switches`, `root-reuse`, and `active-root`, giving direct proof in the serial log that address-space-root ownership is now part of dispatch accounting even though LOS is still running kernel threads only.
-- This is still not a true user-mode transition. It is the last small kernel-side staging step before binding a process to a distinct non-kernel address space and entering it safely.
+- Added **memory-manager-backed distinct process address spaces** for transient scheduler processes. The lifecycle thread now creates ephemeral processes that receive their own address-space object, address-space id, and root table instead of always inheriting the kernel root.
+- Added scheduler bookkeeping for `address-space-object` ownership and an `owns-address-space` marker in process diagnostics, so the serial log can now prove which process is carrying a distinct memory-manager-created root.
+- Added cleanup-time **DestroyAddressSpace** integration for transient processes that owned a distinct address space, so process reaping now tears down the owned address-space object before the scheduler frees the process slot.
+- This is still not a ring transition into user mode. It is the step that proves LOS can create, dispatch, switch, and later destroy distinct process roots before the first user-mode entry path is added.
 
 Version 0.1.98
 

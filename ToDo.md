@@ -9,6 +9,7 @@
 - [x] Add persistent task and thread objects with saved CPU context and ownership/lifetime rules
 - [x] Prevent starvation of lower-priority kernel work under sustained busy-thread load
 - [x] Add first-stage process objects with address-space ownership metadata above threads
+- [x] Bind real non-kernel address spaces to transient process objects
 - [ ] Add a real user-mode transition path for first user tasks
 - [ ] Add real IPC: send, receive, reply, notifications, blocking, wake, and timeouts
 - [ ] Add capability enforcement tied to kernel objects and IPC operations
@@ -61,6 +62,7 @@ Success criteria:
 - [x] Kernel process objects exist above threads and can be reclaimed when transient work exits
 - [ ] Kernel can enter and return from user mode safely
 - [x] Scheduler activates the selected process root and restores the kernel root on return
+- [x] Transient scheduler processes can own and later destroy distinct memory-manager address spaces
 - [ ] Kernel IPC can block, wake, reply, and time out correctly
 - [ ] Capabilities are enforced by object type and operation
 - [ ] Exceptions and faults are reported against the owning task

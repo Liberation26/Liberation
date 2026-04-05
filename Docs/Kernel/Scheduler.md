@@ -2,7 +2,7 @@
 
 ## Current State
 
-LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, and **scheduler-managed process root activation** so dispatch now carries explicit address-space-root ownership even before user mode exists.
+LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, **scheduler-managed process root activation**, and now **distinct memory-manager-created address spaces bound to transient scheduler processes** so dispatch can switch between genuinely different CR3 roots even before user mode exists.
 
 The scheduler is still intentionally small, but it now provides:
 
@@ -21,6 +21,7 @@ The scheduler is still intentionally small, but it now provides:
 - per-task ownership, generation, termination, and deferred cleanup bookkeeping
 - first-stage process objects with process ids, owner process ids, thread counts, and address-space metadata
 - inherited process root-table tracking so transient processes no longer carry a zero root while they still share the kernel mappings
+- memory-manager-backed distinct address-space binding for transient processes, including address-space-object tracking and cleanup-time destroy requests
 - scheduler-side CR3 activation accounting on dispatch and restore back to the kernel process root on return to the scheduler
 - deferred reclamation of terminated thread stacks, task slots, and now transient process objects from the scheduler loop
 - ready-time tracking plus bounded aging so lower-priority ready tasks can still reach dispatch under sustained busy-thread load
@@ -37,7 +38,7 @@ After kernel initialization completes:
 6. the heartbeat thread continues to run even while the busy worker spins forever without calling yield or sleep
 7. the lifecycle manager can create a short-lived worker, let it run even while a higher-priority busy worker is spinning, let it exit, and the scheduler then reclaims its stack and task slot for reuse
 
-This means LOS now has a preemptive kernel-thread substrate, explicit task-lifetime rules, a first process object layer that can own groups of threads, and explicit root-table activation points in the dispatch path.
+This means LOS now has a preemptive kernel-thread substrate, explicit task-lifetime rules, a first process object layer that can own groups of threads, explicit root-table activation points in the dispatch path, and live transient processes that can carry their own memory-manager-created roots instead of always inheriting the kernel root.
 
 ## How Preemption Works In This Stage
 
@@ -102,7 +103,7 @@ Each process carries:
 
 The kernel bootstrap work now runs inside a persistent `KernelProcess`, while the lifecycle manager spawns short-lived `EphemeralProcess` objects that each own one ephemeral worker thread. When the worker exits, the scheduler reclaims the thread and then reclaims the now-empty transient process object.
 
-When a process is created without its own root yet, the scheduler now inherits the creator root and records that fact explicitly. During dispatch, the scheduler activates the selected process root before entering the thread context and restores the kernel-process root when control returns to the scheduler loop.
+When a process is created without its own root yet, the scheduler now inherits the creator root and records that fact explicitly. For transient non-kernel processes, the scheduler then immediately asks the hosted memory manager to create a distinct address-space object, replaces the inherited root with the returned root-table physical address, and records the owning address-space object for later teardown. During dispatch, the scheduler activates the selected process root before entering the thread context and restores the kernel-process root when control returns to the scheduler loop. When a transient process is reaped, the scheduler now asks the memory manager to destroy the owned address-space object before freeing the process slot.
 
 That gives LOS a real place to hang later address-space ownership, fault accounting, IPC ownership, and user-mode launch state without pretending that a thread alone is the whole execution object.
 
@@ -114,7 +115,7 @@ The current scheduler still does **not** yet provide:
 - IPC block/wake integration
 - endpoint wait queues and timeout objects
 - SMP run queues or cross-core reschedule IPIs
-- distinct user process address spaces being entered from the scheduler
+- ring transitions into user mode using those distinct user process address spaces
 
 So this stage is now a **small preemptive kernel-thread scheduler with first-stage process ownership, lifecycle cleanup, and dispatch-time root activation**, not yet a full user/process scheduler.
 
@@ -129,11 +130,12 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 5. terminated thread resources can now be reclaimed instead of being leaked forever
 6. transient process objects can now be reclaimed once their last thread exits
 7. dispatch now has an explicit place to install a process root table before the thread runs
-8. later IPC blocking, timeout delivery, distinct address-space ownership, and user-mode entry can build on a real preemptive base with explicit task and process lifetime rules
+8. transient scheduler processes can now own a distinct memory-manager-created address space and tear it down again on cleanup
+9. later IPC blocking, timeout delivery, executable mapping, and user-mode entry can build on a real preemptive base with explicit task and process lifetime rules
 
 ## Immediate Next Steps
 
-- bind real non-kernel address spaces to process objects
-- add safe kernel-to-user transition and return paths
+- add safe kernel-to-user transition and return paths on top of the now-distinct process roots
+- map a first executable image and user stack into one of those process objects
 - let IPC paths block and wake scheduled threads
 - move the memory manager from hosted bootstrap steps to a real scheduled task
