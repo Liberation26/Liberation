@@ -84,6 +84,10 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteUnsigned(Task->LastWakeTick);
     LosKernelSerialWriteText(" preemptions=");
     LosKernelSerialWriteUnsigned(Task->PreemptionCount);
+    LosKernelSerialWriteText(" wake-pending=");
+    LosKernelSerialWriteUnsigned(Task->WakeDispatchPending);
+    LosKernelSerialWriteText(" resume-boost=");
+    LosKernelSerialWriteUnsigned(Task->ResumeBoostTicks);
     LosKernelSerialWriteText(" cleanup=");
     LosKernelSerialWriteUnsigned(Task->CleanupPending);
     LosKernelSerialWriteText(" exit=");
@@ -139,6 +143,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->WakeupCount);
     LosKernelSerialWriteText(" wake-dispatch=");
     LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
+    LosKernelSerialWriteText(" resume-window=");
+    LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
     LosKernelSerialWriteText(" active-root=");
     LosKernelSerialWriteHex64(State->ActiveRootTablePhysicalAddress);
     LosKernelSerialWriteText(" current=");
@@ -206,6 +212,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->WakeupCount);
             LosKernelSerialWriteText(" wake-dispatch=");
             LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
+            LosKernelSerialWriteText(" resume-window=");
+            LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
             LosKernelSerialWriteText("\n");
         }
 

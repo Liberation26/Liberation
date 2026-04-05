@@ -728,6 +728,8 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->ExitStatus = 0ULL;
             Task->CleanupPending = 0U;
             Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
+            Task->WakeDispatchPending = 0U;
+            Task->ResumeBoostTicks = 0U;
             Task->ThreadRoutine = ThreadRoutine;
             Task->Context = Context;
 

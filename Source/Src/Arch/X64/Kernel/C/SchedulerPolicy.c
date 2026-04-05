@@ -25,6 +25,8 @@ void LosKernelSchedulerWakeDueTasks(void)
         Task->LastWakeTick = State->TickCount;
         Task->ReadySinceTick = State->TickCount;
         Task->NextWakeTick = 0ULL;
+        Task->WakeDispatchPending = 1U;
+        Task->ResumeBoostTicks = 2U;
         State->WakeupCount += 1ULL;
     }
 }
@@ -73,6 +75,29 @@ static UINT32 GetTaskEffectivePriority(const LOS_KERNEL_SCHEDULER_STATE *State, 
     return Task->Priority + (UINT32)AgeBoost + WakeBoost;
 }
 
+static BOOLEAN HasPendingWakeDispatch(const LOS_KERNEL_SCHEDULER_STATE *State)
+{
+    UINT32 Index;
+
+    if (State == 0)
+    {
+        return 0U;
+    }
+
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_TASKS; ++Index)
+    {
+        const LOS_KERNEL_SCHEDULER_TASK *Task;
+
+        Task = &State->Tasks[Index];
+        if (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_READY && Task->WakeDispatchPending != 0U)
+        {
+            return 1U;
+        }
+    }
+
+    return 0U;
+}
+
 UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -83,6 +108,7 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
     UINT64 BestWaitTicks;
     BOOLEAN SelectedByAging;
     BOOLEAN SelectedByWakeBoost;
+    BOOLEAN PreferWakePending;
 
     State = LosKernelSchedulerState();
     BestIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
@@ -90,6 +116,7 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
     BestWaitTicks = 0ULL;
     SelectedByAging = 0U;
     SelectedByWakeBoost = 0U;
+    PreferWakePending = HasPendingWakeDispatch(State);
     StartIndex = State->LastSelectedIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX
         ? 0U
         : (UINT32)((State->LastSelectedIndex + 1U) % LOS_KERNEL_SCHEDULER_MAX_TASKS);
@@ -105,6 +132,10 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
         Index = (UINT32)((StartIndex + Offset) % LOS_KERNEL_SCHEDULER_MAX_TASKS);
         Task = &State->Tasks[Index];
         if (Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_READY)
+        {
+            continue;
+        }
+        if (PreferWakePending != 0U && Task->WakeDispatchPending == 0U)
         {
             continue;
         }

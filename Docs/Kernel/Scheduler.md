@@ -1,5 +1,7 @@
 # Scheduler
 
+- 0.2.13: Added a one-shot pending-wake dispatch path plus a short resume window for freshly woken tasks. A task that wakes from scheduler sleep now keeps an explicit wake-pending marker until it is actually dispatched, and its first post-wake run can receive a slightly longer quantum so resume -> exit paths stay visible even under BusyWorker load.
+
 ## 0.2.12 update
 
 - Woken scheduler tasks now get a short-lived wake dispatch boost so freshly resumed work is less likely to sit behind the busy worker for many extra quanta after its wake tick arrives.

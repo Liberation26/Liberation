@@ -1,4 +1,4 @@
-- Verify the 0.2.12 wake-priority dispatch path by proving transient owned-root workers wake, resume, exit, reap, and destroy their address spaces cleanly under sustained busy-thread load.
+- Verify the 0.2.13 pending-wake resume-window path by proving transient owned-root workers wake, get an immediate post-wake slice, resume, exit, reap, and destroy their address spaces cleanly under sustained busy-thread load.
 # ToDo
 
 ## Priority Order
