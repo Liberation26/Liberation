@@ -526,6 +526,258 @@ static BOOLEAN StageImageIntoPhysicalMemory(
     return 1;
 }
 
+void LosMemoryManagerServiceMapPages(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_MAP_PAGES_REQUEST *Request,
+    LOS_MEMORY_MANAGER_MAP_PAGES_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
+
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->AddressSpaceObjectPhysicalAddress = 0ULL;
+    Result->PagesProcessed = 0ULL;
+    Result->LastVirtualAddress = 0ULL;
+
+    if (State == 0 || Request == 0)
+    {
+        if (State == 0)
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        }
+        return;
+    }
+
+    Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
+    if (!LosMemoryManagerResolveAddressSpaceObject(State, Request->AddressSpaceObjectPhysicalAddress, 1, &AddressSpaceObject))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        return;
+    }
+    if (!LosMemoryManagerValidateAddressSpaceAccess(
+            State,
+            AddressSpaceObject,
+            Request->VirtualAddress,
+            Request->PageCount,
+            Request->PageFlags,
+            1,
+            1))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+        return;
+    }
+
+    if (!LosMemoryManagerMapPagesIntoAddressSpace(
+            State,
+            AddressSpaceObject->RootTablePhysicalAddress,
+            Request->VirtualAddress,
+            Request->PhysicalAddress,
+            Request->PageCount,
+            Request->PageFlags))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->PagesProcessed = Request->PageCount;
+    Result->LastVirtualAddress = Request->VirtualAddress + ((Request->PageCount - 1ULL) * 0x1000ULL);
+}
+
+void LosMemoryManagerServiceUnmapPages(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_UNMAP_PAGES_REQUEST *Request,
+    LOS_MEMORY_MANAGER_UNMAP_PAGES_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
+
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->AddressSpaceObjectPhysicalAddress = 0ULL;
+    Result->PagesProcessed = 0ULL;
+    Result->LastVirtualAddress = 0ULL;
+
+    if (State == 0 || Request == 0)
+    {
+        if (State == 0)
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        }
+        return;
+    }
+
+    Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
+    if (!LosMemoryManagerResolveAddressSpaceObject(State, Request->AddressSpaceObjectPhysicalAddress, 1, &AddressSpaceObject))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        return;
+    }
+    if (!LosMemoryManagerValidateAddressSpaceAccess(
+            State,
+            AddressSpaceObject,
+            Request->VirtualAddress,
+            Request->PageCount,
+            0ULL,
+            0,
+            1))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+        return;
+    }
+
+    if (!LosMemoryManagerUnmapPagesFromAddressSpace(
+            State,
+            AddressSpaceObject->RootTablePhysicalAddress,
+            Request->VirtualAddress,
+            Request->PageCount,
+            &Result->PagesProcessed,
+            &Result->LastVirtualAddress))
+    {
+        Result->Status = Result->PagesProcessed == 0ULL ? LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND : LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+}
+
+void LosMemoryManagerServiceProtectPages(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_PROTECT_PAGES_REQUEST *Request,
+    LOS_MEMORY_MANAGER_PROTECT_PAGES_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
+
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->AddressSpaceObjectPhysicalAddress = 0ULL;
+    Result->PagesProcessed = 0ULL;
+    Result->LastVirtualAddress = 0ULL;
+    Result->AppliedPageFlags = 0ULL;
+
+    if (State == 0 || Request == 0)
+    {
+        if (State == 0)
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        }
+        return;
+    }
+
+    Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
+    if (!LosMemoryManagerResolveAddressSpaceObject(State, Request->AddressSpaceObjectPhysicalAddress, 1, &AddressSpaceObject))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        return;
+    }
+    if (!LosMemoryManagerValidateAddressSpaceAccess(
+            State,
+            AddressSpaceObject,
+            Request->VirtualAddress,
+            Request->PageCount,
+            Request->PageFlags,
+            1,
+            1))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+        return;
+    }
+
+    if (!LosMemoryManagerProtectPagesInAddressSpace(
+            State,
+            AddressSpaceObject->RootTablePhysicalAddress,
+            Request->VirtualAddress,
+            Request->PageCount,
+            Request->PageFlags,
+            &Result->PagesProcessed,
+            &Result->LastVirtualAddress))
+    {
+        Result->Status = Result->PagesProcessed == 0ULL ? LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND : LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->AppliedPageFlags = Request->PageFlags;
+}
+
+void LosMemoryManagerServiceQueryMapping(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_QUERY_MAPPING_REQUEST *Request,
+    LOS_MEMORY_MANAGER_QUERY_MAPPING_RESULT *Result)
+{
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
+
+    if (Result == 0)
+    {
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    Result->Reserved = 0U;
+    Result->AddressSpaceObjectPhysicalAddress = 0ULL;
+    Result->VirtualAddress = 0ULL;
+    Result->PhysicalAddress = 0ULL;
+    Result->PageFlags = 0ULL;
+    Result->PageCount = 0ULL;
+
+    if (State == 0 || Request == 0)
+    {
+        if (State == 0)
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        }
+        return;
+    }
+
+    Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
+    Result->VirtualAddress = Request->VirtualAddress;
+    if (!LosMemoryManagerResolveAddressSpaceObject(State, Request->AddressSpaceObjectPhysicalAddress, 1, &AddressSpaceObject))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        return;
+    }
+    if (!LosMemoryManagerValidateAddressSpaceAccess(
+            State,
+            AddressSpaceObject,
+            Request->VirtualAddress,
+            1ULL,
+            0ULL,
+            0,
+            1))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+        return;
+    }
+
+    if (!LosMemoryManagerQueryAddressSpaceMapping(
+            State,
+            AddressSpaceObject->RootTablePhysicalAddress,
+            Request->VirtualAddress,
+            &Result->PhysicalAddress,
+            &Result->PageFlags))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->PageCount = 1ULL;
+}
+
 void LosMemoryManagerServiceCreateAddressSpace(
     LOS_MEMORY_MANAGER_SERVICE_STATE *State,
     const LOS_MEMORY_MANAGER_CREATE_ADDRESS_SPACE_REQUEST *Request,

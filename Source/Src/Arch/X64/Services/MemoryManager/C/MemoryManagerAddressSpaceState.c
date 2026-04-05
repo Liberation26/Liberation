@@ -77,6 +77,19 @@ BOOLEAN LosMemoryManagerResolveAddressSpaceObject(
     {
         return 0;
     }
+    if (Resolved->KernelRootTablePhysicalAddress != State->KernelRootTablePhysicalAddress)
+    {
+        LosMemoryManagerHardFail("address-space-root-mismatch", AddressSpaceObjectPhysicalAddress, Resolved->RootTablePhysicalAddress, Resolved->KernelRootTablePhysicalAddress);
+    }
+    if ((Resolved->Flags & LOS_MEMORY_MANAGER_ENDPOINT_FLAG_BOOTSTRAP_OBJECT) != 0ULL &&
+        Resolved->RootTablePhysicalAddress != State->ActiveRootTablePhysicalAddress)
+    {
+        LosMemoryManagerHardFail("address-space-root-mismatch", AddressSpaceObjectPhysicalAddress, Resolved->RootTablePhysicalAddress, State->ActiveRootTablePhysicalAddress);
+    }
+    if (TranslatePageTable(State, Resolved->RootTablePhysicalAddress) == 0)
+    {
+        LosMemoryManagerHardFail("address-space-root-mismatch", AddressSpaceObjectPhysicalAddress, Resolved->RootTablePhysicalAddress, 0ULL);
+    }
     if (!AllowBootstrapObject && (Resolved->Flags & LOS_MEMORY_MANAGER_ENDPOINT_FLAG_BOOTSTRAP_OBJECT) != 0ULL)
     {
         return 0;

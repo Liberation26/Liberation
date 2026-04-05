@@ -1,3 +1,32 @@
+Version 0.1.85
+
+- Added explicit hard-failure guards in the memory-manager service for overlapping physical ranges, freeing unowned or bootstrap-reserved pages, mapping outside reserved virtual regions, invalid protection flags, address-space root mismatches, page-count overflow, and base+size wraparound.
+- Tightened the normalized memory-region ingest path so malformed or overlapping physical descriptors now stop memory-view construction immediately instead of being accepted silently.
+- Tightened frame-free validation so only fully owned dynamic allocations may be released, preventing accidental frees of bootstrap-reserved or otherwise unowned physical pages.
+- Tightened address-space map/protect validation so requests must stay inside reserved virtual regions and use a constrained page-flag set before the service will touch page tables.
+
+Version 0.1.84
+
+- Reworked the public memory-manager request set into a small protocol headed by `BootstrapAttach`, `AllocateFrames`, `FreeFrames`, `CreateAddressSpace`, `DestroyAddressSpace`, `MapPages`, `UnmapPages`, `ProtectPages`, and `QueryMapping`.
+- Added first-class ABI message types for `AllocateFrames`, `MapPages`, `UnmapPages`, `ProtectPages`, and `QueryMapping`, while moving older bootstrap-era requests behind legacy/internal operation numbers.
+- Extended the memory-manager service dispatch so the real service now handles frame allocation, address-space creation/destruction, page mapping/unmapping, page protection changes, and single-page mapping queries through one-request-per-operation handlers.
+- Added service-side page-table helpers to unmap pages, update page protections, and query leaf mappings inside a target address space.
+- Updated the kernel/bootstrap side operation tables and request helpers so the negotiated protocol now exposes the smaller request set first while still retaining the older internal helpers for staged-image and stack work.
+
+Version 0.1.83
+
+- Cleaned up the X64 kernel/memory-manager boundary so the memory-manager service side is now clearly split by role instead of relying on large mixed implementation files.
+- Split the former `MemoryManagerMain.c` monolith into dedicated main, diagnostics, policy, dispatch, and lifecycle units, with `MemoryManagerMainInternal.h` carrying the shared internal contract.
+- Split the former `MemoryManagerMemory.c` monolith into dedicated dispatch, lifecycle, policy, database, and state units, with `MemoryManagerMemoryInternal.h` carrying the shared internal contract.
+- Kept the kernel side as the low-level execution layer while the memory-manager service continues to own allocation decisions, address-space lifecycle, region accounting, and virtual-space policy.
+- Verified in the container that a full `./Scripts/BuildBoot.sh iso` run completes successfully after the refactor.
+
+Version 0.1.82
+
+- Added `Docs/FileSplittingStandard.md` to the source tree so the file-splitting rules now travel with the LOS archive.
+- Added `Docs/FileSplittingQuickReference.md` to the source tree as the short companion guide for everyday review and refactor decisions.
+- Included both documents in `ChangedFiles/Docs/` as well, so update-only syncs place them directly into the repository `Docs` folder.
+
 Version 0.1.81
 
 - Fixed the kernel-screen log advance path so reaching the bottom of the visible log area no longer clears the whole framebuffer immediately after the final newline.
