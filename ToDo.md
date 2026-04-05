@@ -1,3 +1,8 @@
+- Added an explicit `contract-ready` user-transition scaffold stage after `chain-ready`.
+- The scheduler now re-reads the staged `iretq` frame plus bridge/kernel-entry chain, computes a frozen non-zero `user-contract` signature over that metadata, and records it on both the scaffold process and task.
+- Heartbeat output now exposes `user-scaffold-contract-ready`, and detailed process/task traces now expose `user-contract=` so the serial log can prove that the staged handoff metadata was verified before the real ring-transition path exists.
+- The live gate still remains closed; both live-gating and future `LIVE` promotion now require the prepared contract metadata.
+
 # ToDo
 
 - Review the new `user-scaffold-chain-ready` diagnostic plus the chain-ready one-time log to confirm the blocked scaffold now carries a dedicated future dispatch-chain stack pointer before the live gate closes.
