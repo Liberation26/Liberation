@@ -292,6 +292,17 @@ void LosKernelSchedulerEphemeralThread(void *Context)
 
     LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_EPHEMERAL_LIFETIME_TICKS);
 
+    Task = LosKernelSchedulerGetCurrentTask();
+    LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task resumed id=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+    LosKernelSerialWriteText(" process=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
+    LosKernelSerialWriteText(" sequence=");
+    LosKernelSerialWriteUnsigned(Sequence);
+    LosKernelSerialWriteText(" ticks=");
+    LosKernelSerialWriteUnsigned(LosKernelSchedulerGetTickCount());
+    LosKernelSerialWriteText("\n");
+
     LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task exiting id=");
     LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
     LosKernelSerialWriteText(" process=");

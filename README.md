@@ -1,8 +1,10 @@
+- 0.2.11: Scheduler context switching now preserves the full general-purpose register set across task switches, and ephemeral workers log an explicit resume point after sleep so wake/exit/reap can be proven cleanly.
+
 - 0.2.10: Scheduler lifecycle now serializes transient distinct-root processes so LOS does not keep hammering the memory-manager bootstrap path while an earlier transient process is still alive or waiting to be reaped.
 
 - 0.2.9: Scheduler process creation now keeps distinct-root processes hidden until their address-space bind succeeds, and deferred bind spam was removed from the scheduler loop.
 
-Version 0.2.10
+Version 0.2.11
 - Serialized scheduler-side transient process address-space binding so only one `CreateAddressSpace` request can be in flight for a given process at a time. This closes the race where a just-created process could be bound twice and end up leaking the first address-space object.
 - Added a `bind-in-progress` process flag plus `bind-count` and `bind-deferred` scheduler counters, so the serial log can now prove whether a non-kernel process root was bound once, deferred, or already being handled by another path.
 - Kept the existing rule that transient lifecycle processes require a real distinct address space; this update makes that rule race-safe rather than letting the lifecycle thread and the scheduler binder compete on the same process object.

@@ -1,3 +1,11 @@
+# Scheduler
+
+## 0.2.11 update
+
+- Scheduler context switching now preserves the full general-purpose register set, not just the callee-saved subset.
+- This hardens both voluntary sleep/yield resumes and timer-interrupt preemption resumes so resumed code is less likely to observe clobbered register state.
+- Ephemeral workers now emit an explicit `resumed` trace after waking, which should make it obvious in the serial log whether the wake -> resume -> exit -> reap path is healthy.
+
 # Kernel Scheduler
 
 ## Current State

@@ -1,4 +1,4 @@
-- Verify transient owned-root workers can wake, exit, and reap cleanly under a serialized one-transient-at-a-time lifecycle policy.
+- Verify the 0.2.11 full-register context-save path by proving transient owned-root workers resume, exit, reap, and destroy their address spaces cleanly.
 # ToDo
 
 ## Priority Order
