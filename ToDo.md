@@ -1,4 +1,4 @@
-- Verify one-bind-per-process behavior for memory-manager-created transient roots and then continue into the first user-mode transition path.
+- Verify transient owned-root workers can wake, exit, and reap cleanly under a serialized one-transient-at-a-time lifecycle policy.
 # ToDo
 
 ## Priority Order
@@ -12,6 +12,7 @@
 - [x] Add first-stage process objects with address-space ownership metadata above threads
 - [x] Bind real non-kernel address spaces to transient process objects
 - [x] Require distinct address spaces for transient non-kernel scheduler processes instead of silently inheriting the kernel root
+- [x] Serialize lifecycle-owned transient process creation so only one owned-root transient process is active at a time
 - [ ] Add a real user-mode transition path for first user tasks
 - [ ] Add real IPC: send, receive, reply, notifications, blocking, wake, and timeouts
 - [ ] Add capability enforcement tied to kernel objects and IPC operations

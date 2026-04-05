@@ -87,6 +87,32 @@ static const LOS_KERNEL_SCHEDULER_PROCESS *FindProcessById(UINT64 ProcessId)
     return (const LOS_KERNEL_SCHEDULER_PROCESS *)FindProcessByIdMutable(ProcessId);
 }
 
+BOOLEAN LosKernelSchedulerHasActiveTransientProcess(void)
+{
+    const LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+
+    State = LosKernelSchedulerState();
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_PROCESSES; ++Index)
+    {
+        const LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+        Process = &State->Processes[Index];
+        if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_TRANSIENT) == 0U)
+        {
+            continue;
+        }
+        if (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_READY ||
+            Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_INITIALIZING ||
+            (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED && Process->CleanupPending != 0U))
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 
 static void AbandonCreatedProcess(LOS_KERNEL_SCHEDULER_PROCESS *Process)
 {

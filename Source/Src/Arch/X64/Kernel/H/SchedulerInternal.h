@@ -33,6 +33,7 @@ BOOLEAN LosKernelSchedulerMarkProcessTerminated(
     UINT64 ProcessId,
     UINT64 ExitStatus);
 const LOS_KERNEL_SCHEDULER_PROCESS *LosKernelSchedulerGetCurrentProcess(void);
+BOOLEAN LosKernelSchedulerHasActiveTransientProcess(void);
 void LosKernelSchedulerCleanupTerminatedProcesses(void);
 void LosKernelSchedulerBindPendingProcessAddressSpaces(void);
 BOOLEAN LosKernelSchedulerCreateTask(

@@ -2,7 +2,7 @@
 
 ## Current State
 
-LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, **scheduler-managed process root activation**, and now **distinct memory-manager-created address spaces bound to transient scheduler processes** so dispatch can switch between genuinely different CR3 roots even before user mode exists. Transient non-kernel scheduler processes now **require** that distinct address-space bind; if the bind is unavailable, creation is rejected instead of silently leaving the process on the inherited kernel root.
+LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, **scheduler-managed process root activation**, and **distinct memory-manager-created address spaces bound to transient scheduler processes** so dispatch can switch between genuinely different CR3 roots even before user mode exists. Transient non-kernel scheduler processes now **require** that distinct address-space bind; if the bind is unavailable, creation is rejected instead of silently leaving the process on the inherited kernel root. The lifecycle test path is now also **serialized to one transient owned-root process at a time**, so LOS does not keep issuing new distinct-root process-creation attempts while an earlier transient process is still alive or waiting to be reaped.
 
 The scheduler is still intentionally small, but it now provides:
 
@@ -25,6 +25,12 @@ The scheduler is still intentionally small, but it now provides:
 - scheduler-side CR3 activation accounting on dispatch and restore back to the kernel process root on return to the scheduler
 - deferred reclamation of terminated thread stacks, task slots, and now transient process objects from the scheduler loop
 - ready-time tracking plus bounded aging so lower-priority ready tasks can still reach dispatch under sustained busy-thread load
+
+## Lifecycle Serialization In This Stage
+
+The live serial log showed that LOS could create the first transient owned-root process, but then the lifecycle thread kept trying to create more while that earlier transient process was still active. That produced noisy rejection logs and made it harder to isolate the real remaining bug.
+
+To tighten that path, the lifecycle manager now waits until no transient process is still ready, initializing, or pending cleanup before it attempts to create the next transient owned-root process. This keeps the scheduler honest about the current boundary: one transient distinct-root worker at a time until wake, exit, reap, and address-space teardown are all proven cleanly.
 
 ## What It Does Today
 
