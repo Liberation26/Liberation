@@ -167,6 +167,7 @@ void LosX64HandleInterrupt(
             LosKernelSerialWriteUnsigned(LOS_X64_PIC_TIMER_VECTOR);
             LosKernelSerialWriteText("\n");
         }
+        LosKernelSchedulerPreemptIfNeededFromInterrupt();
         return;
     }
 

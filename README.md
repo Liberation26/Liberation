@@ -1,3 +1,10 @@
+Version 0.1.95
+
+- Added first-stage timer-driven scheduler preemption so the PIT interrupt can now force a running kernel thread back into the scheduler when its quantum expires.
+- Woke sleeping scheduler threads directly from the timer tick path and added scheduler state/task preemption counters for serial diagnostics.
+- Added a non-cooperative `BusyWorker` kernel thread so LOS can now prove that heartbeat work still runs even when another thread spins forever without yielding.
+- Updated `Docs/Kernel/Scheduler.md` and `ToDo.md` to reflect that the scheduler is now preemptive at the kernel-thread stage.
+
 Version 0.1.94
 
 - Moved scheduler initialization and bootstrap-task registration later in kernel bring-up, so the scheduler is created only after the memory-manager bootstrap address space has been staged.

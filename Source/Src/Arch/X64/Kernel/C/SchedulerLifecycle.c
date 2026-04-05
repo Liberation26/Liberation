@@ -170,6 +170,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->TotalTicks = 0ULL;
             Task->LastRunTick = 0ULL;
             Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
+            Task->PreemptionCount = 0ULL;
             Task->ThreadRoutine = ThreadRoutine;
             Task->Context = Context;
 
@@ -211,6 +212,9 @@ void LosKernelSchedulerInitialize(void)
     State->CurrentTaskIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
     State->LastSelectedIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
     State->ReschedulePending = 0U;
+    State->InScheduler = 0U;
+    State->Reserved0 = 0U;
+    State->InterruptPreemptionCount = 0ULL;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
 
@@ -246,6 +250,20 @@ void LosKernelSchedulerRegisterBootstrapTasks(void)
             &TaskId))
     {
         LosKernelTraceFail("Kernel scheduler could not create heartbeat task.");
+        LosKernelHaltForever();
+    }
+
+    if (!LosKernelSchedulerCreateTask(
+            "BusyWorker",
+            0U,
+            LOS_KERNEL_SCHEDULER_BUSY_PRIORITY,
+            1U,
+            0ULL,
+            LosKernelSchedulerBusyThread,
+            0,
+            &TaskId))
+    {
+        LosKernelTraceFail("Kernel scheduler could not create busy worker task.");
         LosKernelHaltForever();
     }
 

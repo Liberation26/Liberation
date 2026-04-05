@@ -19,6 +19,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_WAIT_PERIOD 1U
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_YIELD 2U
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED 3U
+#define LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED 4U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
 #define LOS_KERNEL_SCHEDULER_VERSION 2U
@@ -54,6 +55,7 @@ typedef struct
     UINT64 TotalTicks;
     UINT64 LastRunTick;
     UINT64 LastBlockReason;
+    UINT64 PreemptionCount;
     LOS_KERNEL_SCHEDULER_THREAD_ROUTINE ThreadRoutine;
     void *Context;
     LOS_KERNEL_SCHEDULER_CONTEXT ExecutionContext;
@@ -76,6 +78,9 @@ typedef struct
     UINT32 CurrentTaskIndex;
     UINT32 LastSelectedIndex;
     UINT32 ReschedulePending;
+    UINT32 InScheduler;
+    UINT32 Reserved0;
+    UINT64 InterruptPreemptionCount;
     LOS_KERNEL_SCHEDULER_CONTEXT SchedulerContext;
     LOS_KERNEL_SCHEDULER_TASK Tasks[LOS_KERNEL_SCHEDULER_MAX_TASKS];
 } LOS_KERNEL_SCHEDULER_STATE;
@@ -85,6 +90,7 @@ void LosKernelSchedulerRegisterBootstrapTasks(void);
 void LosKernelSchedulerEnter(void);
 void LosKernelSchedulerOnTimerTick(void);
 void LosKernelSchedulerRequestReschedule(void);
+void LosKernelSchedulerPreemptIfNeededFromInterrupt(void);
 BOOLEAN LosKernelSchedulerIsOnline(void);
 UINT64 LosKernelSchedulerGetTickCount(void);
 const LOS_KERNEL_SCHEDULER_TASK *LosKernelSchedulerGetCurrentTask(void);

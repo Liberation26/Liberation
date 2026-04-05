@@ -2,9 +2,10 @@
 
 ## Priority Order
 
-- [ ] Prove timer and interrupt stability
+- [x] Prove timer and interrupt stability
 - [x] Add a real scheduler
 - [x] Evolve the scheduler from step tasks into saved-context kernel threads
+- [x] Add first-stage timer-driven preemption for kernel threads
 - [ ] Add persistent task and thread objects with saved CPU context and ownership/lifetime rules
 - [ ] Add a real user-mode transition path for first user tasks
 - [ ] Add real IPC: send, receive, reply, notifications, blocking, wake, and timeouts
@@ -20,7 +21,7 @@
 - [ ] Add object lifetime and cleanup rules for task death
 - [ ] Add a syscall or trap boundary for entering kernel services from userland
 - [ ] Add kernel-side namespace hooks for locating services and endpoints
-- [ ] Add timer-based sleep, timeout, and wake scheduling
+- [ ] Add timer-based sleep, timeout, and wake scheduling for IPC waits as well as scheduler sleeps
 - [ ] Add an init or service-manager process
 - [ ] Add a process and task manager service
 - [ ] Add a filesystem or VFS-facing service
@@ -36,20 +37,23 @@
 - [ ] Add shell commands for file, service, capability, and log operations
 - [ ] Add a small startup manifest or init script
 
-## Immediate Goal: Timer And Interrupt Proof
+## Immediate Goal: Scheduler Hardening
 
 Success criteria:
 
-- [ ] Spinner continues
-- [ ] Timer line goes live
-- [ ] Tick count increases
-- [ ] Serial heartbeat appears
-- [ ] No reboot or fault after interrupts are enabled
+- [x] Spinner continues
+- [x] Timer line goes live
+- [x] Tick count increases
+- [x] Serial heartbeat appears
+- [x] No reboot or fault after interrupts are enabled
+- [x] A non-yielding kernel thread can be preempted by the timer path
+- [x] The heartbeat thread still runs while the busy worker spins forever
 
 ## Kernel Milestone: Minimum Real Kernel
 
 - [x] Scheduler runs after kernel init instead of ending in a simple idle-only path
 - [x] Kernel can create and schedule basic kernel threads
+- [x] Kernel can preempt kernel threads from timer interrupts
 - [ ] Kernel can enter and return from user mode safely
 - [ ] Kernel IPC can block, wake, reply, and time out correctly
 - [ ] Capabilities are enforced by object type and operation

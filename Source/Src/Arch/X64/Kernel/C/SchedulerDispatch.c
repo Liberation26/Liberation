@@ -26,8 +26,15 @@ void LosKernelSchedulerOnTimerTick(void)
 
     State = LosKernelSchedulerState();
     State->TickCount += 1ULL;
+    LosKernelSchedulerWakeDueTasks();
+
+    if (State->InScheduler != 0U)
+    {
+        return;
+    }
+
     Task = GetCurrentTaskMutable();
-    if (Task == 0)
+    if (Task == 0 || Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING)
     {
         return;
     }
@@ -41,6 +48,31 @@ void LosKernelSchedulerOnTimerTick(void)
     {
         State->ReschedulePending = 1U;
     }
+}
+
+
+void LosKernelSchedulerPreemptIfNeededFromInterrupt(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    State = LosKernelSchedulerState();
+    if (State->Online == 0U || State->InScheduler != 0U || State->ReschedulePending == 0U)
+    {
+        return;
+    }
+
+    Task = GetCurrentTaskMutable();
+    if (Task == 0 || Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING)
+    {
+        return;
+    }
+
+    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
+    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED;
+    Task->PreemptionCount += 1ULL;
+    State->InterruptPreemptionCount += 1ULL;
+    LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
 }
 
 void LosKernelSchedulerYieldCurrent(void)
@@ -134,6 +166,7 @@ void LosKernelSchedulerEnter(void)
 
     State = LosKernelSchedulerState();
     State->Online = 1U;
+    State->InScheduler = 1U;
     LosKernelTraceOk("Kernel scheduler entered.");
     LosKernelSchedulerTraceState("Scheduler online");
 
@@ -142,6 +175,7 @@ void LosKernelSchedulerEnter(void)
         UINT32 SelectedIndex;
         LOS_KERNEL_SCHEDULER_TASK *Task;
 
+        State->InScheduler = 1U;
         LosKernelSchedulerWakeDueTasks();
         SelectedIndex = LosKernelSchedulerSelectNextTaskIndex();
         if (SelectedIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX)
@@ -161,8 +195,10 @@ void LosKernelSchedulerEnter(void)
         Task->DispatchCount += 1ULL;
         Task->LastRunTick = State->TickCount;
         Task->RemainingQuantumTicks = Task->QuantumTicks == 0U ? 1U : Task->QuantumTicks;
+        State->InScheduler = 0U;
         LosKernelSchedulerSwitchContext(&State->SchedulerContext, &Task->ExecutionContext);
 
+        State->InScheduler = 1U;
         State->CurrentTaskIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
         State->CurrentTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
     }

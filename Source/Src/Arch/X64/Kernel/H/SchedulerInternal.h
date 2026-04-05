@@ -7,8 +7,10 @@
 #define LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX 0xFFFFFFFFU
 #define LOS_KERNEL_SCHEDULER_IDLE_PRIORITY 0U
 #define LOS_KERNEL_SCHEDULER_HEARTBEAT_PRIORITY 4U
+#define LOS_KERNEL_SCHEDULER_BUSY_PRIORITY 2U
 #define LOS_KERNEL_SCHEDULER_DEFAULT_QUANTUM_TICKS 1U
 #define LOS_KERNEL_SCHEDULER_HEARTBEAT_PERIOD_TICKS 100ULL
+#define LOS_KERNEL_SCHEDULER_BUSY_REPORT_PERIOD_TICKS 500ULL
 #define LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES 4ULL
 #define LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES (LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES * 4096ULL)
 
@@ -28,6 +30,7 @@ void LosKernelSchedulerTraceState(const char *Prefix);
 void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_TASK *Task);
 void LosKernelSchedulerIdleThread(void *Context);
 void LosKernelSchedulerHeartbeatThread(void *Context);
+void LosKernelSchedulerBusyThread(void *Context);
 void LosKernelSchedulerThreadTrampoline(void);
 void LosKernelSchedulerYieldCurrent(void);
 void LosKernelSchedulerSleepCurrent(UINT64 TickCount);

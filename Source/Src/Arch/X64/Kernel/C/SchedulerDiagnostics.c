@@ -28,6 +28,8 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->StackBaseVirtualAddress);
     LosKernelSerialWriteText(" stack-top=");
     LosKernelSerialWriteHex64(Task->StackTopVirtualAddress);
+    LosKernelSerialWriteText(" preemptions=");
+    LosKernelSerialWriteUnsigned(Task->PreemptionCount);
     LosKernelSerialWriteText("\n");
 }
 
@@ -47,6 +49,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->TickCount);
     LosKernelSerialWriteText(" dispatches=");
     LosKernelSerialWriteUnsigned(State->DispatchCount);
+    LosKernelSerialWriteText(" preemptions=");
+    LosKernelSerialWriteUnsigned(State->InterruptPreemptionCount);
     LosKernelSerialWriteText(" tasks=");
     LosKernelSerialWriteUnsigned(State->TaskCount);
     LosKernelSerialWriteText(" current=");
@@ -88,5 +92,37 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
         }
 
         LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_HEARTBEAT_PERIOD_TICKS);
+    }
+}
+
+void LosKernelSchedulerBusyThread(void *Context)
+{
+    UINT64 IterationCount;
+    UINT64 LastReportTick;
+
+    (void)Context;
+    IterationCount = 0ULL;
+    LastReportTick = 0ULL;
+    LosKernelSerialWriteText("[Kernel] Scheduler busy worker entered.\n");
+
+    for (;;)
+    {
+        IterationCount += 1ULL;
+        __asm__ __volatile__("pause" : : : "memory");
+        if ((IterationCount & 0x3FFFFULL) == 0ULL)
+        {
+            UINT64 TickCount;
+
+            TickCount = LosKernelSchedulerGetTickCount();
+            if ((TickCount - LastReportTick) >= LOS_KERNEL_SCHEDULER_BUSY_REPORT_PERIOD_TICKS)
+            {
+                LosKernelSerialWriteText("[Kernel] Scheduler busy worker iterations=");
+                LosKernelSerialWriteUnsigned(IterationCount);
+                LosKernelSerialWriteText(" ticks=");
+                LosKernelSerialWriteUnsigned(TickCount);
+                LosKernelSerialWriteText("\n");
+                LastReportTick = TickCount;
+            }
+        }
     }
 }
