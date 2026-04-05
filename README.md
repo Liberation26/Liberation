@@ -1,3 +1,11 @@
+Version 0.1.79
+
+- Added a real internal memory-manager heap subsystem with a bootstrap metadata bump allocator, fixed-size slab pools, and page-backed heap growth.
+- The heap now reserves dedicated metadata pages with `LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_HEAP_METADATA`, keeping allocator bookkeeping separate from general allocatable pages.
+- Runtime small-object allocation now comes from slab pages, while large and page-aligned allocations are tracked through the new heap page path instead of fragile one-off bootstrap allocation code.
+- Address-space objects now allocate and free through the internal heap, and service-created page tables now also flow through the same allocator path.
+- Verified in the container that all memory-manager service sources compile and link, and a full `./Scripts/BuildBoot.sh` run completes successfully.
+
 Version 0.1.78
 
 - Fixed the memory-manager service link failure by adding `Source/Src/Arch/X64/Services/MemoryManager/C/MemoryManagerMemory.c` to `ChangedFiles`.

@@ -630,12 +630,17 @@ void LosMemoryManagerServiceDestroyAddressSpace(
     }
 
     ZeroBytes(AddressSpaceObject, sizeof(*AddressSpaceObject));
-    if (!LosMemoryManagerServiceFreeTrackedFrames(State, AddressSpaceObjectPhysicalAddress, LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT))
     {
-        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
-        return;
+        UINT64 ReleasedFromHeap;
+
+        ReleasedFromHeap = 0ULL;
+        if (!LosMemoryManagerHeapFree(State, AddressSpaceObjectPhysicalAddress, &ReleasedFromHeap))
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+            return;
+        }
+        ReleasedPageCount += ReleasedFromHeap;
     }
-    ReleasedPageCount += LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT;
 
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
     Result->AddressSpaceObjectPhysicalAddress = AddressSpaceObjectPhysicalAddress;

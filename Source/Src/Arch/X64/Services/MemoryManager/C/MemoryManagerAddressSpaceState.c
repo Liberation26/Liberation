@@ -113,49 +113,42 @@ BOOLEAN LosMemoryManagerCreateAddressSpaceObject(
 
     ObjectPhysicalAddress = 0ULL;
     RootPhysicalAddress = 0ULL;
-    if (!LosMemoryManagerServiceClaimTrackedFrames(
+    if (!LosMemoryManagerHeapAllocate(
             State,
-            LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT,
-            0x1000ULL,
-            LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS,
-            LOS_X64_MEMORY_REGION_OWNER_CLAIMED,
+            sizeof(LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT),
+            sizeof(UINT64),
             LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_ADDRESS_SPACE_OBJECT,
+            (void **)&NewAddressSpaceObject,
             &ObjectPhysicalAddress))
     {
         return 0;
     }
 
-    NewAddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)LosMemoryManagerTranslatePhysical(
-        State,
-        ObjectPhysicalAddress,
-        LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT * 0x1000ULL);
-    if (NewAddressSpaceObject == 0)
-    {
-        LosMemoryManagerServiceFreeTrackedFrames(State, ObjectPhysicalAddress, LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT);
-        return 0;
-    }
-
-    if (!LosMemoryManagerServiceClaimTrackedFrames(
+    if (!LosMemoryManagerHeapAllocatePages(
             State,
             1ULL,
             0x1000ULL,
-            LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS,
-            LOS_X64_MEMORY_REGION_OWNER_CLAIMED,
             LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_PAGE_TABLE,
+            (void **)&NewRoot,
             &RootPhysicalAddress))
     {
         ZeroBytes(NewAddressSpaceObject, sizeof(*NewAddressSpaceObject));
-        LosMemoryManagerServiceFreeTrackedFrames(State, ObjectPhysicalAddress, LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT);
+        (void)LosMemoryManagerHeapFree(State, ObjectPhysicalAddress, 0);
         return 0;
     }
 
-    NewRoot = TranslatePageTable(State, RootPhysicalAddress);
+    if (NewAddressSpaceObject == 0)
+    {
+        (void)LosMemoryManagerHeapFree(State, RootPhysicalAddress, 0);
+        return 0;
+    }
+
     KernelRoot = TranslatePageTable(State, State->KernelRootTablePhysicalAddress);
     if (NewRoot == 0 || KernelRoot == 0)
     {
         ZeroBytes(NewAddressSpaceObject, sizeof(*NewAddressSpaceObject));
-        LosMemoryManagerServiceFreeTrackedFrames(State, RootPhysicalAddress, 1ULL);
-        LosMemoryManagerServiceFreeTrackedFrames(State, ObjectPhysicalAddress, LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT);
+        (void)LosMemoryManagerHeapFree(State, RootPhysicalAddress, 0);
+        (void)LosMemoryManagerHeapFree(State, ObjectPhysicalAddress, 0);
         return 0;
     }
 
@@ -223,13 +216,18 @@ static BOOLEAN ReleaseLowerHalfPageTableBranch(
             {
                 return 0;
             }
-            if (!LosMemoryManagerServiceFreeTrackedFrames(State, ChildPhysicalAddress, 1ULL))
             {
-                return 0;
-            }
-            if (ReleasedPageCount != 0)
-            {
-                *ReleasedPageCount += 1ULL;
+                UINT64 ReleasedFromHeap;
+
+                ReleasedFromHeap = 0ULL;
+                if (!LosMemoryManagerHeapFree(State, ChildPhysicalAddress, &ReleasedFromHeap))
+                {
+                    return 0;
+                }
+                if (ReleasedPageCount != 0)
+                {
+                    *ReleasedPageCount += ReleasedFromHeap;
+                }
             }
         }
 
@@ -280,26 +278,36 @@ BOOLEAN LosMemoryManagerDestroyAddressSpaceMappings(
             {
                 return 0;
             }
-            if (!LosMemoryManagerServiceFreeTrackedFrames(State, ChildPhysicalAddress, 1ULL))
             {
-                return 0;
-            }
-            if (ReleasedPageCount != 0)
-            {
-                *ReleasedPageCount += 1ULL;
+                UINT64 ReleasedFromHeap;
+
+                ReleasedFromHeap = 0ULL;
+                if (!LosMemoryManagerHeapFree(State, ChildPhysicalAddress, &ReleasedFromHeap))
+                {
+                    return 0;
+                }
+                if (ReleasedPageCount != 0)
+                {
+                    *ReleasedPageCount += ReleasedFromHeap;
+                }
             }
         }
 
         RootTable[EntryIndex] = 0ULL;
     }
 
-    if (!LosMemoryManagerServiceFreeTrackedFrames(State, AddressSpaceObject->RootTablePhysicalAddress, 1ULL))
     {
-        return 0;
-    }
-    if (ReleasedPageCount != 0)
-    {
-        *ReleasedPageCount += 1ULL;
+        UINT64 ReleasedFromHeap;
+
+        ReleasedFromHeap = 0ULL;
+        if (!LosMemoryManagerHeapFree(State, AddressSpaceObject->RootTablePhysicalAddress, &ReleasedFromHeap))
+        {
+            return 0;
+        }
+        if (ReleasedPageCount != 0)
+        {
+            *ReleasedPageCount += ReleasedFromHeap;
+        }
     }
 
     return 1;

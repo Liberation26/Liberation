@@ -67,22 +67,20 @@ static BOOLEAN EnsureChildTable(
     Entry = ParentTable[EntryIndex];
     if ((Entry & LOS_X64_PAGE_PRESENT) == 0ULL)
     {
-        if (!LosMemoryManagerServiceClaimTrackedFrames(
+        if (!LosMemoryManagerHeapAllocatePages(
                 State,
                 1ULL,
                 0x1000ULL,
-                LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS,
-                LOS_X64_MEMORY_REGION_OWNER_CLAIMED,
                 LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_PAGE_TABLE,
+                (void **)ChildTable,
                 &ChildPhysicalAddress))
         {
             return 0;
         }
 
-        *ChildTable = TranslatePageTable(State, ChildPhysicalAddress);
         if (*ChildTable == 0)
         {
-            LosMemoryManagerServiceFreeTrackedFrames(State, ChildPhysicalAddress, 1ULL);
+            (void)LosMemoryManagerHeapFree(State, ChildPhysicalAddress, 0);
             return 0;
         }
 

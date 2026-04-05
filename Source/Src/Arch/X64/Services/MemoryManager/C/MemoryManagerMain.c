@@ -18,6 +18,7 @@ static LOS_MEMORY_MANAGER_SERVICE_STATE LosMemoryManagerServiceGlobalState;
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_ADDRESS_SPACE_OBJECT 7ULL
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_TASK_OBJECT 8ULL
 #define LOS_MEMORY_MANAGER_ATTACH_STAGE_MEMORY_VIEW 9ULL
+#define LOS_MEMORY_MANAGER_ATTACH_STAGE_HEAP 10ULL
 
 #define LOS_MEMORY_MANAGER_ATTACH_DETAIL_NONE 0ULL
 #define LOS_MEMORY_MANAGER_ATTACH_DETAIL_NULL 1ULL
@@ -810,6 +811,11 @@ BOOLEAN LosMemoryManagerServiceAttach(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *Lau
         RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_MEMORY_VIEW, Detail);
         return 0;
     }
+    if (!LosMemoryManagerHeapInitialize(State, &Detail))
+    {
+        RecordAttachDiagnostic(State->TaskObject, LOS_MEMORY_MANAGER_ATTACH_STAGE_HEAP, Detail);
+        return 0;
+    }
     State->ActiveRootTablePhysicalAddress = LaunchBlock->ServicePageMapLevel4PhysicalAddress;
     State->KernelRootTablePhysicalAddress = State->AddressSpaceObject->KernelRootTablePhysicalAddress;
     State->ReceiveEndpoint->State = LOS_MEMORY_MANAGER_ENDPOINT_STATE_ONLINE;
@@ -1332,7 +1338,12 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         ServiceSerialWriteNamedHex("Runtime pages", State->MemoryView.RuntimePages);
         ServiceSerialWriteNamedHex("MMIO pages", State->MemoryView.MmioPages);
         ServiceSerialWriteNamedHex("Free pages", State->MemoryView.FreePages);
+        ServiceSerialWriteNamedUnsigned("Heap metadata pages", State->Heap.TotalReservedMetadataPages);
+        ServiceSerialWriteNamedUnsigned("Heap reserved pages", State->Heap.TotalReservedHeapPages);
+        ServiceSerialWriteNamedUnsigned("Heap slab descriptor capacity", (UINT64)State->Heap.SlabPageCapacity);
+        ServiceSerialWriteNamedUnsigned("Heap large descriptor capacity", (UINT64)State->Heap.LargeAllocationCapacity);
         ServiceSerialWriteLine("[MemManager] Frame allocator ready.");
+        ServiceSerialWriteLine("[MemManager] Internal heap ready.");
         ServiceSerialWriteLine("[MemManager] Memory-manager attach complete.");
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
     }
