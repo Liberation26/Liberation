@@ -4,7 +4,9 @@
 #include "KernelMain.h"
 
 #define LOS_KERNEL_SCHEDULER_MAX_TASKS 8U
+#define LOS_KERNEL_SCHEDULER_MAX_PROCESSES 8U
 #define LOS_KERNEL_SCHEDULER_INVALID_TASK_ID 0ULL
+#define LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID 0ULL
 
 #define LOS_KERNEL_SCHEDULER_TASK_STATE_UNUSED 0U
 #define LOS_KERNEL_SCHEDULER_TASK_STATE_READY 1U
@@ -15,6 +17,13 @@
 #define LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE 0x00000001U
 #define LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC 0x00000002U
 
+#define LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED 0U
+#define LOS_KERNEL_SCHEDULER_PROCESS_STATE_READY 1U
+#define LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED 2U
+
+#define LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL 0x00000001U
+#define LOS_KERNEL_SCHEDULER_PROCESS_FLAG_TRANSIENT 0x00000002U
+
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE 0U
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_WAIT_PERIOD 1U
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_YIELD 2U
@@ -22,7 +31,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED 4U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 4U
+#define LOS_KERNEL_SCHEDULER_VERSION 5U
 
 typedef void (*LOS_KERNEL_SCHEDULER_THREAD_ROUTINE)(void *Context);
 
@@ -43,8 +52,29 @@ typedef struct
     UINT64 Signature;
     UINT32 Version;
     UINT32 State;
+    UINT64 ProcessId;
+    UINT64 OwnerProcessId;
+    UINT64 Generation;
+    const char *Name;
+    UINT32 Flags;
+    UINT32 ThreadCount;
+    UINT64 AddressSpaceId;
+    UINT64 RootTablePhysicalAddress;
+    UINT64 CreatedTick;
+    UINT64 TerminatedTick;
+    UINT64 ExitStatus;
+    UINT32 CleanupPending;
+    UINT32 Reserved0;
+} LOS_KERNEL_SCHEDULER_PROCESS;
+
+typedef struct
+{
+    UINT64 Signature;
+    UINT32 Version;
+    UINT32 State;
     UINT64 TaskId;
     UINT64 OwnerTaskId;
+    UINT64 ProcessId;
     UINT64 Generation;
     const char *Name;
     UINT32 Flags;
@@ -79,8 +109,12 @@ typedef struct
     UINT64 TickCount;
     UINT64 DispatchCount;
     UINT64 CurrentTaskId;
+    UINT64 CurrentProcessId;
     UINT64 NextTaskId;
+    UINT64 NextProcessId;
+    UINT64 KernelProcessId;
     UINT32 TaskCount;
+    UINT32 ProcessCount;
     UINT32 CurrentTaskIndex;
     UINT32 LastSelectedIndex;
     UINT32 ReschedulePending;
@@ -91,7 +125,11 @@ typedef struct
     UINT64 CreatedTaskCount;
     UINT64 TerminatedTaskCount;
     UINT64 ReapedTaskCount;
+    UINT64 CreatedProcessCount;
+    UINT64 TerminatedProcessCount;
+    UINT64 ReapedProcessCount;
     LOS_KERNEL_SCHEDULER_CONTEXT SchedulerContext;
+    LOS_KERNEL_SCHEDULER_PROCESS Processes[LOS_KERNEL_SCHEDULER_MAX_PROCESSES];
     LOS_KERNEL_SCHEDULER_TASK Tasks[LOS_KERNEL_SCHEDULER_MAX_TASKS];
 } LOS_KERNEL_SCHEDULER_STATE;
 

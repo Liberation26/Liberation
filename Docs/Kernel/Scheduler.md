@@ -2,7 +2,7 @@
 
 ## Current State
 
-LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, and a **first-stage starvation-relief policy** for lower-priority ready work.
+LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, and a **first-stage starvation-relief policy** for lower-priority ready work.
 
 The scheduler is still intentionally small, but it now provides:
 
@@ -19,7 +19,8 @@ The scheduler is still intentionally small, but it now provides:
 - scheduler initialization moved to the post-bootstrap stage, after the memory-manager bootstrap address space exists
 - early boot fallback stacks reserved inside the kernel image so scheduler bring-up does not halt if physical-frame claiming is temporarily unavailable
 - per-task ownership, generation, termination, and deferred cleanup bookkeeping
-- deferred reclamation of terminated thread stacks and task slots from the scheduler loop
+- first-stage process objects with process ids, owner process ids, thread counts, and address-space metadata
+- deferred reclamation of terminated thread stacks, task slots, and now transient process objects from the scheduler loop
 - ready-time tracking plus bounded aging so lower-priority ready tasks can still reach dispatch under sustained busy-thread load
 
 ## What It Does Today
@@ -34,7 +35,7 @@ After kernel initialization completes:
 6. the heartbeat thread continues to run even while the busy worker spins forever without calling yield or sleep
 7. the lifecycle manager can create a short-lived worker, let it run even while a higher-priority busy worker is spinning, let it exit, and the scheduler then reclaims its stack and task slot for reuse
 
-This means LOS now has both a preemptive kernel-thread substrate and the first real task-lifetime rules above it.
+This means LOS now has a preemptive kernel-thread substrate, explicit task-lifetime rules, and a first process object layer that can own groups of threads.
 
 ## How Preemption Works In This Stage
 
@@ -82,6 +83,24 @@ This gives LOS a simple first-stage starvation control policy:
 - long-waiting lower-priority tasks can now eventually outrank a frequently re-queued busy thread long enough to run
 - diagnostics expose `ready-since` and `starvation-relief` counters so the serial log shows when this rescue path is active
 
+## What Process Ownership Adds In This Stage
+
+Processes are still kernel-owned bookkeeping objects at this point, but they now exist separately from threads.
+
+Each process carries:
+
+- process id
+- owner process id
+- generation number
+- thread count
+- address-space id metadata
+- root-table metadata
+- cleanup state and exit status
+
+The kernel bootstrap work now runs inside a persistent `KernelProcess`, while the lifecycle manager spawns short-lived `EphemeralProcess` objects that each own one ephemeral worker thread. When the worker exits, the scheduler reclaims the thread and then reclaims the now-empty transient process object.
+
+That gives LOS a real place to hang later address-space ownership, fault accounting, IPC ownership, and user-mode launch state without pretending that a thread alone is the whole execution object.
+
 ## What It Still Does Not Do
 
 The current scheduler still does **not** yet provide:
@@ -93,7 +112,7 @@ The current scheduler still does **not** yet provide:
 - SMP run queues or cross-core reschedule IPIs
 - process/address-space ownership above the thread owner field
 
-So this stage is now a **small preemptive kernel-thread scheduler with first-stage task lifecycle cleanup**, not yet a full process scheduler.
+So this stage is now a **small preemptive kernel-thread scheduler with first-stage process ownership and lifecycle cleanup**, not yet a full user/process scheduler.
 
 ## Why This Stage Matters
 
@@ -104,7 +123,8 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 3. sleeping work wakes on timer ticks
 4. non-cooperative work can no longer monopolize the CPU forever
 5. terminated thread resources can now be reclaimed instead of being leaked forever
-6. later IPC blocking, timeout delivery, and user-mode entry can build on a real preemptive base with explicit task lifetime rules
+6. transient process objects can now be reclaimed once their last thread exits
+7. later IPC blocking, timeout delivery, address-space ownership, and user-mode entry can build on a real preemptive base with explicit task and process lifetime rules
 
 ## Immediate Next Steps
 

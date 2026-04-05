@@ -1,5 +1,6 @@
 #include "SchedulerInternal.h"
 #include "MemoryManagerBootstrap.h"
+#include "VirtualMemoryInternal.h"
 
 static LOS_KERNEL_SCHEDULER_STATE LosKernelSchedulerGlobalState;
 static UINT8 LosKernelSchedulerBootstrapStacks[LOS_KERNEL_SCHEDULER_MAX_TASKS][LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES] __attribute__((aligned(4096)));
@@ -52,6 +53,36 @@ static void WriteStackReturnAddress(UINT64 StackAddress, UINT64 ReturnAddress)
     *Pointer = ReturnAddress;
 }
 
+static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+
+    if (ProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID)
+    {
+        return 0;
+    }
+
+    State = LosKernelSchedulerState();
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_PROCESSES; ++Index)
+    {
+        LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+        Process = &State->Processes[Index];
+        if (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED)
+        {
+            continue;
+        }
+        if (Process->ProcessId == ProcessId)
+        {
+            return Process;
+        }
+    }
+
+    return 0;
+}
+
+
 static UINT64 GetCreatingOwnerTaskId(void)
 {
     const LOS_KERNEL_SCHEDULER_TASK *CurrentTask;
@@ -63,6 +94,24 @@ static UINT64 GetCreatingOwnerTaskId(void)
     }
 
     return CurrentTask->TaskId;
+}
+
+static UINT64 GetCreatingOwnerProcessId(void)
+{
+    const LOS_KERNEL_SCHEDULER_TASK *CurrentTask;
+
+    CurrentTask = LosKernelSchedulerGetCurrentTask();
+    if (CurrentTask == 0)
+    {
+        return 0ULL;
+    }
+
+    return CurrentTask->ProcessId;
+}
+
+static UINT64 GetKernelRootTablePhysicalAddress(void)
+{
+    return LosX64GetCurrentPageMapLevel4PhysicalAddress();
 }
 
 static void InitializeTaskStackContext(LOS_KERNEL_SCHEDULER_TASK *Task, void *StackBase, UINT64 StackPhysicalAddress)
@@ -204,8 +253,118 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
     ZeroBytes(&Task->ExecutionContext, sizeof(Task->ExecutionContext));
 }
 
+BOOLEAN LosKernelSchedulerCreateProcess(
+    const char *Name,
+    UINT32 Flags,
+    UINT64 AddressSpaceId,
+    UINT64 RootTablePhysicalAddress,
+    UINT64 *ProcessId)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_PROCESS *CreatedProcess;
+    UINT32 Index;
+    UINT64 LocalProcessId;
+    UINT64 CriticalSectionFlags;
+
+    if (ProcessId != 0)
+    {
+        *ProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
+    }
+
+    CreatedProcess = 0;
+    LocalProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_PROCESSES; ++Index)
+    {
+        LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+        Process = &State->Processes[Index];
+        if (Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED)
+        {
+            continue;
+        }
+
+        ZeroBytes(Process, sizeof(*Process));
+        Process->Signature = LOS_KERNEL_SCHEDULER_SIGNATURE;
+        Process->Version = LOS_KERNEL_SCHEDULER_VERSION;
+        Process->State = LOS_KERNEL_SCHEDULER_PROCESS_STATE_READY;
+        Process->ProcessId = State->NextProcessId;
+        Process->OwnerProcessId = GetCreatingOwnerProcessId();
+        Process->Generation = State->CreatedProcessCount + 1ULL;
+        Process->Name = Name;
+        Process->Flags = Flags;
+        Process->ThreadCount = 0U;
+        Process->AddressSpaceId = AddressSpaceId;
+        Process->RootTablePhysicalAddress = RootTablePhysicalAddress;
+        Process->CreatedTick = State->TickCount;
+        Process->TerminatedTick = 0ULL;
+        Process->ExitStatus = 0ULL;
+        Process->CleanupPending = 0U;
+        Process->Reserved0 = 0U;
+
+        State->ProcessCount += 1U;
+        State->NextProcessId += 1ULL;
+        State->CreatedProcessCount += 1ULL;
+        LocalProcessId = Process->ProcessId;
+        CreatedProcess = Process;
+        break;
+    }
+
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    if (CreatedProcess != 0)
+    {
+        if (ProcessId != 0)
+        {
+            *ProcessId = LocalProcessId;
+        }
+        LosKernelSchedulerTraceProcess("Registered scheduler process", CreatedProcess);
+        return 1;
+    }
+
+    return 0;
+}
+
+BOOLEAN LosKernelSchedulerMarkProcessTerminated(
+    UINT64 ProcessId,
+    UINT64 ExitStatus)
+{
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+    UINT64 CriticalSectionFlags;
+    BOOLEAN Success;
+
+    Success = 0;
+    if (ProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID)
+    {
+        return 0;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    Process = FindProcessByIdMutable(ProcessId);
+    if (Process != 0 &&
+        Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED &&
+        (Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) == 0U)
+    {
+        if (Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED)
+        {
+            LosKernelSchedulerState()->TerminatedProcessCount += 1ULL;
+        }
+        Process->State = LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED;
+        Process->TerminatedTick = LosKernelSchedulerState()->TickCount;
+        Process->ExitStatus = ExitStatus;
+        Process->CleanupPending = 1U;
+        Success = 1;
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    return Success;
+}
+
 BOOLEAN LosKernelSchedulerCreateTask(
     const char *Name,
+    UINT64 ProcessId,
     UINT32 Flags,
     UINT32 Priority,
     UINT32 QuantumTicks,
@@ -215,6 +374,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
     UINT64 *TaskId)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
     UINT32 Index;
     LOS_KERNEL_SCHEDULER_TASK *CreatedTask;
     UINT64 CriticalSectionFlags;
@@ -233,6 +393,13 @@ BOOLEAN LosKernelSchedulerCreateTask(
     LocalTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
     CriticalSectionFlags = EnterSchedulerCriticalSection();
     State = LosKernelSchedulerState();
+    Process = FindProcessByIdMutable(ProcessId);
+    if (Process == 0 || Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_READY)
+    {
+        LeaveSchedulerCriticalSection(CriticalSectionFlags);
+        return 0;
+    }
+
     for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_TASKS; ++Index)
     {
         if (State->Tasks[Index].State == LOS_KERNEL_SCHEDULER_TASK_STATE_UNUSED)
@@ -246,6 +413,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
             Task->TaskId = State->NextTaskId;
             Task->OwnerTaskId = GetCreatingOwnerTaskId();
+            Task->ProcessId = ProcessId;
             Task->Generation = State->CreatedTaskCount + 1ULL;
             Task->Name = Name;
             Task->Flags = Flags;
@@ -272,6 +440,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
                 break;
             }
 
+            Process->ThreadCount += 1U;
             State->TaskCount += 1U;
             State->NextTaskId += 1ULL;
             State->CreatedTaskCount += 1ULL;
@@ -306,6 +475,7 @@ void LosKernelSchedulerCleanupTerminatedTasks(void)
     for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_TASKS; ++Index)
     {
         LOS_KERNEL_SCHEDULER_TASK *Task;
+        LOS_KERNEL_SCHEDULER_PROCESS *Process;
 
         Task = &State->Tasks[Index];
         if (Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED || Task->CleanupPending == 0U)
@@ -314,8 +484,25 @@ void LosKernelSchedulerCleanupTerminatedTasks(void)
         }
 
         LosKernelSchedulerTraceTask("Reclaimed scheduler task", Task);
+        Process = FindProcessByIdMutable(Task->ProcessId);
+        if (Process != 0 && Process->ThreadCount > 0U)
+        {
+            Process->ThreadCount -= 1U;
+            if (Process->ThreadCount == 0U && (Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) == 0U)
+            {
+                if (Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED)
+                {
+                    State->TerminatedProcessCount += 1ULL;
+                }
+                Process->State = LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED;
+                Process->TerminatedTick = State->TickCount;
+                Process->ExitStatus = Task->ExitStatus;
+                Process->CleanupPending = 1U;
+            }
+        }
+
         ReleaseTaskStackResources(Task);
-        if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) == 0U && State->TaskCount > 0U)
+        if (State->TaskCount > 0U)
         {
             State->TaskCount -= 1U;
         }
@@ -325,9 +512,41 @@ void LosKernelSchedulerCleanupTerminatedTasks(void)
     LeaveSchedulerCriticalSection(CriticalSectionFlags);
 }
 
+void LosKernelSchedulerCleanupTerminatedProcesses(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+    UINT64 CriticalSectionFlags;
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_PROCESSES; ++Index)
+    {
+        LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+        Process = &State->Processes[Index];
+        if (Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_TERMINATED ||
+            Process->CleanupPending == 0U ||
+            Process->ThreadCount != 0U)
+        {
+            continue;
+        }
+
+        LosKernelSchedulerTraceProcess("Reclaimed scheduler process", Process);
+        if (State->ProcessCount > 0U)
+        {
+            State->ProcessCount -= 1U;
+        }
+        State->ReapedProcessCount += 1ULL;
+        ZeroBytes(Process, sizeof(*Process));
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+}
+
 void LosKernelSchedulerInitialize(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT64 ProcessId;
     UINT64 TaskId;
 
     State = LosKernelSchedulerState();
@@ -339,8 +558,12 @@ void LosKernelSchedulerInitialize(void)
     State->TickCount = 0ULL;
     State->DispatchCount = 0ULL;
     State->CurrentTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
+    State->CurrentProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
     State->NextTaskId = 1ULL;
+    State->NextProcessId = 1ULL;
+    State->KernelProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
     State->TaskCount = 0U;
+    State->ProcessCount = 0U;
     State->CurrentTaskIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
     State->LastSelectedIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
     State->ReschedulePending = 0U;
@@ -351,11 +574,27 @@ void LosKernelSchedulerInitialize(void)
     State->CreatedTaskCount = 0ULL;
     State->TerminatedTaskCount = 0ULL;
     State->ReapedTaskCount = 0ULL;
+    State->CreatedProcessCount = 0ULL;
+    State->TerminatedProcessCount = 0ULL;
+    State->ReapedProcessCount = 0ULL;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
 
+    if (!LosKernelSchedulerCreateProcess(
+            "KernelProcess",
+            LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL,
+            0ULL,
+            GetKernelRootTablePhysicalAddress(),
+            &ProcessId))
+    {
+        LosKernelTraceFail("Kernel scheduler could not create kernel process.");
+        LosKernelHaltForever();
+    }
+    State->KernelProcessId = ProcessId;
+
     if (!LosKernelSchedulerCreateTask(
             "Idle",
+            State->KernelProcessId,
             LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE,
             LOS_KERNEL_SCHEDULER_IDLE_PRIORITY,
             1U,
@@ -374,9 +613,12 @@ void LosKernelSchedulerInitialize(void)
 void LosKernelSchedulerRegisterBootstrapTasks(void)
 {
     UINT64 TaskId;
+    UINT64 KernelProcessId;
 
+    KernelProcessId = LosKernelSchedulerState()->KernelProcessId;
     if (!LosKernelSchedulerCreateTask(
             "Heartbeat",
+            KernelProcessId,
             LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC,
             LOS_KERNEL_SCHEDULER_HEARTBEAT_PRIORITY,
             1U,
@@ -391,6 +633,7 @@ void LosKernelSchedulerRegisterBootstrapTasks(void)
 
     if (!LosKernelSchedulerCreateTask(
             "LifecycleManager",
+            KernelProcessId,
             LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC,
             LOS_KERNEL_SCHEDULER_LIFECYCLE_PRIORITY,
             1U,
@@ -405,6 +648,7 @@ void LosKernelSchedulerRegisterBootstrapTasks(void)
 
     if (!LosKernelSchedulerCreateTask(
             "BusyWorker",
+            KernelProcessId,
             0U,
             LOS_KERNEL_SCHEDULER_BUSY_PRIORITY,
             1U,

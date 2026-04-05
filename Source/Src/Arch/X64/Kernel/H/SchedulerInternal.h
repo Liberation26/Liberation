@@ -12,6 +12,7 @@
 #define LOS_KERNEL_SCHEDULER_BUSY_PRIORITY 2U
 #define LOS_KERNEL_SCHEDULER_EPHEMERAL_PRIORITY 1U
 #define LOS_KERNEL_SCHEDULER_DEFAULT_QUANTUM_TICKS 1U
+#define LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS 0ULL
 #define LOS_KERNEL_SCHEDULER_AGING_INTERVAL_TICKS 100ULL
 #define LOS_KERNEL_SCHEDULER_MAX_AGING_BOOST 4U
 #define LOS_KERNEL_SCHEDULER_HEARTBEAT_PERIOD_TICKS 100ULL
@@ -22,8 +23,19 @@
 #define LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES (LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES * 4096ULL)
 
 LOS_KERNEL_SCHEDULER_STATE *LosKernelSchedulerState(void);
+BOOLEAN LosKernelSchedulerCreateProcess(
+    const char *Name,
+    UINT32 Flags,
+    UINT64 AddressSpaceId,
+    UINT64 RootTablePhysicalAddress,
+    UINT64 *ProcessId);
+BOOLEAN LosKernelSchedulerMarkProcessTerminated(
+    UINT64 ProcessId,
+    UINT64 ExitStatus);
+void LosKernelSchedulerCleanupTerminatedProcesses(void);
 BOOLEAN LosKernelSchedulerCreateTask(
     const char *Name,
+    UINT64 ProcessId,
     UINT32 Flags,
     UINT32 Priority,
     UINT32 QuantumTicks,
@@ -34,6 +46,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
 void LosKernelSchedulerWakeDueTasks(void);
 void LosKernelSchedulerCleanupTerminatedTasks(void);
 UINT32 LosKernelSchedulerSelectNextTaskIndex(void);
+void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDULER_PROCESS *Process);
 void LosKernelSchedulerTraceState(const char *Prefix);
 void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_TASK *Task);
 void LosKernelSchedulerIdleThread(void *Context);

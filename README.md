@@ -1,3 +1,11 @@
+Version 0.1.98
+
+- Added a first-stage **process layer above scheduler threads**. The scheduler now creates a persistent `KernelProcess` during initialization, attaches all bootstrap kernel threads to it, and keeps explicit per-process bookkeeping alongside the existing per-task bookkeeping.
+- Added transient `EphemeralProcess` objects in the lifecycle test path. Each spawned ephemeral worker now belongs to its own short-lived process object, so the live scheduler can prove process creation, thread ownership, thread exit, task reclamation, and then process reclamation once the last thread is gone.
+- Extended scheduler diagnostics so serial logs now include `process=` on task registration, `processes=` in heartbeat/state lines, and per-process create/terminate/reap counters. That gives you direct proof that LOS is no longer tracking only raw threads.
+- Each process object now carries: process id, owner process id, generation, flags, thread count, address-space id metadata, root-table metadata, exit status, and deferred cleanup state. In this stage the metadata is bookkeeping only; the scheduler still dispatches kernel threads on the kernel address space.
+- This is a staging step toward safe kernel-to-user entry. The next logical step remains a true user-mode transition path that can bind one of these process objects to a non-kernel address space and fault/account against the owning process instead of only the thread.
+
 Version 0.1.97
 
 - Fixed the next live scheduler issue shown by your serial log: lower-priority `EphemeralWorker` tasks were being created successfully but were starving behind the higher-priority non-yielding `BusyWorker`, so they never reached their enter/sleep/exit path.

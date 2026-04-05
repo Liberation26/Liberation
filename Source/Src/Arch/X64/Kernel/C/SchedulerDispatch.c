@@ -182,6 +182,7 @@ void LosKernelSchedulerEnter(void)
 
         State->InScheduler = 1U;
         LosKernelSchedulerCleanupTerminatedTasks();
+        LosKernelSchedulerCleanupTerminatedProcesses();
         LosKernelSchedulerWakeDueTasks();
         SelectedIndex = LosKernelSchedulerSelectNextTaskIndex();
         if (SelectedIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX)
@@ -193,6 +194,7 @@ void LosKernelSchedulerEnter(void)
         Task = &State->Tasks[SelectedIndex];
         State->CurrentTaskIndex = SelectedIndex;
         State->CurrentTaskId = Task->TaskId;
+        State->CurrentProcessId = Task->ProcessId;
         State->LastSelectedIndex = SelectedIndex;
         State->DispatchCount += 1ULL;
         State->ReschedulePending = 0U;
@@ -208,5 +210,6 @@ void LosKernelSchedulerEnter(void)
         State->InScheduler = 1U;
         State->CurrentTaskIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
         State->CurrentTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
+        State->CurrentProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
     }
 }
