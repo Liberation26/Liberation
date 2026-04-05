@@ -1,3 +1,4 @@
+- Added an explicit `complete` scheduler-scaffold stage after `live-gate-closed` and delayed normal scheduler serial output until `seal-ready`, so scheduler logs now stay quiet during early scaffold assembly and then come alive only once the staged handoff metadata is fully formed.
 - Added an explicit `handoff-ready` user-transition scaffold stage after `seal-ready`.
 - The scheduler now records and verifies the final blocked scaffold task handoff stack pointer as non-zero `user-handoff-sp` metadata, matching the staged chain stack pointer and current saved execution stack pointer.
 - Heartbeat output now exposes `user-scaffold-handoff-ready`, and detailed process/task traces now expose `user-handoff-sp=` so the serial log can prove the blocked scaffold carries a final saved handoff stack before the live gate closes.
@@ -26,7 +27,7 @@
 - Review the `user-scaffold-ready`, `user-scaffold-proc`, and `user-scaffold-task` diagnostics to confirm the blocked user-transition scaffold stays present while transient worker processes continue to be created and reaped.
 - Review the scheduler `max-run-slice`, `max-ready-delay`, and `max-wake-delay` counters against the BusyWorker and ephemeral-worker logs.
 - Review whether `stack-pool-used` stays bounded while transient workers continue to be created and reaped.
-- Continue hardening scheduler/user transition work now that the scheduler can report runtime, dispatch latency, run-slice behaviour, explicit scaffold blocking state, selector metadata, a prepared user return-frame stack pointer, a dedicated non-live kernel-entry address, and a staged future dispatch bridge address.
+- Finish the real kernel-to-user execution path on top of the now scheduler-complete scaffold: install a TSS/RSP0 path, map a real user code page plus stack into the owned user address space, switch the bridge from non-live scaffolding to an actual `iretq` entry, and only then allow `LosKernelSchedulerMarkUserTransitionScaffoldLive()` to dispatch user work.
 - Wire the user-transition scaffold from bridge-ready/live-gated into a real ring transition path that calls `LosKernelSchedulerMarkUserTransitionScaffoldLive()` only when the actual `iretq` entry path exists.
 
 - Added an explicit `seal-ready` user-transition scaffold stage after `contract-ready`.

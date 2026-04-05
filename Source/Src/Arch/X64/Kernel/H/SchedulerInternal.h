@@ -38,6 +38,19 @@ typedef struct __attribute__((packed))
 } LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME;
 
 LOS_KERNEL_SCHEDULER_STATE *LosKernelSchedulerState(void);
+BOOLEAN LosKernelSchedulerShouldEmitSerial(void);
+void LosKernelSchedulerEmitTrace(const char *Text);
+void LosKernelSchedulerEmitTraceOk(const char *Text);
+void LosKernelSchedulerEmitTraceFail(const char *Text);
+void LosKernelSchedulerEmitTraceHex64(const char *Prefix, UINT64 Value);
+void LosKernelSchedulerEmitTraceUnsigned(const char *Prefix, UINT64 Value);
+
+#define LosKernelTrace LosKernelSchedulerEmitTrace
+#define LosKernelTraceOk LosKernelSchedulerEmitTraceOk
+#define LosKernelTraceFail LosKernelSchedulerEmitTraceFail
+#define LosKernelTraceHex64 LosKernelSchedulerEmitTraceHex64
+#define LosKernelTraceUnsigned LosKernelSchedulerEmitTraceUnsigned
+
 BOOLEAN LosKernelSchedulerCreateProcess(
     const char *Name,
     UINT32 Flags,
@@ -62,6 +75,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldContractReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldSealReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldHandoffReady(void);
+BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldComplete(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void);
 BOOLEAN LosKernelSchedulerGuardUserTransitionScaffold(void);

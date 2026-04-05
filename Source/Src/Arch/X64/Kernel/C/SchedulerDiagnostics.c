@@ -1,5 +1,63 @@
 #include "SchedulerInternal.h"
 
+#undef LosKernelTrace
+#undef LosKernelTraceOk
+#undef LosKernelTraceFail
+#undef LosKernelTraceHex64
+#undef LosKernelTraceUnsigned
+
+BOOLEAN LosKernelSchedulerShouldEmitSerial(void)
+{
+    const LOS_KERNEL_SCHEDULER_STATE *State;
+
+    State = LosKernelSchedulerGetState();
+    if (State == 0)
+    {
+        return 0U;
+    }
+
+    return (State->UserTransitionSealReadyCount != 0ULL ||
+            State->UserTransitionCompleteCount != 0ULL ||
+            State->UserTransitionLiveCount != 0ULL)
+        ? 1U
+        : 0U;
+}
+
+void LosKernelSchedulerEmitTrace(const char *Text)
+{
+    if (LosKernelSchedulerShouldEmitSerial() == 0U)
+    {
+        return;
+    }
+
+    LosKernelTrace(Text);
+}
+
+void LosKernelSchedulerEmitTraceOk(const char *Text)
+{
+    if (LosKernelSchedulerShouldEmitSerial() == 0U)
+    {
+        return;
+    }
+
+    LosKernelTraceOk(Text);
+}
+
+void LosKernelSchedulerEmitTraceFail(const char *Text)
+{
+    LosKernelTraceFail(Text);
+}
+
+void LosKernelSchedulerEmitTraceHex64(const char *Prefix, UINT64 Value)
+{
+    LosKernelTraceHex64(Prefix, Value);
+}
+
+void LosKernelSchedulerEmitTraceUnsigned(const char *Prefix, UINT64 Value)
+{
+    LosKernelTraceUnsigned(Prefix, Value);
+}
+
 static void WriteName(const char *Name)
 {
     LosKernelSerialWriteText(Name != 0 ? Name : "<unnamed>");
@@ -7,7 +65,7 @@ static void WriteName(const char *Name)
 
 void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDULER_PROCESS *Process)
 {
-    if (Process == 0)
+    if (Process == 0 || LosKernelSchedulerShouldEmitSerial() == 0U)
     {
         return;
     }
@@ -91,7 +149,7 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
 
 void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_TASK *Task)
 {
-    if (Task == 0)
+    if (Task == 0 || LosKernelSchedulerShouldEmitSerial() == 0U)
     {
         return;
     }
@@ -180,7 +238,7 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     const LOS_KERNEL_SCHEDULER_STATE *State;
 
     State = LosKernelSchedulerGetState();
-    if (State == 0)
+    if (State == 0 || LosKernelSchedulerShouldEmitSerial() == 0U)
     {
         return;
     }
@@ -263,6 +321,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionSealReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-handoff-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionHandoffReadyCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-scaffold-complete=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionCompleteCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-live=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -312,7 +372,7 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
     for (;;)
     {
         State = LosKernelSchedulerGetState();
-        if (State != 0)
+        if (State != 0 && LosKernelSchedulerShouldEmitSerial() != 0U)
         {
             LosKernelSerialWriteText("[Kernel] Scheduler heartbeat ticks=");
             LosKernelSerialWriteUnsigned(State->TickCount);
@@ -388,6 +448,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionSealReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-handoff-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionHandoffReadyCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-scaffold-complete=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionCompleteCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-live=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -419,7 +481,10 @@ void LosKernelSchedulerLifecycleThread(void *Context)
 
     (void)Context;
     Sequence = 0ULL;
-    LosKernelSerialWriteText("[Kernel] Scheduler lifecycle manager entered.\n");
+    if (LosKernelSchedulerShouldEmitSerial() != 0U)
+    {
+        LosKernelSerialWriteText("[Kernel] Scheduler lifecycle manager entered.\n");
+    }
 
     for (;;)
     {
@@ -483,6 +548,12 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed();
         }
+        else if (LosKernelSchedulerState()->UserTransitionCompleteCount == 0ULL &&
+                 LosKernelSchedulerState()->UserTransitionLiveGateClosed != 0U &&
+                 LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
+        {
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldComplete();
+        }
 
         if (LosKernelSchedulerState()->UserTransitionScaffoldReady != 0U &&
             LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
@@ -507,9 +578,12 @@ void LosKernelSchedulerLifecycleThread(void *Context)
                 LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS,
                 &ProcessId))
         {
-            LosKernelSerialWriteText("[Kernel] Scheduler lifecycle could not create ephemeral process sequence=");
-            LosKernelSerialWriteUnsigned(Sequence);
-            LosKernelSerialWriteText("\n");
+            if (LosKernelSchedulerShouldEmitSerial() != 0U)
+            {
+                LosKernelSerialWriteText("[Kernel] Scheduler lifecycle could not create ephemeral process sequence=");
+                LosKernelSerialWriteUnsigned(Sequence);
+                LosKernelSerialWriteText("\n");
+            }
             LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS);
             continue;
         }
@@ -525,22 +599,28 @@ void LosKernelSchedulerLifecycleThread(void *Context)
                 (void *)(UINTN)Sequence,
                 &TaskId))
         {
-            LosKernelSerialWriteText("[Kernel] Scheduler lifecycle spawned ephemeral process id=");
-            LosKernelSerialWriteUnsigned(ProcessId);
-            LosKernelSerialWriteText(" task=");
-            LosKernelSerialWriteUnsigned(TaskId);
-            LosKernelSerialWriteText(" sequence=");
-            LosKernelSerialWriteUnsigned(Sequence);
-            LosKernelSerialWriteText("\n");
+            if (LosKernelSchedulerShouldEmitSerial() != 0U)
+            {
+                LosKernelSerialWriteText("[Kernel] Scheduler lifecycle spawned ephemeral process id=");
+                LosKernelSerialWriteUnsigned(ProcessId);
+                LosKernelSerialWriteText(" task=");
+                LosKernelSerialWriteUnsigned(TaskId);
+                LosKernelSerialWriteText(" sequence=");
+                LosKernelSerialWriteUnsigned(Sequence);
+                LosKernelSerialWriteText("\n");
+            }
         }
         else
         {
             LosKernelSchedulerMarkProcessTerminated(ProcessId, 1ULL);
-            LosKernelSerialWriteText("[Kernel] Scheduler lifecycle could not spawn ephemeral task for process id=");
-            LosKernelSerialWriteUnsigned(ProcessId);
-            LosKernelSerialWriteText(" sequence=");
-            LosKernelSerialWriteUnsigned(Sequence);
-            LosKernelSerialWriteText("\n");
+            if (LosKernelSchedulerShouldEmitSerial() != 0U)
+            {
+                LosKernelSerialWriteText("[Kernel] Scheduler lifecycle could not spawn ephemeral task for process id=");
+                LosKernelSerialWriteUnsigned(ProcessId);
+                LosKernelSerialWriteText(" sequence=");
+                LosKernelSerialWriteUnsigned(Sequence);
+                LosKernelSerialWriteText("\n");
+            }
         }
 
         LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS);
@@ -554,38 +634,44 @@ void LosKernelSchedulerEphemeralThread(void *Context)
 
     Sequence = (UINT64)(UINTN)Context;
     Task = LosKernelSchedulerGetCurrentTask();
-    LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task entered id=");
-    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
-    LosKernelSerialWriteText(" owner=");
-    LosKernelSerialWriteUnsigned(Task != 0 ? Task->OwnerTaskId : 0ULL);
-    LosKernelSerialWriteText(" process=");
-    LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
-    LosKernelSerialWriteText(" sequence=");
-    LosKernelSerialWriteUnsigned(Sequence);
-    LosKernelSerialWriteText("\n");
+    if (LosKernelSchedulerShouldEmitSerial() != 0U)
+    {
+        LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task entered id=");
+        LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+        LosKernelSerialWriteText(" owner=");
+        LosKernelSerialWriteUnsigned(Task != 0 ? Task->OwnerTaskId : 0ULL);
+        LosKernelSerialWriteText(" process=");
+        LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
+        LosKernelSerialWriteText(" sequence=");
+        LosKernelSerialWriteUnsigned(Sequence);
+        LosKernelSerialWriteText("\n");
+    }
 
     LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_EPHEMERAL_LIFETIME_TICKS);
 
     Task = LosKernelSchedulerGetCurrentTask();
-    LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task resumed id=");
-    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
-    LosKernelSerialWriteText(" process=");
-    LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
-    LosKernelSerialWriteText(" sequence=");
-    LosKernelSerialWriteUnsigned(Sequence);
-    LosKernelSerialWriteText(" ticks=");
-    LosKernelSerialWriteUnsigned(LosKernelSchedulerGetTickCount());
-    LosKernelSerialWriteText("\n");
+    if (LosKernelSchedulerShouldEmitSerial() != 0U)
+    {
+        LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task resumed id=");
+        LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+        LosKernelSerialWriteText(" process=");
+        LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
+        LosKernelSerialWriteText(" sequence=");
+        LosKernelSerialWriteUnsigned(Sequence);
+        LosKernelSerialWriteText(" ticks=");
+        LosKernelSerialWriteUnsigned(LosKernelSchedulerGetTickCount());
+        LosKernelSerialWriteText("\n");
 
-    LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task exiting id=");
-    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
-    LosKernelSerialWriteText(" process=");
-    LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
-    LosKernelSerialWriteText(" sequence=");
-    LosKernelSerialWriteUnsigned(Sequence);
-    LosKernelSerialWriteText(" ticks=");
-    LosKernelSerialWriteUnsigned(LosKernelSchedulerGetTickCount());
-    LosKernelSerialWriteText("\n");
+        LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task exiting id=");
+        LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+        LosKernelSerialWriteText(" process=");
+        LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
+        LosKernelSerialWriteText(" sequence=");
+        LosKernelSerialWriteUnsigned(Sequence);
+        LosKernelSerialWriteText(" ticks=");
+        LosKernelSerialWriteUnsigned(LosKernelSchedulerGetTickCount());
+        LosKernelSerialWriteText("\n");
+    }
     LosKernelSchedulerTerminateCurrent();
     LosKernelHaltForever();
 }
@@ -635,7 +721,10 @@ void LosKernelSchedulerBusyThread(void *Context)
     (void)Context;
     IterationCount = 0ULL;
     LastReportTick = 0ULL;
-    LosKernelSerialWriteText("[Kernel] Scheduler busy worker entered.\n");
+    if (LosKernelSchedulerShouldEmitSerial() != 0U)
+    {
+        LosKernelSerialWriteText("[Kernel] Scheduler busy worker entered.\n");
+    }
 
     for (;;)
     {
@@ -648,11 +737,14 @@ void LosKernelSchedulerBusyThread(void *Context)
             TickCount = LosKernelSchedulerGetTickCount();
             if ((TickCount - LastReportTick) >= LOS_KERNEL_SCHEDULER_BUSY_REPORT_PERIOD_TICKS)
             {
-                LosKernelSerialWriteText("[Kernel] Scheduler busy worker iterations=");
-                LosKernelSerialWriteUnsigned(IterationCount);
-                LosKernelSerialWriteText(" ticks=");
-                LosKernelSerialWriteUnsigned(TickCount);
-                LosKernelSerialWriteText("\n");
+                if (LosKernelSchedulerShouldEmitSerial() != 0U)
+                {
+                    LosKernelSerialWriteText("[Kernel] Scheduler busy worker iterations=");
+                    LosKernelSerialWriteUnsigned(IterationCount);
+                    LosKernelSerialWriteText(" ticks=");
+                    LosKernelSerialWriteUnsigned(TickCount);
+                    LosKernelSerialWriteText("\n");
+                }
                 LastReportTick = TickCount;
             }
         }
