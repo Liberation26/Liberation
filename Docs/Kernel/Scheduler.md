@@ -1,3 +1,7 @@
+## 0.2.16
+
+Scheduler bootstrap threads now stay on bootstrap fallback stacks until the scheduler is online and the memory-manager attach handshake is complete. That prevents early scheduler initialization from issuing premature hosted `AllocateFrames` requests before the hosted service path is stable enough to guarantee a real reply.
+
 ## 0.2.15
 
 - Scheduler thread stacks now come from the memory manager whenever the bootstrap transport is ready.

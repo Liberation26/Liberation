@@ -45,6 +45,25 @@ static void LeaveSchedulerCriticalSection(UINT64 Flags)
     }
 }
 
+
+static BOOLEAN IsMemoryManagerSchedulerTransportReady(void)
+{
+    const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
+
+    Info = LosGetMemoryManagerBootstrapInfo();
+    if (Info == 0)
+    {
+        return 0;
+    }
+
+    if ((Info->Flags & LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_ATTACH_COMPLETE) == 0ULL)
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
 static void WriteStackReturnAddress(UINT64 StackAddress, UINT64 ReturnAddress)
 {
     UINT64 *Pointer;
@@ -176,7 +195,7 @@ static BOOLEAN BindOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Proces
     ProcessId = Process->ProcessId;
     LeaveSchedulerCriticalSection(CriticalSectionFlags);
 
-    if (LosIsMemoryManagerBootstrapReady() == 0U)
+    if (IsMemoryManagerSchedulerTransportReady() == 0U)
     {
         CriticalSectionFlags = EnterSchedulerCriticalSection();
         Process->Flags &= ~LOS_KERNEL_SCHEDULER_PROCESS_FLAG_BIND_IN_PROGRESS;
@@ -234,7 +253,7 @@ static BOOLEAN DestroyOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Pro
     {
         return 1;
     }
-    if (LosIsMemoryManagerBootstrapReady() == 0U)
+    if (IsMemoryManagerSchedulerTransportReady() == 0U)
     {
         LosKernelTraceFail("Kernel scheduler could not destroy a process address space because the memory manager bootstrap is not ready.");
         LosKernelTraceUnsigned("Kernel scheduler process awaiting address-space destroy: ", Process->ProcessId);
@@ -390,7 +409,8 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
     Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
     Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
 
-    if (LosIsMemoryManagerBootstrapReady() != 0U)
+    if (LosKernelSchedulerIsOnline() != 0U &&
+        IsMemoryManagerSchedulerTransportReady() != 0U)
     {
         ZeroBytes(&ClaimRequest, sizeof(ClaimRequest));
         ZeroBytes(&ClaimResult, sizeof(ClaimResult));
@@ -460,7 +480,7 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
             FreeRequest.PhysicalAddress = Task->StackPhysicalAddress;
             FreeRequest.PageCount = Task->StackSizeBytes / 4096ULL;
 
-            if (LosIsMemoryManagerBootstrapReady() != 0U)
+            if (IsMemoryManagerSchedulerTransportReady() != 0U)
             {
                 LosMemoryManagerSendFreeFrames(&FreeRequest, &FreeResult);
                 if (FreeResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)

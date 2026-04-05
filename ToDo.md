@@ -6,6 +6,7 @@
 - Verify the 0.2.13 pending-wake resume-window path by proving transient owned-root workers wake, get an immediate post-wake slice, resume, exit, reap, and destroy their address spaces cleanly under sustained busy-thread load.
 # ToDo
 
+- Re-test 0.2.16 bootstrap-thread stack staging to confirm early scheduler threads stay on bootstrap fallback stacks, later transient threads switch to memory-manager-backed stacks, and no premature hosted `AllocateFrames` request appears during scheduler initialization.
 ## Priority Order
 
 - [x] Prove timer and interrupt stability
