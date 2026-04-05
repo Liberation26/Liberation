@@ -1,3 +1,9 @@
+Version 0.1.77
+
+- Fixed the service build break by adding `Source/Src/Arch/X64/Services/MemoryManager/H/MemoryManagerAddressSpaceInternal.h` to `ChangedFiles`.
+- This was the missing header required by `MemoryManagerAddressSpaceDispatch.c`, `MemoryManagerAddressSpacePolicy.c`, and `MemoryManagerAddressSpaceState.c`.
+- Syntax-checked the memory-manager address-space service sources after adding the header.
+
 Version 0.1.76
 
 - Fixed the bootstrap address-space notification build break by removing the kernel diagnostics dependency on AddressSpaceId inside LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT.
