@@ -1,3 +1,5 @@
+Hosted bootstrap now has a kernel-side `QueryMapping` fallback as well: if the memory-manager hosted pump does not publish a reply while the scheduler is probing scaffold mappings, the kernel resolves the address-space object directly and walks the target page tables itself. That keeps the image/stack presence checks moving instead of fatal-halting on a missing hosted reply.
+
 Hosted memory-manager exchanges used during scaffold preparation are serialized with interrupts disabled, and the memory-manager `QueryMapping` probe is allowed to report `not found` for unmapped user virtual addresses rather than hard-failing the service. This keeps the scaffold image/stack mapping phase stable while the memory manager is still running through the hosted bootstrap pump.
 
 # 0.2.40

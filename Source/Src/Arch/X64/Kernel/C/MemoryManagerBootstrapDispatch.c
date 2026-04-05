@@ -1,5 +1,7 @@
 #include "MemoryManagerBootstrapInternal.h"
 
+static void ZeroMemory(void *Buffer, UINTN ByteCount);
+
 static const char *OperationName(UINT32 Operation)
 {
     switch (Operation)
@@ -34,6 +36,173 @@ static const char *OperationName(UINT32 Operation)
             return "ClaimFrames";
         default:
             return "Unknown";
+    }
+}
+
+
+static UINTN QueryPml4Index(UINT64 VirtualAddress)
+{
+    return (UINTN)((VirtualAddress >> 39U) & 0x1FFULL);
+}
+
+static UINTN QueryPdptIndex(UINT64 VirtualAddress)
+{
+    return (UINTN)((VirtualAddress >> 30U) & 0x1FFULL);
+}
+
+static UINTN QueryPdIndex(UINT64 VirtualAddress)
+{
+    return (UINTN)((VirtualAddress >> 21U) & 0x1FFULL);
+}
+
+static UINTN QueryPtIndex(UINT64 VirtualAddress)
+{
+    return (UINTN)((VirtualAddress >> 12U) & 0x1FFULL);
+}
+
+static UINT64 *QueryTranslatePageTable(UINT64 PhysicalAddress)
+{
+    return (UINT64 *)LosX64GetDirectMapVirtualAddress(PhysicalAddress, 0x1000ULL);
+}
+
+static BOOLEAN QueryLookupLeafPageEntry(UINT64 RootTablePhysicalAddress, UINT64 VirtualAddress, UINT64 *Entry)
+{
+    UINT64 *PageMapLevel4;
+    UINT64 CurrentEntry;
+    UINT64 *PageDirectoryPointerTable;
+    UINT64 *PageDirectory;
+    UINT64 *PageTable;
+
+    if (Entry != 0)
+    {
+        *Entry = 0ULL;
+    }
+    if (RootTablePhysicalAddress == 0ULL || (VirtualAddress & 0xFFFULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    PageMapLevel4 = QueryTranslatePageTable(RootTablePhysicalAddress);
+    if (PageMapLevel4 == 0)
+    {
+        return 0;
+    }
+
+    CurrentEntry = PageMapLevel4[QueryPml4Index(VirtualAddress)];
+    if ((CurrentEntry & 0x001ULL) == 0ULL || (CurrentEntry & 0x080ULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    PageDirectoryPointerTable = QueryTranslatePageTable(CurrentEntry & 0x000FFFFFFFFFF000ULL);
+    if (PageDirectoryPointerTable == 0)
+    {
+        return 0;
+    }
+
+    CurrentEntry = PageDirectoryPointerTable[QueryPdptIndex(VirtualAddress)];
+    if ((CurrentEntry & 0x001ULL) == 0ULL || (CurrentEntry & 0x080ULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    PageDirectory = QueryTranslatePageTable(CurrentEntry & 0x000FFFFFFFFFF000ULL);
+    if (PageDirectory == 0)
+    {
+        return 0;
+    }
+
+    CurrentEntry = PageDirectory[QueryPdIndex(VirtualAddress)];
+    if ((CurrentEntry & 0x001ULL) == 0ULL || (CurrentEntry & 0x080ULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    PageTable = QueryTranslatePageTable(CurrentEntry & 0x000FFFFFFFFFF000ULL);
+    if (PageTable == 0)
+    {
+        return 0;
+    }
+
+    CurrentEntry = PageTable[QueryPtIndex(VirtualAddress)];
+    if ((CurrentEntry & 0x001ULL) == 0ULL)
+    {
+        return 0;
+    }
+
+    if (Entry != 0)
+    {
+        *Entry = CurrentEntry;
+    }
+    return 1;
+}
+
+static void DispatchLocalQueryMapping(
+    const LOS_MEMORY_MANAGER_QUERY_MAPPING_REQUEST *Request,
+    LOS_MEMORY_MANAGER_QUERY_MAPPING_RESULT *Result,
+    UINT32 *Status)
+{
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject;
+    UINT64 Entry;
+
+    if (Status != 0)
+    {
+        *Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    }
+    if (Result == 0)
+    {
+        return;
+    }
+
+    ZeroMemory(Result, sizeof(*Result));
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
+    if (Request == 0 || Request->AddressSpaceObjectPhysicalAddress == 0ULL ||
+        Request->VirtualAddress == 0ULL || (Request->VirtualAddress & 0xFFFULL) != 0ULL ||
+        Request->VirtualAddress >= 0x0000800000000000ULL)
+    {
+        if (Status != 0)
+        {
+            *Status = Result->Status;
+        }
+        return;
+    }
+
+    Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
+    Result->VirtualAddress = Request->VirtualAddress;
+    AddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)LosX64GetDirectMapVirtualAddress(
+        Request->AddressSpaceObjectPhysicalAddress,
+        sizeof(LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT));
+    if (AddressSpaceObject == 0 ||
+        AddressSpaceObject->Signature != LOS_MEMORY_MANAGER_BOOTSTRAP_SIGNATURE ||
+        AddressSpaceObject->Version != LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION ||
+        AddressSpaceObject->State < LOS_MEMORY_MANAGER_ADDRESS_SPACE_STATE_READY ||
+        AddressSpaceObject->RootTablePhysicalAddress == 0ULL)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        if (Status != 0)
+        {
+            *Status = Result->Status;
+        }
+        return;
+    }
+
+    if (!QueryLookupLeafPageEntry(AddressSpaceObject->RootTablePhysicalAddress, Request->VirtualAddress, &Entry))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+        if (Status != 0)
+        {
+            *Status = Result->Status;
+        }
+        return;
+    }
+
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->PhysicalAddress = Entry & 0x000FFFFFFFFFF000ULL;
+    Result->PageFlags = Entry & ~0x000FFFFFFFFFF000ULL;
+    Result->PageCount = 1ULL;
+    if (Status != 0)
+    {
+        *Status = Result->Status;
     }
 }
 
@@ -421,8 +590,7 @@ void LosMemoryManagerBootstrapDispatch(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE 
             Response->Payload.ProtectPages.Status = Response->Status;
             break;
         case LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING:
-            Response->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_SUPPORTED;
-            Response->Payload.QueryMapping.Status = Response->Status;
+            DispatchLocalQueryMapping(&Slot->Message.Payload.QueryMapping, &Response->Payload.QueryMapping, &Response->Status);
             break;
         case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
             LosX64QueryMemoryRegions(
@@ -480,7 +648,6 @@ static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
         case LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES:
         case LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES:
         case LOS_MEMORY_MANAGER_OPERATION_PROTECT_PAGES:
-        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING:
         case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
         case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
         case LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS:
