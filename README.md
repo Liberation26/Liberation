@@ -1,3 +1,4 @@
+- 0.2.19: Fixed direct-claim scheduler stack-pool release accounting. Reaped direct-claim worker stacks now clear their own pool slot instead of accidentally touching the bootstrap fallback slot bitmap, so `stack-pool-used` drops again after transient workers are reclaimed and the direct-claim pool no longer trends toward false exhaustion.
 - 0.2.18: Scheduler threads now prefer a dedicated kernel direct-claim stack pool reserved once at scheduler initialization, so bootstrap and transient scheduler work no longer have to sit on the embedded bootstrap fallback stacks when the kernel frame allocator is already ready. The bootstrap stack array remains as an emergency fallback only.
 - 0.2.17: Scheduler-created threads now stay on bootstrap fallback stacks even after the hosted memory-manager attach completes, because the hosted `AllocateFrames` round-trip can still lose replies once transient process-root activation is live. This avoids the fatal no-reply bootstrap halt while distinct process address spaces continue to be created and destroyed through the memory manager.
 - 0.2.16: Scheduler bootstrap threads now stay on bootstrap fallback stacks until the scheduler is actually online and the memory-manager attach handshake has completed, so early scheduler stack creation no longer issues premature hosted `AllocateFrames` requests that can receive no service reply.
@@ -15,7 +16,7 @@
 
 - 0.2.9: Scheduler process creation now keeps distinct-root processes hidden until their address-space bind succeeds, and deferred bind spam was removed from the scheduler loop.
 
-Version 0.2.18
+Version 0.2.19
 - Serialized scheduler-side transient process address-space binding so only one `CreateAddressSpace` request can be in flight for a given process at a time. This closes the race where a just-created process could be bound twice and end up leaking the first address-space object.
 - Added a `bind-in-progress` process flag plus `bind-count` and `bind-deferred` scheduler counters, so the serial log can now prove whether a non-kernel process root was bound once, deferred, or already being handled by another path.
 - Kept the existing rule that transient lifecycle processes require a real distinct address space; this update makes that rule race-safe rather than letting the lifecycle thread and the scheduler binder compete on the same process object.

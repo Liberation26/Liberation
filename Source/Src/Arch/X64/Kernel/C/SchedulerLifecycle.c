@@ -586,11 +586,39 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
         return;
     }
 
-    if (Task->BootstrapStackSlot != LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT &&
-        Task->BootstrapStackSlot < LOS_KERNEL_SCHEDULER_MAX_TASKS)
+    if (Task->StackAllocationSource == LOS_KERNEL_SCHEDULER_STACK_SOURCE_BOOTSTRAP)
     {
-        LosKernelSchedulerBootstrapStackUsed[Task->BootstrapStackSlot] = 0U;
-        Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
+        if (Task->BootstrapStackSlot != LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT &&
+            Task->BootstrapStackSlot < LOS_KERNEL_SCHEDULER_MAX_TASKS)
+        {
+            LosKernelSchedulerBootstrapStackUsed[Task->BootstrapStackSlot] = 0U;
+            Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
+        }
+        else
+        {
+            LosKernelTraceFail("Kernel scheduler lost track of a bootstrap fallback stack slot.");
+        }
+    }
+    else if (Task->StackAllocationSource == LOS_KERNEL_SCHEDULER_STACK_SOURCE_DIRECT_CLAIM)
+    {
+        LOS_KERNEL_SCHEDULER_STATE *State;
+
+        State = LosKernelSchedulerState();
+        if (Task->BootstrapStackSlot != LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT &&
+            Task->BootstrapStackSlot < LOS_KERNEL_SCHEDULER_MAX_TASKS)
+        {
+            LosKernelSchedulerDirectClaimStackUsed[Task->BootstrapStackSlot] = 0U;
+            if (State != 0 && State->DirectClaimStackSlotsInUse > 0U)
+            {
+                State->DirectClaimStackSlotsInUse -= 1U;
+            }
+            Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
+        }
+        else
+        {
+            LosKernelTraceFail("Kernel scheduler lost track of a direct-claim stack-pool slot.");
+            LosKernelTraceHex64("Kernel scheduler direct-claim stack base: ", Task->StackPhysicalAddress);
+        }
     }
     else if (Task->StackPhysicalAddress != 0ULL && Task->StackSizeBytes != 0ULL)
     {
@@ -617,27 +645,6 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
             else
             {
                 LosKernelTraceFail("Kernel scheduler could not free terminated thread stack because the memory manager bootstrap is not ready.");
-            }
-        }
-        else if (Task->StackAllocationSource == LOS_KERNEL_SCHEDULER_STACK_SOURCE_DIRECT_CLAIM)
-        {
-            LOS_KERNEL_SCHEDULER_STATE *State;
-
-            State = LosKernelSchedulerState();
-            if (Task->BootstrapStackSlot != LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT &&
-                Task->BootstrapStackSlot < LOS_KERNEL_SCHEDULER_MAX_TASKS)
-            {
-                LosKernelSchedulerDirectClaimStackUsed[Task->BootstrapStackSlot] = 0U;
-                if (State != 0 && State->DirectClaimStackSlotsInUse > 0U)
-                {
-                    State->DirectClaimStackSlotsInUse -= 1U;
-                }
-                Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
-            }
-            else
-            {
-                LosKernelTraceFail("Kernel scheduler lost track of a direct-claim stack-pool slot.");
-                LosKernelTraceHex64("Kernel scheduler direct-claim stack base: ", Task->StackPhysicalAddress);
             }
         }
     }

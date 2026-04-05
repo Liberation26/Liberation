@@ -1,3 +1,7 @@
+## 0.2.19
+
+Fixed the direct-claim scheduler stack-pool release path. Reaped direct-claim tasks were clearing the generic bootstrap-fallback slot bitmap first because both paths reused the same slot field, which left the direct-claim slot marked busy and caused `stack-pool-used` to climb even though the transient worker had already been reaped. Cleanup now releases slots according to the recorded stack source, so direct-claim stack-pool accounting drops back after reap and the pool can be reused without drifting toward false exhaustion.
+
 ## 0.2.18
 
 Scheduler threads now prefer a dedicated **kernel direct-claim stack pool** reserved once during scheduler initialization. That pool is backed by kernel-claimed frames and reused slot-by-slot as transient workers are created and reaped, so LOS no longer has to keep ordinary scheduler work on the embedded bootstrap fallback stacks just because hosted `AllocateFrames` replies are still being held back. The embedded bootstrap stack array now remains as an emergency fallback only.
