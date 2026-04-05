@@ -722,6 +722,7 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->TotalTicks = 0ULL;
             Task->LastRunTick = 0ULL;
             Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
+            Task->LastWakeTick = 0ULL;
             Task->ReadySinceTick = State->TickCount;
             Task->PreemptionCount = 0ULL;
             Task->ExitStatus = 0ULL;
@@ -883,6 +884,8 @@ void LosKernelSchedulerInitialize(void)
     State->AddressSpaceReuseCount = 0ULL;
     State->AddressSpaceBindCount = 0ULL;
     State->AddressSpaceBindDeferredCount = 0ULL;
+    State->WakeupCount = 0ULL;
+    State->WakePriorityDispatchCount = 0ULL;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
 

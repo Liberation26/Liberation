@@ -1,4 +1,4 @@
-- Verify the 0.2.11 full-register context-save path by proving transient owned-root workers resume, exit, reap, and destroy their address spaces cleanly.
+- Verify the 0.2.12 wake-priority dispatch path by proving transient owned-root workers wake, resume, exit, reap, and destroy their address spaces cleanly under sustained busy-thread load.
 # ToDo
 
 ## Priority Order

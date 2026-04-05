@@ -80,6 +80,8 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->StackTopVirtualAddress);
     LosKernelSerialWriteText(" ready-since=");
     LosKernelSerialWriteUnsigned(Task->ReadySinceTick);
+    LosKernelSerialWriteText(" last-wake=");
+    LosKernelSerialWriteUnsigned(Task->LastWakeTick);
     LosKernelSerialWriteText(" preemptions=");
     LosKernelSerialWriteUnsigned(Task->PreemptionCount);
     LosKernelSerialWriteText(" cleanup=");
@@ -133,6 +135,10 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->AddressSpaceBindCount);
     LosKernelSerialWriteText(" bind-deferred=");
     LosKernelSerialWriteUnsigned(State->AddressSpaceBindDeferredCount);
+    LosKernelSerialWriteText(" wakeups=");
+    LosKernelSerialWriteUnsigned(State->WakeupCount);
+    LosKernelSerialWriteText(" wake-dispatch=");
+    LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
     LosKernelSerialWriteText(" active-root=");
     LosKernelSerialWriteHex64(State->ActiveRootTablePhysicalAddress);
     LosKernelSerialWriteText(" current=");
@@ -196,6 +202,10 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->AddressSpaceBindCount);
             LosKernelSerialWriteText(" bind-deferred=");
             LosKernelSerialWriteUnsigned(State->AddressSpaceBindDeferredCount);
+            LosKernelSerialWriteText(" wakeups=");
+            LosKernelSerialWriteUnsigned(State->WakeupCount);
+            LosKernelSerialWriteText(" wake-dispatch=");
+            LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
             LosKernelSerialWriteText("\n");
         }
 

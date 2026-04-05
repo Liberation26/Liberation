@@ -22,17 +22,21 @@ void LosKernelSchedulerWakeDueTasks(void)
 
         Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
         Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
+        Task->LastWakeTick = State->TickCount;
         Task->ReadySinceTick = State->TickCount;
         Task->NextWakeTick = 0ULL;
+        State->WakeupCount += 1ULL;
     }
 }
 
-static UINT32 GetTaskEffectivePriority(const LOS_KERNEL_SCHEDULER_STATE *State, const LOS_KERNEL_SCHEDULER_TASK *Task, UINT64 *WaitTicks)
+static UINT32 GetTaskEffectivePriority(const LOS_KERNEL_SCHEDULER_STATE *State, const LOS_KERNEL_SCHEDULER_TASK *Task, UINT64 *WaitTicks, BOOLEAN *UsedWakeBoost)
 {
     UINT64 LocalWaitTicks;
     UINT64 AgeBoost;
+    UINT32 WakeBoost;
 
     LocalWaitTicks = 0ULL;
+    WakeBoost = 0U;
     if (State != 0 && Task != 0 && State->TickCount > Task->ReadySinceTick)
     {
         LocalWaitTicks = State->TickCount - Task->ReadySinceTick;
@@ -48,7 +52,25 @@ static UINT32 GetTaskEffectivePriority(const LOS_KERNEL_SCHEDULER_STATE *State, 
         AgeBoost = LOS_KERNEL_SCHEDULER_MAX_AGING_BOOST;
     }
 
-    return Task->Priority + (UINT32)AgeBoost;
+    if (State != 0 && Task != 0 && Task->LastWakeTick != 0ULL)
+    {
+        UINT64 WakeAge;
+
+        WakeAge = State->TickCount >= Task->LastWakeTick
+            ? (State->TickCount - Task->LastWakeTick)
+            : 0ULL;
+        if (WakeAge <= 8ULL)
+        {
+            WakeBoost = 2U;
+        }
+    }
+
+    if (UsedWakeBoost != 0)
+    {
+        *UsedWakeBoost = WakeBoost != 0U ? 1U : 0U;
+    }
+
+    return Task->Priority + (UINT32)AgeBoost + WakeBoost;
 }
 
 UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
@@ -60,12 +82,14 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
     UINT32 StartIndex;
     UINT64 BestWaitTicks;
     BOOLEAN SelectedByAging;
+    BOOLEAN SelectedByWakeBoost;
 
     State = LosKernelSchedulerState();
     BestIndex = LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX;
     BestPriority = 0U;
     BestWaitTicks = 0ULL;
     SelectedByAging = 0U;
+    SelectedByWakeBoost = 0U;
     StartIndex = State->LastSelectedIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX
         ? 0U
         : (UINT32)((State->LastSelectedIndex + 1U) % LOS_KERNEL_SCHEDULER_MAX_TASKS);
@@ -76,6 +100,7 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
         const LOS_KERNEL_SCHEDULER_TASK *Task;
         UINT32 EffectivePriority;
         UINT64 WaitTicks;
+        BOOLEAN UsedWakeBoost;
 
         Index = (UINT32)((StartIndex + Offset) % LOS_KERNEL_SCHEDULER_MAX_TASKS);
         Task = &State->Tasks[Index];
@@ -84,7 +109,7 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
             continue;
         }
 
-        EffectivePriority = GetTaskEffectivePriority(State, Task, &WaitTicks);
+        EffectivePriority = GetTaskEffectivePriority(State, Task, &WaitTicks, &UsedWakeBoost);
         if (BestIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX ||
             EffectivePriority > BestPriority ||
             (EffectivePriority == BestPriority && WaitTicks > BestWaitTicks))
@@ -93,12 +118,17 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
             BestPriority = EffectivePriority;
             BestWaitTicks = WaitTicks;
             SelectedByAging = EffectivePriority > Task->Priority ? 1U : 0U;
+            SelectedByWakeBoost = UsedWakeBoost;
         }
     }
 
     if (BestIndex != LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX && SelectedByAging != 0U)
     {
         State->StarvationReliefDispatchCount += 1ULL;
+    }
+    if (BestIndex != LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX && SelectedByWakeBoost != 0U)
+    {
+        State->WakePriorityDispatchCount += 1ULL;
     }
 
     if (BestIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX)

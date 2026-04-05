@@ -1,5 +1,11 @@
 # Scheduler
 
+## 0.2.12 update
+
+- Woken scheduler tasks now get a short-lived wake dispatch boost so freshly resumed work is less likely to sit behind the busy worker for many extra quanta after its wake tick arrives.
+- Added `wakeups` and `wake-dispatch` diagnostics plus per-task `last-wake` tracing, so the serial log can now show whether a task woke and whether the selector chose it because of the wake boost.
+- This should make the transient worker path easier to prove end-to-end: enter -> sleep -> wake -> resume -> exit -> reap.
+
 ## 0.2.11 update
 
 - Scheduler context switching now preserves the full general-purpose register set, not just the callee-saved subset.

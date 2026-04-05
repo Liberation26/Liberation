@@ -278,6 +278,7 @@ void LosKernelSchedulerEnter(void)
 
         Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING;
         Task->ReadySinceTick = 0ULL;
+        Task->LastWakeTick = 0ULL;
         Task->DispatchCount += 1ULL;
         Task->LastRunTick = State->TickCount;
         Task->RemainingQuantumTicks = Task->QuantumTicks == 0U ? 1U : Task->QuantumTicks;
