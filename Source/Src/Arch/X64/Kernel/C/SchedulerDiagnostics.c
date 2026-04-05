@@ -32,6 +32,12 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteUnsigned(Process->AddressSpaceId);
     LosKernelSerialWriteText(" address-space-object=");
     LosKernelSerialWriteHex64(Process->AddressSpaceObjectPhysicalAddress);
+    LosKernelSerialWriteText(" dispatches=");
+    LosKernelSerialWriteUnsigned(Process->DispatchCount);
+    LosKernelSerialWriteText(" total-ticks=");
+    LosKernelSerialWriteUnsigned(Process->TotalTicks);
+    LosKernelSerialWriteText(" last-run=");
+    LosKernelSerialWriteUnsigned(Process->LastRunTick);
     LosKernelSerialWriteText(" root=");
     LosKernelSerialWriteHex64(Process->RootTablePhysicalAddress);
     LosKernelSerialWriteText(" inherited-root=");
@@ -78,6 +84,10 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->StackBaseVirtualAddress);
     LosKernelSerialWriteText(" stack-top=");
     LosKernelSerialWriteHex64(Task->StackTopVirtualAddress);
+    LosKernelSerialWriteText(" dispatches=");
+    LosKernelSerialWriteUnsigned(Task->DispatchCount);
+    LosKernelSerialWriteText(" total-ticks=");
+    LosKernelSerialWriteUnsigned(Task->TotalTicks);
     LosKernelSerialWriteText(" ready-since=");
     LosKernelSerialWriteUnsigned(Task->ReadySinceTick);
     LosKernelSerialWriteText(" last-wake=");
@@ -147,6 +157,10 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
     LosKernelSerialWriteText(" resume-window=");
     LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
+    LosKernelSerialWriteText(" idle-ticks=");
+    LosKernelSerialWriteUnsigned(State->IdleTicks);
+    LosKernelSerialWriteText(" busy-ticks=");
+    LosKernelSerialWriteUnsigned(State->BusyTicks);
     LosKernelSerialWriteText(" stack-pool-ready=");
     LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
     LosKernelSerialWriteText(" stack-pool-used=");
@@ -220,6 +234,10 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
             LosKernelSerialWriteText(" resume-window=");
             LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
+            LosKernelSerialWriteText(" idle-ticks=");
+            LosKernelSerialWriteUnsigned(State->IdleTicks);
+            LosKernelSerialWriteText(" busy-ticks=");
+            LosKernelSerialWriteUnsigned(State->BusyTicks);
             LosKernelSerialWriteText(" stack-pool-ready=");
             LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
             LosKernelSerialWriteText(" stack-pool-used=");

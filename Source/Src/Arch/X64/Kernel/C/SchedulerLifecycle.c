@@ -764,6 +764,9 @@ BOOLEAN LosKernelSchedulerCreateProcess(
         Process->AddressSpaceObjectPhysicalAddress = 0ULL;
         Process->CreatedTick = State->TickCount;
         Process->TerminatedTick = 0ULL;
+        Process->DispatchCount = 0ULL;
+        Process->TotalTicks = 0ULL;
+        Process->LastRunTick = 0ULL;
         Process->ExitStatus = 0ULL;
         Process->CleanupPending = 0U;
         Process->Reserved0 = 0U;

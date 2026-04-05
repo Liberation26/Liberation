@@ -20,6 +20,35 @@ static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void)
     return &State->Tasks[State->CurrentTaskIndex];
 }
 
+static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || ProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID)
+    {
+        return 0;
+    }
+
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_PROCESSES; ++Index)
+    {
+        LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+        Process = &State->Processes[Index];
+        if (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED)
+        {
+            continue;
+        }
+        if (Process->ProcessId == ProcessId)
+        {
+            return Process;
+        }
+    }
+
+    return 0;
+}
+
 static const LOS_KERNEL_SCHEDULER_PROCESS *FindProcessForDispatch(UINT64 ProcessId)
 {
     const LOS_KERNEL_SCHEDULER_STATE *State;
@@ -98,6 +127,7 @@ void LosKernelSchedulerOnTimerTick(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
     LOS_KERNEL_SCHEDULER_TASK *Task;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
 
     State = LosKernelSchedulerState();
     State->TickCount += 1ULL;
@@ -115,6 +145,19 @@ void LosKernelSchedulerOnTimerTick(void)
     }
 
     Task->TotalTicks += 1ULL;
+    Process = FindProcessByIdMutable(Task->ProcessId);
+    if (Process != 0)
+    {
+        Process->TotalTicks += 1ULL;
+    }
+    if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) != 0U)
+    {
+        State->IdleTicks += 1ULL;
+    }
+    else
+    {
+        State->BusyTicks += 1ULL;
+    }
     if (Task->RemainingQuantumTicks > 0U)
     {
         Task->RemainingQuantumTicks -= 1U;
@@ -267,8 +310,11 @@ void LosKernelSchedulerEnter(void)
             LosKernelHaltForever();
         }
 
+        LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
         Task = &State->Tasks[SelectedIndex];
-        LosKernelSchedulerActivateProcessAddressSpace(FindProcessForDispatch(Task->ProcessId));
+        Process = FindProcessByIdMutable(Task->ProcessId);
+        LosKernelSchedulerActivateProcessAddressSpace(Process);
         State->CurrentTaskIndex = SelectedIndex;
         State->CurrentTaskId = Task->TaskId;
         State->CurrentProcessId = Task->ProcessId;
@@ -280,6 +326,11 @@ void LosKernelSchedulerEnter(void)
         Task->ReadySinceTick = 0ULL;
         Task->DispatchCount += 1ULL;
         Task->LastRunTick = State->TickCount;
+        if (Process != 0)
+        {
+            Process->DispatchCount += 1ULL;
+            Process->LastRunTick = State->TickCount;
+        }
         Task->RemainingQuantumTicks = Task->QuantumTicks == 0U ? 1U : Task->QuantumTicks;
         if (Task->WakeDispatchPending != 0U)
         {

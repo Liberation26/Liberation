@@ -1,3 +1,7 @@
+## 0.2.20
+
+Added first-stage scheduler runtime accounting. The scheduler now records per-task and per-process dispatch counts plus consumed run ticks, and the scheduler heartbeat/state diagnostics now expose scheduler-wide `idle-ticks` and `busy-ticks`. That makes the serial log useful for answering whether time is actually being spent in the idle thread, the busy worker, or transient work before the first user-mode transition path is added.
+
 ## 0.2.19
 
 Fixed the direct-claim scheduler stack-pool release path. Reaped direct-claim tasks were clearing the generic bootstrap-fallback slot bitmap first because both paths reused the same slot field, which left the direct-claim slot marked busy and caused `stack-pool-used` to climb even though the transient worker had already been reaped. Cleanup now releases slots according to the recorded stack source, so direct-claim stack-pool accounting drops back after reap and the pool can be reused without drifting toward false exhaustion.
