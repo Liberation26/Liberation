@@ -16,6 +16,10 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteText(Prefix != 0 ? Prefix : "Scheduler task");
     LosKernelSerialWriteText(": id=");
     LosKernelSerialWriteUnsigned(Task->TaskId);
+    LosKernelSerialWriteText(" owner=");
+    LosKernelSerialWriteUnsigned(Task->OwnerTaskId);
+    LosKernelSerialWriteText(" generation=");
+    LosKernelSerialWriteUnsigned(Task->Generation);
     LosKernelSerialWriteText(" name=");
     WriteTaskName(Task->Name);
     LosKernelSerialWriteText(" state=");
@@ -30,6 +34,10 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->StackTopVirtualAddress);
     LosKernelSerialWriteText(" preemptions=");
     LosKernelSerialWriteUnsigned(Task->PreemptionCount);
+    LosKernelSerialWriteText(" cleanup=");
+    LosKernelSerialWriteUnsigned(Task->CleanupPending);
+    LosKernelSerialWriteText(" exit=");
+    LosKernelSerialWriteUnsigned(Task->ExitStatus);
     LosKernelSerialWriteText("\n");
 }
 
@@ -53,6 +61,12 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->InterruptPreemptionCount);
     LosKernelSerialWriteText(" tasks=");
     LosKernelSerialWriteUnsigned(State->TaskCount);
+    LosKernelSerialWriteText(" created=");
+    LosKernelSerialWriteUnsigned(State->CreatedTaskCount);
+    LosKernelSerialWriteText(" terminated=");
+    LosKernelSerialWriteUnsigned(State->TerminatedTaskCount);
+    LosKernelSerialWriteText(" reaped=");
+    LosKernelSerialWriteUnsigned(State->ReapedTaskCount);
     LosKernelSerialWriteText(" current=");
     LosKernelSerialWriteUnsigned(State->CurrentTaskId);
     LosKernelSerialWriteText("\n");
@@ -88,11 +102,85 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->DispatchCount);
             LosKernelSerialWriteText(" tasks=");
             LosKernelSerialWriteUnsigned(State->TaskCount);
+            LosKernelSerialWriteText(" created=");
+            LosKernelSerialWriteUnsigned(State->CreatedTaskCount);
+            LosKernelSerialWriteText(" terminated=");
+            LosKernelSerialWriteUnsigned(State->TerminatedTaskCount);
+            LosKernelSerialWriteText(" reaped=");
+            LosKernelSerialWriteUnsigned(State->ReapedTaskCount);
             LosKernelSerialWriteText("\n");
         }
 
         LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_HEARTBEAT_PERIOD_TICKS);
     }
+}
+
+void LosKernelSchedulerLifecycleThread(void *Context)
+{
+    UINT64 Sequence;
+
+    (void)Context;
+    Sequence = 0ULL;
+    LosKernelSerialWriteText("[Kernel] Scheduler lifecycle manager entered.\n");
+
+    for (;;)
+    {
+        UINT64 TaskId;
+
+        Sequence += 1ULL;
+        if (LosKernelSchedulerCreateTask(
+                "EphemeralWorker",
+                0U,
+                LOS_KERNEL_SCHEDULER_EPHEMERAL_PRIORITY,
+                1U,
+                0ULL,
+                LosKernelSchedulerEphemeralThread,
+                (void *)(UINTN)Sequence,
+                &TaskId))
+        {
+            LosKernelSerialWriteText("[Kernel] Scheduler lifecycle spawned ephemeral task id=");
+            LosKernelSerialWriteUnsigned(TaskId);
+            LosKernelSerialWriteText(" sequence=");
+            LosKernelSerialWriteUnsigned(Sequence);
+            LosKernelSerialWriteText("\n");
+        }
+        else
+        {
+            LosKernelSerialWriteText("[Kernel] Scheduler lifecycle could not spawn ephemeral task sequence=");
+            LosKernelSerialWriteUnsigned(Sequence);
+            LosKernelSerialWriteText("\n");
+        }
+
+        LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS);
+    }
+}
+
+void LosKernelSchedulerEphemeralThread(void *Context)
+{
+    UINT64 Sequence;
+    const LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    Sequence = (UINT64)(UINTN)Context;
+    Task = LosKernelSchedulerGetCurrentTask();
+    LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task entered id=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+    LosKernelSerialWriteText(" owner=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->OwnerTaskId : 0ULL);
+    LosKernelSerialWriteText(" sequence=");
+    LosKernelSerialWriteUnsigned(Sequence);
+    LosKernelSerialWriteText("\n");
+
+    LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_EPHEMERAL_LIFETIME_TICKS);
+
+    LosKernelSerialWriteText("[Kernel] Scheduler ephemeral task exiting id=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+    LosKernelSerialWriteText(" sequence=");
+    LosKernelSerialWriteUnsigned(Sequence);
+    LosKernelSerialWriteText(" ticks=");
+    LosKernelSerialWriteUnsigned(LosKernelSchedulerGetTickCount());
+    LosKernelSerialWriteText("\n");
+    LosKernelSchedulerTerminateCurrent();
+    LosKernelHaltForever();
 }
 
 void LosKernelSchedulerBusyThread(void *Context)

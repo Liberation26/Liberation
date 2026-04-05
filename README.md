@@ -1,3 +1,10 @@
+Version 0.1.96
+
+- Added first-stage persistent task-object ownership and lifecycle bookkeeping to the kernel scheduler, including owner task id, generation, exit status, cleanup-pending state, and cumulative created/terminated/reaped counters.
+- Added deferred scheduler-side reclamation of terminated thread stacks and task slots, using the memory-manager free-frames path when a thread stack came from claimed frames and returning bootstrap fallback stacks back to the reserved early-boot pool.
+- Added a lifecycle-manager kernel thread plus short-lived ephemeral worker tasks so LOS now proves create -> run -> sleep -> terminate -> reclaim -> reuse under the live preemptive scheduler.
+- Updated `Docs/Kernel/Scheduler.md` and `ToDo.md` to reflect that kernel-thread lifetime cleanup is now in place and that user-mode transition work is next.
+
 Version 0.1.95
 
 - Added first-stage timer-driven scheduler preemption so the PIT interrupt can now force a running kernel thread back into the scheduler when its quantum expires.

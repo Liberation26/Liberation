@@ -1,4 +1,5 @@
 #include "SchedulerInternal.h"
+#include "MemoryManagerBootstrap.h"
 
 static LOS_KERNEL_SCHEDULER_STATE LosKernelSchedulerGlobalState;
 static UINT8 LosKernelSchedulerBootstrapStacks[LOS_KERNEL_SCHEDULER_MAX_TASKS][LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES] __attribute__((aligned(4096)));
@@ -26,12 +27,42 @@ static void ZeroBytes(void *Buffer, UINTN ByteCount)
     }
 }
 
+static UINT64 EnterSchedulerCriticalSection(void)
+{
+    UINT64 Flags;
+
+    __asm__ __volatile__("pushfq; popq %0" : "=r"(Flags) : : "memory");
+    __asm__ __volatile__("cli" : : : "memory");
+    return Flags;
+}
+
+static void LeaveSchedulerCriticalSection(UINT64 Flags)
+{
+    if ((Flags & 0x200ULL) != 0ULL)
+    {
+        __asm__ __volatile__("sti" : : : "memory");
+    }
+}
+
 static void WriteStackReturnAddress(UINT64 StackAddress, UINT64 ReturnAddress)
 {
     UINT64 *Pointer;
 
     Pointer = (UINT64 *)(UINTN)StackAddress;
     *Pointer = ReturnAddress;
+}
+
+static UINT64 GetCreatingOwnerTaskId(void)
+{
+    const LOS_KERNEL_SCHEDULER_TASK *CurrentTask;
+
+    CurrentTask = LosKernelSchedulerGetCurrentTask();
+    if (CurrentTask == 0)
+    {
+        return 0ULL;
+    }
+
+    return CurrentTask->TaskId;
 }
 
 static void InitializeTaskStackContext(LOS_KERNEL_SCHEDULER_TASK *Task, void *StackBase, UINT64 StackPhysicalAddress)
@@ -75,6 +106,7 @@ static BOOLEAN AllocateBootstrapKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Tas
             StackBase = &LosKernelSchedulerBootstrapStacks[Index][0];
             PhysicalAddress = 0ULL;
             LosX64TryTranslateKernelVirtualToPhysical((UINT64)(UINTN)StackBase, &PhysicalAddress);
+            Task->BootstrapStackSlot = Index;
             InitializeTaskStackContext(Task, StackBase, PhysicalAddress);
             LosKernelTraceOk("Kernel scheduler using bootstrap stack fallback.");
             return 1;
@@ -95,6 +127,7 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
         return 0;
     }
 
+    Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
     ZeroBytes(&ClaimRequest, sizeof(ClaimRequest));
     ZeroBytes(&ClaimResult, sizeof(ClaimResult));
     ClaimRequest.PageCount = LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES;
@@ -125,6 +158,52 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
     return AllocateBootstrapKernelThreadStack(Task);
 }
 
+static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    if (Task == 0)
+    {
+        return;
+    }
+
+    if (Task->BootstrapStackSlot != LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT &&
+        Task->BootstrapStackSlot < LOS_KERNEL_SCHEDULER_MAX_TASKS)
+    {
+        LosKernelSchedulerBootstrapStackUsed[Task->BootstrapStackSlot] = 0U;
+        Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
+    }
+    else if (Task->StackPhysicalAddress != 0ULL && Task->StackSizeBytes != 0ULL)
+    {
+        LOS_X64_FREE_FRAMES_REQUEST FreeRequest;
+        LOS_X64_FREE_FRAMES_RESULT FreeResult;
+
+        ZeroBytes(&FreeRequest, sizeof(FreeRequest));
+        ZeroBytes(&FreeResult, sizeof(FreeResult));
+        FreeRequest.PhysicalAddress = Task->StackPhysicalAddress;
+        FreeRequest.PageCount = Task->StackSizeBytes / 4096ULL;
+
+        if (LosIsMemoryManagerBootstrapReady() != 0U)
+        {
+            LosMemoryManagerSendFreeFrames(&FreeRequest, &FreeResult);
+            if (FreeResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS)
+            {
+                LosKernelTraceFail("Kernel scheduler could not free terminated thread stack frames.");
+                LosKernelTraceUnsigned("Kernel scheduler stack-free status: ", FreeResult.Status);
+                LosKernelTraceHex64("Kernel scheduler stack-free base: ", FreeRequest.PhysicalAddress);
+            }
+        }
+        else
+        {
+            LosKernelTraceFail("Kernel scheduler could not free terminated thread stack because the memory manager bootstrap is not ready.");
+        }
+    }
+
+    Task->StackPhysicalAddress = 0ULL;
+    Task->StackBaseVirtualAddress = 0ULL;
+    Task->StackTopVirtualAddress = 0ULL;
+    Task->StackSizeBytes = 0ULL;
+    ZeroBytes(&Task->ExecutionContext, sizeof(Task->ExecutionContext));
+}
+
 BOOLEAN LosKernelSchedulerCreateTask(
     const char *Name,
     UINT32 Flags,
@@ -137,7 +216,9 @@ BOOLEAN LosKernelSchedulerCreateTask(
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
     UINT32 Index;
-    LOS_KERNEL_SCHEDULER_TASK *Task;
+    LOS_KERNEL_SCHEDULER_TASK *CreatedTask;
+    UINT64 CriticalSectionFlags;
+    UINT64 LocalTaskId;
 
     if (TaskId != 0)
     {
@@ -148,17 +229,24 @@ BOOLEAN LosKernelSchedulerCreateTask(
         return 0;
     }
 
+    CreatedTask = 0;
+    LocalTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
     State = LosKernelSchedulerState();
     for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_TASKS; ++Index)
     {
         if (State->Tasks[Index].State == LOS_KERNEL_SCHEDULER_TASK_STATE_UNUSED)
         {
+            LOS_KERNEL_SCHEDULER_TASK *Task;
+
             Task = &State->Tasks[Index];
             ZeroBytes(Task, sizeof(*Task));
             Task->Signature = LOS_KERNEL_SCHEDULER_SIGNATURE;
             Task->Version = LOS_KERNEL_SCHEDULER_VERSION;
             Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
             Task->TaskId = State->NextTaskId;
+            Task->OwnerTaskId = GetCreatingOwnerTaskId();
+            Task->Generation = State->CreatedTaskCount + 1ULL;
             Task->Name = Name;
             Task->Flags = Flags;
             Task->Priority = Priority;
@@ -171,27 +259,69 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->LastRunTick = 0ULL;
             Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
             Task->PreemptionCount = 0ULL;
+            Task->ExitStatus = 0ULL;
+            Task->CleanupPending = 0U;
+            Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
             Task->ThreadRoutine = ThreadRoutine;
             Task->Context = Context;
 
             if (!AllocateKernelThreadStack(Task))
             {
                 ZeroBytes(Task, sizeof(*Task));
-                return 0;
+                break;
             }
 
             State->TaskCount += 1U;
             State->NextTaskId += 1ULL;
-            if (TaskId != 0)
-            {
-                *TaskId = Task->TaskId;
-            }
-            LosKernelSchedulerTraceTask("Registered scheduler task", Task);
-            return 1;
+            State->CreatedTaskCount += 1ULL;
+            LocalTaskId = Task->TaskId;
+            CreatedTask = Task;
+            break;
         }
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    if (CreatedTask != 0)
+    {
+        if (TaskId != 0)
+        {
+            *TaskId = LocalTaskId;
+        }
+        LosKernelSchedulerTraceTask("Registered scheduler task", CreatedTask);
+        return 1;
     }
 
     return 0;
+}
+
+void LosKernelSchedulerCleanupTerminatedTasks(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+    UINT64 CriticalSectionFlags;
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_TASKS; ++Index)
+    {
+        LOS_KERNEL_SCHEDULER_TASK *Task;
+
+        Task = &State->Tasks[Index];
+        if (Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED || Task->CleanupPending == 0U)
+        {
+            continue;
+        }
+
+        LosKernelSchedulerTraceTask("Reclaimed scheduler task", Task);
+        ReleaseTaskStackResources(Task);
+        if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) == 0U && State->TaskCount > 0U)
+        {
+            State->TaskCount -= 1U;
+        }
+        State->ReapedTaskCount += 1ULL;
+        ZeroBytes(Task, sizeof(*Task));
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
 }
 
 void LosKernelSchedulerInitialize(void)
@@ -201,6 +331,7 @@ void LosKernelSchedulerInitialize(void)
 
     State = LosKernelSchedulerState();
     ZeroBytes(State, sizeof(*State));
+    ZeroBytes(&LosKernelSchedulerBootstrapStackUsed[0], sizeof(LosKernelSchedulerBootstrapStackUsed));
     State->Signature = LOS_KERNEL_SCHEDULER_SIGNATURE;
     State->Version = LOS_KERNEL_SCHEDULER_VERSION;
     State->Online = 0U;
@@ -215,6 +346,9 @@ void LosKernelSchedulerInitialize(void)
     State->InScheduler = 0U;
     State->Reserved0 = 0U;
     State->InterruptPreemptionCount = 0ULL;
+    State->CreatedTaskCount = 0ULL;
+    State->TerminatedTaskCount = 0ULL;
+    State->ReapedTaskCount = 0ULL;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
 
@@ -250,6 +384,20 @@ void LosKernelSchedulerRegisterBootstrapTasks(void)
             &TaskId))
     {
         LosKernelTraceFail("Kernel scheduler could not create heartbeat task.");
+        LosKernelHaltForever();
+    }
+
+    if (!LosKernelSchedulerCreateTask(
+            "LifecycleManager",
+            LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC,
+            LOS_KERNEL_SCHEDULER_LIFECYCLE_PRIORITY,
+            1U,
+            LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS,
+            LosKernelSchedulerLifecycleThread,
+            0,
+            &TaskId))
+    {
+        LosKernelTraceFail("Kernel scheduler could not create lifecycle manager task.");
         LosKernelHaltForever();
     }
 

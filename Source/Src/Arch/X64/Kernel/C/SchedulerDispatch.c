@@ -50,7 +50,6 @@ void LosKernelSchedulerOnTimerTick(void)
     }
 }
 
-
 void LosKernelSchedulerPreemptIfNeededFromInterrupt(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -130,13 +129,17 @@ void LosKernelSchedulerTerminateCurrent(void)
         LosKernelTraceFail("Kernel scheduler terminate requested without a current task.");
         LosKernelHaltForever();
     }
+    if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) != 0U)
+    {
+        LosKernelTraceFail("Kernel scheduler idle task attempted to terminate.");
+        LosKernelHaltForever();
+    }
 
     Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED;
     Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED;
-    if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_IDLE) == 0U && State->TaskCount > 0U)
-    {
-        State->TaskCount -= 1U;
-    }
+    Task->ExitStatus = 0ULL;
+    Task->CleanupPending = 1U;
+    State->TerminatedTaskCount += 1ULL;
     State->ReschedulePending = 1U;
     LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
     LosKernelTraceFail("Kernel scheduler terminate path returned unexpectedly.");
@@ -176,6 +179,7 @@ void LosKernelSchedulerEnter(void)
         LOS_KERNEL_SCHEDULER_TASK *Task;
 
         State->InScheduler = 1U;
+        LosKernelSchedulerCleanupTerminatedTasks();
         LosKernelSchedulerWakeDueTasks();
         SelectedIndex = LosKernelSchedulerSelectNextTaskIndex();
         if (SelectedIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX)
