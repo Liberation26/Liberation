@@ -991,6 +991,109 @@ static BOOLEAN RebuildCurrentPageFrameDatabase(LOS_MEMORY_MANAGER_MEMORY_VIEW *V
     return RefreshInternalDescriptorsFromCurrentDatabase(View);
 }
 
+BOOLEAN LosMemoryManagerServiceClaimTrackedFrames(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    UINT64 PageCount,
+    UINT64 AlignmentBytes,
+    UINT32 Flags,
+    UINT32 Owner,
+    UINT32 Usage,
+    UINT64 *BaseAddress)
+{
+    LOS_MEMORY_MANAGER_MEMORY_VIEW *View;
+    UINT64 MinimumPhysicalAddress;
+    UINT64 MaximumPhysicalAddress;
+    UINT64 RequiredBytes;
+    UINT64 ChosenBaseAddress;
+    UINT64 EffectiveAlignment;
+    UINT32 EffectiveOwner;
+
+    if (BaseAddress == 0)
+    {
+        return 0;
+    }
+
+    *BaseAddress = 0ULL;
+    if (State == 0 || PageCount == 0ULL || State->MemoryView.Ready == 0U)
+    {
+        return 0;
+    }
+
+    RequiredBytes = PageCount * 4096ULL;
+    if (RequiredBytes == 0ULL || RequiredBytes / 4096ULL != PageCount)
+    {
+        return 0;
+    }
+
+    EffectiveAlignment = AlignmentBytes == 0ULL ? 4096ULL : AlignmentBytes;
+    if (EffectiveAlignment < 4096ULL || (EffectiveAlignment & 0xFFFULL) != 0ULL || !IsPowerOfTwo(EffectiveAlignment))
+    {
+        return 0;
+    }
+
+    View = &State->MemoryView;
+    MinimumPhysicalAddress = 0x1000ULL;
+    MaximumPhysicalAddress = 0ULL;
+    if (View->PageFrameDatabaseEntryCount != 0U)
+    {
+        const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *LastEntry;
+
+        LastEntry = &View->PageFrameDatabase[View->PageFrameDatabaseEntryCount - 1U];
+        MaximumPhysicalAddress = LastEntry->BaseAddress + (LastEntry->PageCount * 4096ULL);
+    }
+    if ((Flags & LOS_X64_CLAIM_FRAMES_FLAG_BELOW_4G) != 0U && MaximumPhysicalAddress > 0x100000000ULL)
+    {
+        MaximumPhysicalAddress = 0x100000000ULL;
+    }
+    if (MaximumPhysicalAddress <= MinimumPhysicalAddress)
+    {
+        return 0;
+    }
+
+    if (!FindClaimableContiguousRange(
+            View->PageFrameDatabase,
+            View->PageFrameDatabaseEntryCount,
+            MinimumPhysicalAddress,
+            MaximumPhysicalAddress,
+            EffectiveAlignment,
+            PageCount,
+            &ChosenBaseAddress))
+    {
+        return 0;
+    }
+
+    EffectiveOwner = Owner == LOS_X64_PHYSICAL_FRAME_RESERVED_NONE ? LOS_X64_MEMORY_REGION_OWNER_CLAIMED : Owner;
+    if (!InsertDynamicAllocation(View, ChosenBaseAddress, PageCount, Usage, EffectiveOwner) ||
+        !RebuildCurrentPageFrameDatabase(View))
+    {
+        return 0;
+    }
+
+    *BaseAddress = ChosenBaseAddress;
+    return 1;
+}
+
+BOOLEAN LosMemoryManagerServiceFreeTrackedFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT64 PhysicalAddress, UINT64 PageCount)
+{
+    LOS_MEMORY_MANAGER_MEMORY_VIEW *View;
+
+    if (State == 0 || PageCount == 0ULL || State->MemoryView.Ready == 0U)
+    {
+        return 0;
+    }
+    if ((PhysicalAddress & 0xFFFULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    View = &State->MemoryView;
+    if (!RemoveDynamicAllocationRange(View, PhysicalAddress, PageCount))
+    {
+        return 0;
+    }
+    return RebuildCurrentPageFrameDatabase(View);
+}
+
 static BOOLEAN IngestNormalizedRegionTable(LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT64 *Detail)
 {
     LOS_MEMORY_MANAGER_MEMORY_VIEW *View;
@@ -1461,8 +1564,6 @@ void LosMemoryManagerServiceFreeFrames(
     const LOS_X64_FREE_FRAMES_REQUEST *Request,
     LOS_X64_FREE_FRAMES_RESULT *Result)
 {
-    LOS_MEMORY_MANAGER_MEMORY_VIEW *View;
-
     if (Result == 0)
     {
         return;
@@ -1487,15 +1588,9 @@ void LosMemoryManagerServiceFreeFrames(
         return;
     }
 
-    View = &State->MemoryView;
-    if (!RemoveDynamicAllocationRange(View, Request->PhysicalAddress, Request->PageCount))
+    if (!LosMemoryManagerServiceFreeTrackedFrames(State, Request->PhysicalAddress, Request->PageCount))
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
-        return;
-    }
-    if (!RebuildCurrentPageFrameDatabase(View))
-    {
-        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
         return;
     }
 

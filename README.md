@@ -1,3 +1,9 @@
+Version 0.1.78
+
+- Fixed the memory-manager service link failure by adding `Source/Src/Arch/X64/Services/MemoryManager/C/MemoryManagerMemory.c` to `ChangedFiles`.
+- The new address-space code depends on `LosMemoryManagerServiceClaimTrackedFrames` and `LosMemoryManagerServiceFreeTrackedFrames`, and those functions are defined in `MemoryManagerMemory.c`.
+- Verified in the container that the full memory-manager service source set now compiles and links successfully into `MEMORYMGR.ELF`.
+
 Version 0.1.77
 
 - Fixed the service build break by adding `Source/Src/Arch/X64/Services/MemoryManager/H/MemoryManagerAddressSpaceInternal.h` to `ChangedFiles`.
