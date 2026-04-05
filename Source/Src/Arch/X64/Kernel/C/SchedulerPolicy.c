@@ -98,6 +98,26 @@ static BOOLEAN HasPendingWakeDispatch(const LOS_KERNEL_SCHEDULER_STATE *State)
     return 0U;
 }
 
+static BOOLEAN IsTaskDispatchEligible(LOS_KERNEL_SCHEDULER_STATE *State, const LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    if (Task == 0)
+    {
+        return 0U;
+    }
+
+    if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) != 0U &&
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED)
+    {
+        if (State != 0)
+        {
+            State->UserTransitionDispatchSkipCount += 1ULL;
+        }
+        return 0U;
+    }
+
+    return 1U;
+}
+
 UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -132,6 +152,10 @@ UINT32 LosKernelSchedulerSelectNextTaskIndex(void)
         Index = (UINT32)((StartIndex + Offset) % LOS_KERNEL_SCHEDULER_MAX_TASKS);
         Task = &State->Tasks[Index];
         if (Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_READY)
+        {
+            continue;
+        }
+        if (IsTaskDispatchEligible(State, Task) == 0U)
         {
             continue;
         }

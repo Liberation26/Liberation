@@ -1089,6 +1089,84 @@ BOOLEAN LosKernelSchedulerPrepareUserTransitionScaffold(void)
     return 1;
 }
 
+BOOLEAN LosKernelSchedulerValidateUserTransitionScaffold(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+    UINT64 CriticalSectionFlags;
+    BOOLEAN Validated;
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || State->UserTransitionScaffoldReady == 0U)
+    {
+        return 0;
+    }
+
+    if (State->UserTransitionScaffoldProcessId == LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID ||
+        State->UserTransitionScaffoldTaskId == LOS_KERNEL_SCHEDULER_INVALID_TASK_ID)
+    {
+        return 0;
+    }
+
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    if (Process == 0 || Task == 0)
+    {
+        return 0;
+    }
+
+    if (Process->AddressSpaceId == 0ULL ||
+        Process->RootTablePhysicalAddress == LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS ||
+        Process->UserEntryVirtualAddress == 0ULL ||
+        Process->UserStackTopVirtualAddress == 0ULL ||
+        Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
+        Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
+        Task->UserInstructionPointer == 0ULL ||
+        Task->UserStackPointer == 0ULL)
+    {
+        return 0;
+    }
+
+    if (Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_VALIDATED &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_VALIDATED)
+    {
+        return 1;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    Validated = 0U;
+    if (Process != 0 && Task != 0 &&
+        Process->AddressSpaceId != 0ULL &&
+        Process->RootTablePhysicalAddress != LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS &&
+        Process->UserEntryVirtualAddress != 0ULL &&
+        Process->UserStackTopVirtualAddress != 0ULL &&
+        Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
+        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
+        Task->UserInstructionPointer != 0ULL &&
+        Task->UserStackPointer != 0ULL)
+    {
+        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_VALIDATED;
+        Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_VALIDATED;
+        State->UserTransitionValidatedCount += 1ULL;
+        Validated = 1U;
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    if (Validated != 0U)
+    {
+        LosKernelTraceOk("Scheduler user-transition scaffold validated.");
+        LosKernelSchedulerTraceProcess("Validated scheduler user-transition scaffold process", Process);
+        LosKernelSchedulerTraceTask("Validated scheduler user-transition scaffold task", Task);
+        return 1;
+    }
+
+    return 0;
+}
+
 void LosKernelSchedulerCleanupTerminatedTasks(void)
 {
     LOS_KERNEL_SCHEDULER_STATE *State;
@@ -1223,6 +1301,8 @@ void LosKernelSchedulerInitialize(void)
     State->IdleTicks = 0ULL;
     State->BusyTicks = 0ULL;
     State->UserTransitionPreparedCount = 0ULL;
+    State->UserTransitionValidatedCount = 0ULL;
+    State->UserTransitionDispatchSkipCount = 0ULL;
     State->UserTransitionScaffoldProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
     State->UserTransitionScaffoldTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
     State->DirectClaimStackPoolPhysicalAddress = 0ULL;

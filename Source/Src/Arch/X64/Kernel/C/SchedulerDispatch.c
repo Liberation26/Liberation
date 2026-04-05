@@ -404,6 +404,17 @@ void LosKernelSchedulerEnter(void)
         LOS_KERNEL_SCHEDULER_PROCESS *Process;
 
         Task = &State->Tasks[SelectedIndex];
+        if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) != 0U &&
+            Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED)
+        {
+            Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED;
+            Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION;
+            Task->ReadySinceTick = 0ULL;
+            Task->WakeDispatchPending = 0U;
+            Task->ResumeBoostTicks = 0U;
+            State->UserTransitionDispatchSkipCount += 1ULL;
+            continue;
+        }
         Process = FindProcessByIdMutable(Task->ProcessId);
         LosKernelSchedulerActivateProcessAddressSpace(Process);
         State->CurrentTaskIndex = SelectedIndex;

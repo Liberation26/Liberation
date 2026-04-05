@@ -199,6 +199,10 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReady);
     LosKernelSerialWriteText(" user-scaffold-prepared=");
     LosKernelSerialWriteUnsigned(State->UserTransitionPreparedCount);
+    LosKernelSerialWriteText(" user-scaffold-validated=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionValidatedCount);
+    LosKernelSerialWriteText(" user-dispatch-skip=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
     LosKernelSerialWriteText(" user-scaffold-proc=");
     LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldProcessId);
     LosKernelSerialWriteText(" user-scaffold-task=");
@@ -290,6 +294,10 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReady);
             LosKernelSerialWriteText(" user-scaffold-prepared=");
             LosKernelSerialWriteUnsigned(State->UserTransitionPreparedCount);
+            LosKernelSerialWriteText(" user-scaffold-validated=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionValidatedCount);
+            LosKernelSerialWriteText(" user-dispatch-skip=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
             LosKernelSerialWriteText(" user-scaffold-proc=");
             LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldProcessId);
             LosKernelSerialWriteText(" user-scaffold-task=");

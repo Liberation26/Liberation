@@ -38,6 +38,7 @@ BOOLEAN LosKernelSchedulerMarkProcessTerminated(
 const LOS_KERNEL_SCHEDULER_PROCESS *LosKernelSchedulerGetCurrentProcess(void);
 BOOLEAN LosKernelSchedulerHasActiveTransientProcess(void);
 BOOLEAN LosKernelSchedulerPrepareUserTransitionScaffold(void);
+BOOLEAN LosKernelSchedulerValidateUserTransitionScaffold(void);
 void LosKernelSchedulerCleanupTerminatedProcesses(void);
 void LosKernelSchedulerBindPendingProcessAddressSpaces(void);
 BOOLEAN LosKernelSchedulerCreateTask(
