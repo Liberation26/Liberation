@@ -26,6 +26,7 @@
 #define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS 0x000000007FFF0000ULL
 #define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_RFLAGS 0x0000000000000202ULL
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME_STACK_OFFSET_BYTES 128ULL
+#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_CHAIN_STACK_OFFSET_BYTES 48ULL
 
 typedef struct __attribute__((packed))
 {
@@ -57,6 +58,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldDescriptorReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldFrameReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldTrampolineReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void);
+BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void);
 BOOLEAN LosKernelSchedulerGuardUserTransitionScaffold(void);

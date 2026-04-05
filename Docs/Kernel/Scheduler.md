@@ -1,3 +1,5 @@
+Added an explicit **chain-ready** stage after **bridge-ready** for the user-transition scaffold. The scheduler now stages a dedicated non-live dispatch chain on the blocked scaffold task's kernel stack, records that prepared chain stack pointer as `user-chain-sp` on the scaffold process/task objects, and exposes `user-scaffold-chain-ready` in heartbeat output. The live gate now closes only after that chain metadata is present, so the future real ring-transition path has a preserved bridge -> kernel-entry stack chain ready before anything can be marked live.
+
 # 0.2.33
 
 Added an explicit **trampoline-ready** stage after **frame-ready** for the user-transition scaffold. The scheduler now rewrites the blocked scaffold task's first kernel return address to a dedicated non-live kernel-entry helper, records that address as `user-kentry` on both the scaffold process/task objects, and exposes `user-scaffold-trampoline-ready` in the heartbeat. The live gate now closes only after that trampoline metadata is present, so the future real ring-transition path has a dedicated kernel-entry landing point ready before anything can be marked live.

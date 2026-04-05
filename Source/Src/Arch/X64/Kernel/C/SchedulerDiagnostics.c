@@ -62,6 +62,8 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteHex64(Process->UserTransitionKernelEntryVirtualAddress);
     LosKernelSerialWriteText(" user-bridge=");
     LosKernelSerialWriteHex64(Process->UserTransitionBridgeVirtualAddress);
+    LosKernelSerialWriteText(" user-chain-sp=");
+    LosKernelSerialWriteHex64(Process->UserTransitionChainStackPointer);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Process->UserTransitionState);
     LosKernelSerialWriteText(" root=");
@@ -140,6 +142,8 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->UserTransitionKernelEntryVirtualAddress);
     LosKernelSerialWriteText(" user-bridge=");
     LosKernelSerialWriteHex64(Task->UserTransitionBridgeVirtualAddress);
+    LosKernelSerialWriteText(" user-chain-sp=");
+    LosKernelSerialWriteHex64(Task->UserTransitionChainStackPointer);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Task->UserTransitionState);
     LosKernelSerialWriteText(" last-wake=");
@@ -239,6 +243,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionTrampolineReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-bridge-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionBridgeReadyCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-scaffold-chain-ready=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionChainReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-live=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -356,6 +362,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionTrampolineReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-bridge-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionBridgeReadyCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-scaffold-chain-ready=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionChainReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-live=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -429,6 +437,10 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         else if (LosKernelSchedulerState()->UserTransitionBridgeReadyCount == 0ULL)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady();
+        }
+        else if (LosKernelSchedulerState()->UserTransitionChainReadyCount == 0ULL)
+        {
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldChainReady();
         }
         else if (LosKernelSchedulerState()->UserTransitionLiveGateClosed == 0U &&
                  LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
