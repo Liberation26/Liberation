@@ -1,3 +1,9 @@
+Version 0.1.87
+
+- Fixed the split-memory packaging hole by adding `Source/Src/Arch/X64/Services/MemoryManager/C/MemoryManagerMemory.c` to `ChangedFiles` as the stub/marker file that replaces the old monolithic implementation during update-only syncs.
+- This prevents duplicate-symbol link failures where the repository still had the pre-split `MemoryManagerMemory.c` while also compiling the new `MemoryManagerMemoryDispatch.c` and `MemoryManagerMemoryLifecycle.c` units.
+- The duplicate symbols you saw (`LosMemoryManagerServiceBuildMemoryView`, `LosMemoryManagerServiceClaimTrackedFrames`, `LosMemoryManagerServiceFreeTrackedFrames`, `LosMemoryManagerServiceClaimFrames`, `LosMemoryManagerServiceQueryMemoryRegions`, `LosMemoryManagerServiceReserveFrames`, and `LosMemoryManagerServiceFreeFrames`) all come from that mixed-tree condition.
+
 Version 0.1.86
 
 - Fixed a packaging completeness error in 0.1.85 by adding `Source/Include/Public/MemoryManagerServiceAbi.h` to `ChangedFiles`, so update-only syncs now carry the `MapPages`, `UnmapPages`, and `ProtectPages` ABI request/result types needed by the split address-space dispatch code.
