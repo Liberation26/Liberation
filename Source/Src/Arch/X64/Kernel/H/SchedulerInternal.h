@@ -24,6 +24,7 @@
 #define LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES (LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES * 4096ULL)
 #define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS 0x0000000000400000ULL
 #define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS 0x000000007FFF0000ULL
+#define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_RFLAGS 0x0000000000000202ULL
 
 LOS_KERNEL_SCHEDULER_STATE *LosKernelSchedulerState(void);
 BOOLEAN LosKernelSchedulerCreateProcess(
@@ -42,6 +43,7 @@ BOOLEAN LosKernelSchedulerValidateUserTransitionScaffold(void);
 BOOLEAN LosKernelSchedulerArmUserTransitionScaffold(void);
 BOOLEAN LosKernelSchedulerRequestUserTransitionScaffold(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldEntryReady(void);
+BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldDescriptorReady(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void);
 BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed(void);
 BOOLEAN LosKernelSchedulerGuardUserTransitionScaffold(void);

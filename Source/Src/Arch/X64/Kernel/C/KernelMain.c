@@ -7,6 +7,8 @@
 #define LOS_SERIAL_COM1_BASE 0x3F8U
 #define LOS_GDT_CODE_FLAGS 0x9AU
 #define LOS_GDT_DATA_FLAGS 0x92U
+#define LOS_GDT_USER_CODE_FLAGS 0xFAU
+#define LOS_GDT_USER_DATA_FLAGS 0xF2U
 #define LOS_GDT_GRANULARITY 0xAFU
 
 typedef struct __attribute__((packed))
@@ -256,25 +258,28 @@ static void InstallGdt(void)
     LosGdt[0] = 0ULL;
     LosGdt[1] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_CODE_FLAGS, LOS_GDT_GRANULARITY);
     LosGdt[2] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_DATA_FLAGS, LOS_GDT_GRANULARITY);
+    LosGdt[3] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_USER_CODE_FLAGS, LOS_GDT_GRANULARITY);
+    LosGdt[4] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_USER_DATA_FLAGS, LOS_GDT_GRANULARITY);
 
     LosGdtPointer.Limit = (UINT16)(sizeof(LosGdt) - 1U);
     LosGdtPointer.Base = (UINT64)(UINTN)&LosGdt[0];
 
     __asm__ __volatile__("lgdt %0" : : "m"(LosGdtPointer));
     __asm__ __volatile__(
-        "pushq $0x08\n"
+        "pushq %0\n"
         "leaq 1f(%%rip), %%rax\n"
         "pushq %%rax\n"
         "lretq\n"
         "1:\n"
-        "movw $0x10, %%ax\n"
+        "movw %1, %%ax\n"
         "movw %%ax, %%ds\n"
         "movw %%ax, %%es\n"
         "movw %%ax, %%fs\n"
         "movw %%ax, %%gs\n"
         "movw %%ax, %%ss\n"
         :
-        :
+        : "i"((UINT64)LOS_X64_KERNEL_CODE_SELECTOR),
+          "i"((UINT16)LOS_X64_KERNEL_DATA_SELECTOR)
         : "rax", "memory");
 }
 

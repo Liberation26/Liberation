@@ -50,6 +50,12 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteHex64(Process->UserEntryVirtualAddress);
     LosKernelSerialWriteText(" user-stack=");
     LosKernelSerialWriteHex64(Process->UserStackTopVirtualAddress);
+    LosKernelSerialWriteText(" user-cs=");
+    LosKernelSerialWriteHex64(Process->UserCodeSegmentSelector);
+    LosKernelSerialWriteText(" user-ss=");
+    LosKernelSerialWriteHex64(Process->UserStackSegmentSelector);
+    LosKernelSerialWriteText(" user-rflags=");
+    LosKernelSerialWriteHex64(Process->UserRflags);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Process->UserTransitionState);
     LosKernelSerialWriteText(" root=");
@@ -116,6 +122,12 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteHex64(Task->UserInstructionPointer);
     LosKernelSerialWriteText(" user-stack=");
     LosKernelSerialWriteHex64(Task->UserStackPointer);
+    LosKernelSerialWriteText(" user-cs=");
+    LosKernelSerialWriteHex64(Task->UserCodeSegmentSelector);
+    LosKernelSerialWriteText(" user-ss=");
+    LosKernelSerialWriteHex64(Task->UserStackSegmentSelector);
+    LosKernelSerialWriteText(" user-rflags=");
+    LosKernelSerialWriteHex64(Task->UserRflags);
     LosKernelSerialWriteText(" user-state=");
     LosKernelSerialWriteUnsigned(Task->UserTransitionState);
     LosKernelSerialWriteText(" last-wake=");
@@ -207,6 +219,8 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-entry-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-scaffold-descriptor-ready=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionDescriptorReadyCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-live=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -316,6 +330,8 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-entry-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-scaffold-descriptor-ready=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionDescriptorReadyCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-live=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-live-gate-closed=");
@@ -373,6 +389,10 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         else if (LosKernelSchedulerState()->UserTransitionEntryReadyCount == 0ULL)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldEntryReady();
+        }
+        else if (LosKernelSchedulerState()->UserTransitionDescriptorReadyCount == 0ULL)
+        {
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldDescriptorReady();
         }
         else if (LosKernelSchedulerState()->UserTransitionLiveGateClosed == 0U &&
                  LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)

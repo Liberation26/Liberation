@@ -1,3 +1,7 @@
+# 0.2.31
+
+Added an explicit **descriptor-ready** stage after **entry-ready** for the user-transition scaffold. The kernel GDT now carries user code/data descriptors, the scheduler records future user `CS`, `SS`, and `RFLAGS` values on the scaffold process/task objects, and scheduler heartbeats now expose `user-scaffold-descriptor-ready`. The scaffold still stops at the live gate and remains blocked until a future real ring-transition path marks it live.
+
 # 0.2.30
 
 Added an explicit **non-live scaffold guard** for the user-transition ladder. Scheduler heartbeats now expose `user-scaffold-blocked` and `user-scaffold-reblocked`, and the lifecycle thread now force-reblocks the scaffold task if anything accidentally makes it ready before the future real ring-transition path marks it live. That keeps the scaffold visible, proves it remains intentionally blocked after `entry-ready`, and turns accidental premature readiness into an explicit diagnostic instead of a silent risk.

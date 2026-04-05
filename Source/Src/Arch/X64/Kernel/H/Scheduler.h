@@ -41,7 +41,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION 5U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 28U
+#define LOS_KERNEL_SCHEDULER_VERSION 29U
 
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED 1U
@@ -49,7 +49,8 @@
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ARMED 3U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_REQUESTED 4U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_ENTRY_READY 5U
-#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE 6U
+#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_DESCRIPTOR_READY 6U
+#define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE 7U
 
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_STACK_SOURCE_BOOTSTRAP 1U
@@ -104,6 +105,9 @@ typedef struct
     UINT64 MaxRunSliceTicks;
     UINT64 UserEntryVirtualAddress;
     UINT64 UserStackTopVirtualAddress;
+    UINT64 UserCodeSegmentSelector;
+    UINT64 UserStackSegmentSelector;
+    UINT64 UserRflags;
     UINT64 ExitStatus;
     UINT32 UserTransitionState;
     UINT32 Reserved1;
@@ -139,6 +143,9 @@ typedef struct
     UINT64 MaxRunSliceTicks;
     UINT64 UserInstructionPointer;
     UINT64 UserStackPointer;
+    UINT64 UserCodeSegmentSelector;
+    UINT64 UserStackSegmentSelector;
+    UINT64 UserRflags;
     UINT64 PreemptionCount;
     UINT64 ExitStatus;
     UINT32 UserTransitionState;
@@ -201,6 +208,7 @@ typedef struct
     UINT64 UserTransitionArmedCount;
     UINT64 UserTransitionLaunchRequestCount;
     UINT64 UserTransitionEntryReadyCount;
+    UINT64 UserTransitionDescriptorReadyCount;
     UINT64 UserTransitionLiveCount;
     UINT64 UserTransitionDispatchSkipCount;
     UINT64 UserTransitionScaffoldReblockCount;
