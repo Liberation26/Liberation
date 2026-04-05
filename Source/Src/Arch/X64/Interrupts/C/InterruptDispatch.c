@@ -1,3 +1,4 @@
+#include "Scheduler.h"
 #include "InterruptsInternal.h"
 
 #define LOS_X64_PIC1_COMMAND_PORT 0x20U
@@ -149,6 +150,7 @@ void LosX64HandleInterrupt(
     {
         LosX64TimerTickCount += 1ULL;
         LosX64TimerInterruptObserved = 1ULL;
+        LosKernelSchedulerOnTimerTick();
         LosX64AcknowledgePicInterrupt(Vector);
         LosKernelScreenUpdateSpinner(LosX64TimerTickCount >> 3U);
         if ((LosX64TimerTickCount % 10ULL) == 0ULL)

@@ -1,3 +1,10 @@
+Version 0.1.92
+
+- Added a kernel-internal scheduler subsystem split into `Scheduler.h`, `SchedulerInternal.h`, `SchedulerDispatch.c`, `SchedulerLifecycle.c`, `SchedulerPolicy.c`, and `SchedulerDiagnostics.c` so LOS now has a dedicated scheduling authority instead of ending in a pure idle-only path.
+- The kernel now initializes the scheduler during bring-up, registers the bootstrap scheduler tasks, and enters the scheduler after interrupts are enabled.
+- Timer IRQ handling now feeds scheduler tick accounting, and a periodic heartbeat task proves that the scheduler can dispatch non-idle kernel work on a timer cadence.
+- Documented the current scheduler stage in `Docs/Kernel/Scheduler.md` and updated the ToDo list to reflect that the next step is evolving the scheduler from step tasks into saved-context kernel threads.
+
 Version 0.1.90
 
 - Fixed the split-memory packaging hole by adding `Source/Src/Arch/X64/Services/MemoryManager/C/MemoryManagerMemory.c` to `ChangedFiles` as the stub/marker file that replaces the old monolithic implementation during update-only syncs.

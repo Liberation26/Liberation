@@ -2,6 +2,7 @@
 #include "Interrupts.h"
 #include "VirtualMemory.h"
 #include "MemoryManagerBootstrap.h"
+#include "Scheduler.h"
 
 #define LOS_SERIAL_COM1_BASE 0x3F8U
 #define LOS_GDT_CODE_FLAGS 0x9AU
@@ -231,11 +232,7 @@ void LosKernelEnableInterrupts(void)
 
 void LosKernelIdleLoop(void)
 {
-    LosKernelTraceOk("Kernel idle loop entered. CPU will sleep until interrupts arrive.");
-    for (;;)
-    {
-        __asm__ __volatile__("hlt" : : : "memory");
-    }
+    LosKernelSchedulerEnter();
 }
 
 static UINT64 BuildGdtEntry(UINT32 Base, UINT32 Limit, UINT8 Access, UINT8 Granularity)
@@ -320,6 +317,8 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
 
     LosX64InitializeTimer();
     LosKernelTraceOk("Programmable interval timer started at 100 Hz.");
+    LosKernelSchedulerInitialize();
+    LosKernelSchedulerRegisterBootstrapTasks();
 
     LosKernelTraceOk("ExitBootServices complete. Kernel owns firmware memory map.");
     LosKernelSerialWriteText("[Kernel] The EFI monitor was handoff-only and does not remain a live UEFI application.\n");
