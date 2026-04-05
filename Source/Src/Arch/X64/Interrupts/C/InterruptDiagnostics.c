@@ -146,4 +146,8 @@ void LosX64WriteRegisterDump(const LOS_X64_REGISTER_STATE *Registers, const LOS_
     WriteRegisterLine("R13", Registers->R13, "R14", Registers->R14);
     WriteRegisterLine("R15", Registers->R15, "RIP", Frame->Rip);
     WriteRegisterLine("CS", Frame->Cs, "RFLAGS", Frame->Rflags);
+    if ((Frame->Cs & 0x3ULL) == 0x3ULL)
+    {
+        WriteRegisterLine("RSP", Frame->Rsp, "SS", Frame->Ss);
+    }
 }

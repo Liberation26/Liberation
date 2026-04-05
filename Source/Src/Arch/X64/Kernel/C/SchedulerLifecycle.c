@@ -1,6 +1,7 @@
 #include "SchedulerInternal.h"
 #include "MemoryManagerBootstrap.h"
 #include "VirtualMemoryInternal.h"
+#include "SchedulerUserImage.h"
 
 static LOS_KERNEL_SCHEDULER_STATE LosKernelSchedulerGlobalState;
 static UINT8 LosKernelSchedulerBootstrapStacks[LOS_KERNEL_SCHEDULER_MAX_TASKS][LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES] __attribute__((aligned(4096)));
@@ -353,6 +354,132 @@ static void WriteUserTransitionFrame(
     Frame->Rflags = Rflags;
     Frame->Rsp = StackPointer;
     Frame->Ss = StackSelector;
+}
+
+static BOOLEAN QueryAddressSpaceMapping(UINT64 AddressSpaceObjectPhysicalAddress, UINT64 VirtualAddress, UINT64 *PhysicalAddress, UINT64 *PageFlags)
+{
+    LOS_MEMORY_MANAGER_QUERY_MAPPING_REQUEST Request;
+    LOS_MEMORY_MANAGER_QUERY_MAPPING_RESULT Result;
+
+    ZeroBytes(&Request, sizeof(Request));
+    ZeroBytes(&Result, sizeof(Result));
+    Request.AddressSpaceObjectPhysicalAddress = AddressSpaceObjectPhysicalAddress;
+    Request.VirtualAddress = VirtualAddress;
+    LosMemoryManagerSendQueryMapping(&Request, &Result);
+    if (Result.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS || Result.PhysicalAddress == 0ULL)
+    {
+        return 0U;
+    }
+
+    if (PhysicalAddress != 0)
+    {
+        *PhysicalAddress = Result.PhysicalAddress;
+    }
+    if (PageFlags != 0)
+    {
+        *PageFlags = Result.PageFlags;
+    }
+    return 1U;
+}
+
+static BOOLEAN EnsureUserTransitionScaffoldMappings(LOS_KERNEL_SCHEDULER_PROCESS *Process, LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_REQUEST AttachRequest;
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT AttachResult;
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_REQUEST StackRequest;
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT StackResult;
+    UINT64 ImagePhysicalAddress;
+    UINT64 StackBaseVirtualAddress;
+    UINT64 MappedPhysicalAddress;
+    UINT64 MappedPageFlags;
+    UINT64 CriticalSectionFlags;
+    BOOLEAN ImageMapped;
+    BOOLEAN StackMapped;
+
+    if (Process == 0 || Task == 0 ||
+        (Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) == 0U ||
+        Process->AddressSpaceObjectPhysicalAddress == 0ULL ||
+        Process->RootTablePhysicalAddress == 0ULL)
+    {
+        return 0U;
+    }
+
+    ImageMapped = QueryAddressSpaceMapping(
+        Process->AddressSpaceObjectPhysicalAddress,
+        LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS,
+        &MappedPhysicalAddress,
+        &MappedPageFlags);
+    StackMapped = QueryAddressSpaceMapping(
+        Process->AddressSpaceObjectPhysicalAddress,
+        LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS - 0x1000ULL,
+        &MappedPhysicalAddress,
+        &MappedPageFlags);
+
+    if (!ImageMapped)
+    {
+        ImagePhysicalAddress = 0ULL;
+        if (!LosX64TryTranslateKernelVirtualToPhysical((UINT64)(UINTN)LosKernelSchedulerUserImage, &ImagePhysicalAddress) ||
+            ImagePhysicalAddress == 0ULL)
+        {
+            return 0U;
+        }
+
+        ZeroBytes(&AttachRequest, sizeof(AttachRequest));
+        ZeroBytes(&AttachResult, sizeof(AttachResult));
+        AttachRequest.AddressSpaceObjectPhysicalAddress = Process->AddressSpaceObjectPhysicalAddress;
+        AttachRequest.StagedImagePhysicalAddress = ImagePhysicalAddress;
+        AttachRequest.StagedImageSize = LosKernelSchedulerUserImageSize;
+        LosMemoryManagerSendAttachStagedImage(&AttachRequest, &AttachResult);
+        if (AttachResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS ||
+            AttachResult.EntryVirtualAddress == 0ULL ||
+            AttachResult.ImageVirtualBase == 0ULL)
+        {
+            LosKernelTraceFail("Kernel scheduler could not attach the scaffold user image into its owned address space.");
+            LosKernelTraceUnsigned("Kernel scheduler user-image attach status: ", AttachResult.Status);
+            return 0U;
+        }
+    }
+
+    if (!StackMapped)
+    {
+        StackBaseVirtualAddress = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS -
+            (LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_PAGES * 0x1000ULL);
+        ZeroBytes(&StackRequest, sizeof(StackRequest));
+        ZeroBytes(&StackResult, sizeof(StackResult));
+        StackRequest.AddressSpaceObjectPhysicalAddress = Process->AddressSpaceObjectPhysicalAddress;
+        StackRequest.DesiredStackBaseVirtualAddress = StackBaseVirtualAddress;
+        StackRequest.PageCount = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_PAGES;
+        LosMemoryManagerSendAllocateAddressSpaceStack(&StackRequest, &StackResult);
+        if (StackResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS ||
+            StackResult.StackTopVirtualAddress == 0ULL)
+        {
+            LosKernelTraceFail("Kernel scheduler could not allocate the scaffold user stack inside its owned address space.");
+            LosKernelTraceUnsigned("Kernel scheduler user-stack allocate status: ", StackResult.Status);
+            return 0U;
+        }
+    }
+
+    if (!QueryAddressSpaceMapping(
+            Process->AddressSpaceObjectPhysicalAddress,
+            LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS,
+            &MappedPhysicalAddress,
+            &MappedPageFlags) ||
+        !QueryAddressSpaceMapping(
+            Process->AddressSpaceObjectPhysicalAddress,
+            LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS - 0x1000ULL,
+            &MappedPhysicalAddress,
+            &MappedPageFlags))
+    {
+        return 0U;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    Process->UserEntryVirtualAddress = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS;
+    Process->UserStackTopVirtualAddress = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS;
+    Task->UserInstructionPointer = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS;
+    Task->UserStackPointer = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS;
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+    return 1U;
 }
 
 static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId)
@@ -1607,6 +1734,10 @@ void LosKernelSchedulerCleanupTerminatedTasks(void)
             }
         }
 
+        if (Task->TaskId == State->UserTransitionScaffoldTaskId)
+        {
+            State->UserTransitionScaffoldTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
+        }
         ReleaseTaskStackResources(Task);
         if (State->TaskCount > 0U)
         {
@@ -1643,6 +1774,10 @@ void LosKernelSchedulerCleanupTerminatedProcesses(void)
             continue;
         }
 
+        if (Process->ProcessId == State->UserTransitionScaffoldProcessId)
+        {
+            State->UserTransitionScaffoldProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
+        }
         LosKernelSchedulerTraceProcess("Reclaimed scheduler process", Process);
         if (State->ProcessCount > 0U)
         {
@@ -1696,6 +1831,21 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldEntryReady(void)
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_REQUESTED ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
         Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
+        (Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) == 0U ||
+        Process->AddressSpaceObjectPhysicalAddress == 0ULL ||
+        Process->RootTablePhysicalAddress == 0ULL)
+    {
+        return 0;
+    }
+
+    if (EnsureUserTransitionScaffoldMappings(Process, Task) == 0U)
+    {
+        return 0;
+    }
+
+    Process = FindProcessByIdMutable(State->UserTransitionScaffoldProcessId);
+    Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
+    if (Process == 0 || Task == 0 ||
         Task->UserInstructionPointer == 0ULL ||
         Task->UserStackPointer == 0ULL ||
         Process->UserEntryVirtualAddress == 0ULL ||
@@ -2722,6 +2872,14 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
     {
         Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE;
         Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE;
+        Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
+        Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
+        Task->ReadySinceTick = State->TickCount;
+        Task->LastWakeTick = State->TickCount;
+        Task->WakeDispatchPending = 1U;
+        Task->ResumeBoostTicks = 4U;
+        Task->NextWakeTick = 0ULL;
+        Task->RemainingQuantumTicks = Task->QuantumTicks;
         State->UserTransitionLiveCount += 1ULL;
         State->UserTransitionLiveGateClosed = 0U;
         Live = 1U;
@@ -2730,7 +2888,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
 
     if (Live != 0U)
     {
-        LosKernelTraceOk("Scheduler user-transition scaffold marked live.");
+        LosKernelTraceOk("Scheduler user-transition scaffold marked live for real iretq dispatch.");
         LosKernelSchedulerTraceProcess("Live scheduler user-transition scaffold process", Process);
         LosKernelSchedulerTraceTask("Live scheduler user-transition scaffold task", Task);
         return 1;

@@ -261,6 +261,7 @@ void LosKernelSchedulerEnter(void);
 void LosKernelSchedulerOnTimerTick(void);
 void LosKernelSchedulerRequestReschedule(void);
 void LosKernelSchedulerPreemptIfNeededFromInterrupt(void);
+BOOLEAN LosKernelSchedulerHandleUserModeInterrupt(UINT64 Vector, UINT64 ErrorCode, UINT64 InstructionPointer, UINT64 StackPointer);
 BOOLEAN LosKernelSchedulerIsOnline(void);
 UINT64 LosKernelSchedulerGetTickCount(void);
 const LOS_KERNEL_SCHEDULER_TASK *LosKernelSchedulerGetCurrentTask(void);

@@ -27,6 +27,8 @@ typedef struct __attribute__((packed))
     UINT64 Rip;
     UINT64 Cs;
     UINT64 Rflags;
+    UINT64 Rsp;
+    UINT64 Ss;
 } LOS_X64_INTERRUPT_FRAME;
 
 void LosX64InstallInterrupts(void);

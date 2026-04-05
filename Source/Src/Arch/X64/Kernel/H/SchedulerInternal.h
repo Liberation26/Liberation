@@ -25,6 +25,7 @@
 #define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS 0x0000000000400000ULL
 #define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS 0x000000007FFF0000ULL
 #define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_RFLAGS 0x0000000000000202ULL
+#define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_PAGES 4ULL
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME_STACK_OFFSET_BYTES 128ULL
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_CHAIN_STACK_OFFSET_BYTES 48ULL
 
@@ -108,6 +109,7 @@ void LosKernelSchedulerUserTransitionTrapThread(void *Context);
 void LosKernelSchedulerBusyThread(void *Context);
 void LosKernelSchedulerThreadTrampoline(void);
 void LosKernelSchedulerUserTransitionKernelEntry(void);
+UINT64 LosKernelSchedulerPrepareUserTransitionIret(void);
 void LosKernelSchedulerUserTransitionDispatchBridge(void);
 void LosKernelSchedulerUserTransitionBridgeTrap(UINT64 KernelStackPointer);
 void LosKernelSchedulerYieldCurrent(void);

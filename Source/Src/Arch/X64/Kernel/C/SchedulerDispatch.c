@@ -1,4 +1,5 @@
 #include "SchedulerInternal.h"
+#include "InterruptsInternal.h"
 
 static void LoadPageMapLevel4PhysicalAddress(UINT64 RootTablePhysicalAddress)
 {
@@ -271,16 +272,25 @@ void LosKernelSchedulerPreemptIfNeededFromInterrupt(void)
     }
 
     Task = GetCurrentTaskMutable();
-    if (Task == 0 || Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING)
+    if (Task == 0)
     {
         return;
     }
 
-    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
-    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED;
-    Task->ReadySinceTick = State->TickCount;
-    Task->PreemptionCount += 1ULL;
-    State->InterruptPreemptionCount += 1ULL;
+    if (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING)
+    {
+        Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_READY;
+        Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_PREEMPTED;
+        Task->ReadySinceTick = State->TickCount;
+        Task->PreemptionCount += 1ULL;
+        State->InterruptPreemptionCount += 1ULL;
+    }
+    else if (Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED &&
+             Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED)
+    {
+        return;
+    }
+
     LosKernelSchedulerSwitchContext(&Task->ExecutionContext, &State->SchedulerContext);
 }
 
@@ -372,6 +382,84 @@ void LosKernelSchedulerThreadTrampoline(void)
     LosKernelTraceFail("Kernel scheduler thread returned unexpectedly.");
     LosKernelSchedulerTerminateCurrent();
     LosKernelHaltForever();
+}
+
+UINT64 LosKernelSchedulerPrepareUserTransitionIret(void)
+{
+    const LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    Task = LosKernelSchedulerGetCurrentTask();
+    if (Task == 0 ||
+        (Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) == 0U ||
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE ||
+        Task->UserTransitionFrameStackPointer == 0ULL ||
+        Task->StackTopVirtualAddress == 0ULL)
+    {
+        LosKernelTraceFail("Kernel scheduler could not prepare a live user-transition iret frame.");
+        LosKernelHaltForever();
+    }
+
+    LosKernelSetInterruptStackTop(Task->StackTopVirtualAddress);
+    return Task->UserTransitionFrameStackPointer;
+}
+
+BOOLEAN LosKernelSchedulerHandleUserModeInterrupt(UINT64 Vector, UINT64 ErrorCode, UINT64 InstructionPointer, UINT64 StackPointer)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+    (void)ErrorCode;
+
+    State = LosKernelSchedulerState();
+    Task = GetCurrentTaskMutable();
+    if (State == 0 || Task == 0 ||
+        (Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) == 0U ||
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE)
+    {
+        return 0U;
+    }
+
+    Process = FindProcessByIdMutable(Task->ProcessId);
+    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED;
+    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED;
+    Task->ReadySinceTick = 0ULL;
+    Task->NextWakeTick = 0ULL;
+    Task->WakeDispatchPending = 0U;
+    Task->ResumeBoostTicks = 0U;
+    Task->RemainingQuantumTicks = 0U;
+    Task->CleanupPending = 1U;
+    Task->ExitStatus = Vector;
+    Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+    if (Process != 0)
+    {
+        Process->ExitStatus = Vector;
+        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+    }
+    State->TerminatedTaskCount += 1ULL;
+    if (State->UserTransitionCompleteCount == 0ULL)
+    {
+        State->UserTransitionCompleteCount += 1ULL;
+    }
+    State->ReschedulePending = 1U;
+
+    if (Vector == LOS_X64_USER_TRANSITION_VECTOR)
+    {
+        LosKernelTraceOk("Scheduler user-transition scaffold executed in ring 3 and trapped back into the kernel.");
+    }
+    else
+    {
+        LosKernelTraceFail("Scheduler user-transition scaffold faulted while running in ring 3.");
+    }
+    LosKernelTraceUnsigned("Scheduler user-transition return vector: ", Vector);
+    LosKernelTraceHex64("Scheduler user-transition return rip: ", InstructionPointer);
+    LosKernelTraceHex64("Scheduler user-transition return rsp: ", StackPointer);
+    if (Process != 0)
+    {
+        LosKernelSchedulerTraceProcess("Returned scheduler user-transition scaffold process", Process);
+    }
+    LosKernelSchedulerTraceTask("Returned scheduler user-transition scaffold task", Task);
+    return 1U;
 }
 
 void LosKernelSchedulerUserTransitionKernelEntry(void)

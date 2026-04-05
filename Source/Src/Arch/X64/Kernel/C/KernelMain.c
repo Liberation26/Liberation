@@ -10,6 +10,7 @@
 #define LOS_GDT_USER_CODE_FLAGS 0xFAU
 #define LOS_GDT_USER_DATA_FLAGS 0xF2U
 #define LOS_GDT_GRANULARITY 0xAFU
+#define LOS_GDT_TSS_ACCESS 0x89U
 
 typedef struct __attribute__((packed))
 {
@@ -17,7 +18,27 @@ typedef struct __attribute__((packed))
     UINT64 Base;
 } LOS_DESCRIPTOR_POINTER;
 
+typedef struct __attribute__((packed))
+{
+    UINT32 Reserved0;
+    UINT64 Rsp0;
+    UINT64 Rsp1;
+    UINT64 Rsp2;
+    UINT64 Reserved1;
+    UINT64 Ist1;
+    UINT64 Ist2;
+    UINT64 Ist3;
+    UINT64 Ist4;
+    UINT64 Ist5;
+    UINT64 Ist6;
+    UINT64 Ist7;
+    UINT64 Reserved2;
+    UINT16 Reserved3;
+    UINT16 IoMapBase;
+} LOS_X64_TASK_STATE_SEGMENT;
+
 UINT64 LosGdt[LOS_X64_GDT_ENTRY_COUNT];
+static LOS_X64_TASK_STATE_SEGMENT LosKernelTss __attribute__((aligned(16)));
 static LOS_DESCRIPTOR_POINTER LosGdtPointer;
 
 volatile UINT64 LosKernelRuntimeTracingEnabled __attribute__((section(".bootstrap.data"))) = 0ULL;
@@ -252,14 +273,67 @@ static UINT64 BuildGdtEntry(UINT32 Base, UINT32 Limit, UINT8 Access, UINT8 Granu
     return Entry;
 }
 
+static void BuildTssDescriptor(UINT64 Base, UINT32 Limit, UINT64 *LowEntry, UINT64 *HighEntry)
+{
+    UINT64 DescriptorLow;
+
+    DescriptorLow = 0ULL;
+    DescriptorLow |= (UINT64)(Limit & 0xFFFFU);
+    DescriptorLow |= (Base & 0xFFFFULL) << 16;
+    DescriptorLow |= ((Base >> 16) & 0xFFULL) << 32;
+    DescriptorLow |= ((UINT64)LOS_GDT_TSS_ACCESS) << 40;
+    DescriptorLow |= (((UINT64)Limit >> 16) & 0x0FULL) << 48;
+    DescriptorLow |= ((Base >> 24) & 0xFFULL) << 56;
+
+    if (LowEntry != 0)
+    {
+        *LowEntry = DescriptorLow;
+    }
+    if (HighEntry != 0)
+    {
+        *HighEntry = (Base >> 32) & 0xFFFFFFFFULL;
+    }
+}
+
+void LosKernelSetInterruptStackTop(UINT64 StackTop)
+{
+    if (StackTop != 0ULL)
+    {
+        LosKernelTss.Rsp0 = StackTop;
+    }
+}
+
 static void InstallGdt(void)
 {
     LOS_KERNEL_ENTER();
+    UINT16 TssSelector;
+
     LosGdt[0] = 0ULL;
     LosGdt[1] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_CODE_FLAGS, LOS_GDT_GRANULARITY);
     LosGdt[2] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_DATA_FLAGS, LOS_GDT_GRANULARITY);
     LosGdt[3] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_USER_CODE_FLAGS, LOS_GDT_GRANULARITY);
     LosGdt[4] = BuildGdtEntry(0U, 0xFFFFFU, LOS_GDT_USER_DATA_FLAGS, LOS_GDT_GRANULARITY);
+    for (TssSelector = 5U; TssSelector < LOS_X64_GDT_ENTRY_COUNT; ++TssSelector)
+    {
+        LosGdt[TssSelector] = 0ULL;
+    }
+
+    LosKernelTss.Reserved0 = 0U;
+    LosKernelTss.Rsp0 = (UINT64)(UINTN)LosX64GetKernelStackTop();
+    LosKernelTss.Rsp1 = 0ULL;
+    LosKernelTss.Rsp2 = 0ULL;
+    LosKernelTss.Reserved1 = 0ULL;
+    LosKernelTss.Ist1 = 0ULL;
+    LosKernelTss.Ist2 = 0ULL;
+    LosKernelTss.Ist3 = 0ULL;
+    LosKernelTss.Ist4 = 0ULL;
+    LosKernelTss.Ist5 = 0ULL;
+    LosKernelTss.Ist6 = 0ULL;
+    LosKernelTss.Ist7 = 0ULL;
+    LosKernelTss.Reserved2 = 0ULL;
+    LosKernelTss.Reserved3 = 0U;
+    LosKernelTss.IoMapBase = (UINT16)sizeof(LosKernelTss);
+    BuildTssDescriptor((UINT64)(UINTN)&LosKernelTss, (UINT32)(sizeof(LosKernelTss) - 1U), &LosGdt[5], &LosGdt[6]);
 
     LosGdtPointer.Limit = (UINT16)(sizeof(LosGdt) - 1U);
     LosGdtPointer.Base = (UINT64)(UINTN)&LosGdt[0];
@@ -281,6 +355,9 @@ static void InstallGdt(void)
         : "i"((UINT64)LOS_X64_KERNEL_CODE_SELECTOR),
           "i"((UINT16)LOS_X64_KERNEL_DATA_SELECTOR)
         : "rax", "memory");
+
+    TssSelector = (UINT16)LOS_X64_TSS_SELECTOR;
+    __asm__ __volatile__("ltr %0" : : "rm"(TssSelector) : "memory");
 }
 
 const void *LosKernelGetGdtBase(void)

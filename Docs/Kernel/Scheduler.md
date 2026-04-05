@@ -1,3 +1,9 @@
+# 0.2.40
+
+Added the first **real x64 ring-transition substrate** for the scheduler user scaffold. LOS now installs a real TSS descriptor in the GDT, loads `TR`, refreshes `TSS.RSP0` with the current kernel-thread stack top before user dispatch, maps a staged user ELF plus a real user stack into the scaffold process's owned address space through the memory manager, and switches the scheduler bridge from staged metadata to a real `iretq` entry.
+
+Interrupt vector `128` is now installed as a DPL3 gate so that first user image can trap back into ring 0 on the TSS-provided kernel stack. The interrupt path recognizes that user-origin return, terminates the scaffold task, requests reschedule, and lets the ordinary reap path clean it up. This proves the real kernel->user->kernel transition substrate needed before resumable syscalls, timer-driven user preemption, and general loader-backed user tasks can be layered on top.
+
 Added an explicit **complete** stage after **live-gate-closed** for the user-transition scaffold. Normal scheduler serial output now stays quiet until the scaffold reaches **seal-ready**, so the first scheduler-side serial lines appear only once the staged user handoff metadata is materially in place. After the live gate closes, the scaffold now advances once more to a scheduler-side **complete** state, heartbeat/state diagnostics expose `user-scaffold-complete`, and the scaffold process/task report `user-state=15` to show that scheduler-side staging is finished even though a future real TSS-backed ring transition is still required before the task can be marked LIVE.
 
 Added an explicit **chain-ready** stage after **bridge-ready** for the user-transition scaffold. The scheduler now stages a dedicated non-live dispatch chain on the blocked scaffold task's kernel stack, records that prepared chain stack pointer as `user-chain-sp` on the scaffold process/task objects, and exposes `user-scaffold-chain-ready` in heartbeat output. The live gate now closes only after that chain metadata is present, so the future real ring-transition path has a preserved bridge -> kernel-entry stack chain ready before anything can be marked live.
@@ -55,6 +61,14 @@ Scheduler bootstrap threads now stay on bootstrap fallback stacks until the sche
 - Task cleanup now only sends `FreeFrames` for memory-manager-owned stacks, which fixes the `freeing-unowned-pages` hard-fail seen when transient workers exited and the scheduler tried to reclaim their stacks.
 
 # Scheduler
+
+## 0.2.40
+
+- Wired the first **real x64 ring-transition substrate** into the scheduler user scaffold. LOS now installs a proper TSS descriptor in the GDT, loads `TR`, and refreshes `TSS.RSP0` with the current kernel-thread stack top before dispatching the scaffold to user mode.
+- The scheduler scaffold now maps a staged user ELF image and a real user stack into the scaffold process's owned address space through the memory manager instead of only carrying placeholder metadata.
+- The scheduler's user-transition bridge now performs an actual `iretq` into ring 3 using the prepared user frame, rather than stopping at a non-live staging chain.
+- Interrupt vector `128` is now installed as a DPL3 gate so the first user image can trap back into ring 0 on the TSS-provided kernel stack. The interrupt path recognizes that user-origin trap, marks the scaffold task terminated, requests reschedule, and lets the ordinary reap path clean it up.
+- This stage proves the real kernel->user->kernel transition substrate needed by the scheduler, user tasks, and future memory-manager-backed user launches. The next step is to preserve/resume user trapframes instead of treating the first user return as a one-shot proof.
 
 ## 0.2.22
 

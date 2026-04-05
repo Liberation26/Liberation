@@ -142,9 +142,23 @@ void LosX64HandleInterrupt(
     UINT64 ErrorCode,
     const LOS_X64_INTERRUPT_FRAME *Frame)
 {
+    BOOLEAN FromUserMode;
+    UINT64 UserStackPointer;
+
     (void)Registers;
-    (void)ErrorCode;
-    (void)Frame;
+
+    FromUserMode = (Frame != 0 && (Frame->Cs & 0x3ULL) == 0x3ULL) ? 1U : 0U;
+    UserStackPointer = (FromUserMode != 0U && Frame != 0) ? Frame->Rsp : 0ULL;
+    if (FromUserMode != 0U &&
+        LosKernelSchedulerHandleUserModeInterrupt(Vector, ErrorCode, Frame->Rip, UserStackPointer) != 0U)
+    {
+        if (Vector >= LOS_X64_PIC_MASTER_VECTOR_BASE && Vector < (LOS_X64_PIC_SLAVE_VECTOR_BASE + 8U))
+        {
+            LosX64AcknowledgePicInterrupt(Vector);
+        }
+        LosKernelSchedulerPreemptIfNeededFromInterrupt();
+        return;
+    }
 
     if (Vector == LOS_X64_PIC_TIMER_VECTOR)
     {

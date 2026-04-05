@@ -1,8 +1,12 @@
-- Added an explicit `complete` scheduler-scaffold stage after `live-gate-closed` and delayed normal scheduler serial output until `seal-ready`, so scheduler logs now stay quiet during early scaffold assembly and then come alive only once the staged handoff metadata is fully formed.
-- Added an explicit `handoff-ready` user-transition scaffold stage after `seal-ready`.
-- The scheduler now records and verifies the final blocked scaffold task handoff stack pointer as non-zero `user-handoff-sp` metadata, matching the staged chain stack pointer and current saved execution stack pointer.
-- Heartbeat output now exposes `user-scaffold-handoff-ready`, and detailed process/task traces now expose `user-handoff-sp=` so the serial log can prove the blocked scaffold carries a final saved handoff stack before the live gate closes.
-- The live gate still remains closed; both live-gating and future `LIVE` promotion now require the prepared handoff-stack metadata.
+- Wired the first real scheduler user-transition substrate: the kernel now installs a real x64 TSS, loads `TR`, refreshes `TSS.RSP0` before user dispatch, maps a staged user ELF plus a real user stack into the scaffold process's owned address space, and enters ring 3 with an actual `iretq` path.
+- Added a DPL3 vector 128 return path so the first user scaffold can trap back into ring 0 on the kernel interrupt stack, letting the scheduler prove the real user->kernel transition and reap the scaffold task instead of halting.
+- The scaffold is no longer kept behind the old live gate once handoff metadata is ready; it now becomes dispatchable so the scheduler can exercise the real ring-transition substrate.
+
+# ToDo
+
+- Boot-test the new path and confirm the serial log shows the scaffold reaching `handoff-ready`, going `live`, trapping back through vector 128 from CPL3, and then being terminated/reaped cleanly without a fault or reboot.
+- Replace the one-shot trap/terminate proof path with a resumable user trapframe flow: preserve user RIP/RSP/RFLAGS on entry, route vector 128 into a real syscall/ABI path, and allow timer-driven preemption plus return to user mode instead of immediate task teardown.
+- Expand the first mapped user image from the embedded proof ELF into loader-backed user tasks so the memory manager and scheduler can launch arbitrary user programs through the same TSS/`iretq` substrate.
 
 # ToDo
 

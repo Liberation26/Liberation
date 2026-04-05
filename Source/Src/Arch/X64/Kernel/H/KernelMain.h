@@ -13,11 +13,12 @@
 #define LOS_ELF_PROGRAM_FLAG_EXECUTE 0x1U
 #define LOS_ELF_PROGRAM_FLAG_WRITE 0x2U
 #define LOS_ELF_PROGRAM_FLAG_READ 0x4U
-#define LOS_X64_GDT_ENTRY_COUNT 5U
+#define LOS_X64_GDT_ENTRY_COUNT 7U
 #define LOS_X64_KERNEL_CODE_SELECTOR 0x08U
 #define LOS_X64_KERNEL_DATA_SELECTOR 0x10U
 #define LOS_X64_USER_CODE_SELECTOR 0x1BU
 #define LOS_X64_USER_DATA_SELECTOR 0x23U
+#define LOS_X64_TSS_SELECTOR 0x28U
 
 typedef struct
 {
@@ -80,6 +81,8 @@ void LosKernelHaltForever(void);
 void LosKernelEnableInterrupts(void);
 void LosKernelIdleLoop(void);
 void LosKernelAnnounceFunction(const char *FunctionName);
+void LosKernelSetInterruptStackTop(UINT64 StackTop);
+
 extern UINT64 LosGdt[LOS_X64_GDT_ENTRY_COUNT];
 const void *LosKernelGetGdtBase(void);
 UINT64 LosKernelGetGdtSize(void);

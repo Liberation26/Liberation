@@ -4,9 +4,14 @@
 .global LosKernelSchedulerUserTransitionDispatchBridge
 .type LosKernelSchedulerUserTransitionDispatchBridge, @function
 
+.extern LosKernelSchedulerPrepareUserTransitionIret
+
 LosKernelSchedulerUserTransitionDispatchBridge:
-    mov rdi, rsp
-    call LosKernelSchedulerUserTransitionBridgeTrap
+    call LosKernelSchedulerPrepareUserTransitionIret
+    test rax, rax
+    jz .Lhang
+    mov rsp, rax
+    iretq
 
 .Lhang:
     cli

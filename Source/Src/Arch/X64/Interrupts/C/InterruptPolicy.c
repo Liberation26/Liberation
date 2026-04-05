@@ -33,8 +33,9 @@ extern void LosInterruptStub29(void);
 extern void LosInterruptStub30(void);
 extern void LosInterruptStub31(void);
 extern void LosInterruptStub32(void);
+extern void LosInterruptStub128(void);
 
-static void SetIdtEntry(UINTN Index, void *Handler)
+static void SetIdtEntryWithAttributes(UINTN Index, void *Handler, UINT8 TypeAttributes)
 {
     UINT64 Address;
 
@@ -42,10 +43,15 @@ static void SetIdtEntry(UINTN Index, void *Handler)
     LosX64Idt[Index].OffsetLow = (UINT16)(Address & 0xFFFFULL);
     LosX64Idt[Index].Selector = 0x08U;
     LosX64Idt[Index].Ist = 0U;
-    LosX64Idt[Index].TypeAttributes = 0x8EU;
+    LosX64Idt[Index].TypeAttributes = TypeAttributes;
     LosX64Idt[Index].OffsetMiddle = (UINT16)((Address >> 16) & 0xFFFFULL);
     LosX64Idt[Index].OffsetHigh = (UINT32)((Address >> 32) & 0xFFFFFFFFULL);
     LosX64Idt[Index].Reserved = 0U;
+}
+
+static void SetIdtEntry(UINTN Index, void *Handler)
+{
+    SetIdtEntryWithAttributes(Index, Handler, 0x8EU);
 }
 
 void LosX64PopulateExceptionEntries(void)
@@ -80,4 +86,5 @@ void LosX64PopulateExceptionEntries(void)
 void LosX64PopulateRuntimeEntries(void)
 {
     SetIdtEntry(LOS_X64_PIC_TIMER_VECTOR, (void *)LosInterruptStub32);
+    SetIdtEntryWithAttributes(LOS_X64_USER_TRANSITION_VECTOR, (void *)LosInterruptStub128, 0xEEU);
 }
