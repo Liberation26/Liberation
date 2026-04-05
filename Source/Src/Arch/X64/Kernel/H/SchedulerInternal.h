@@ -11,6 +11,7 @@
 #define LOS_KERNEL_SCHEDULER_LIFECYCLE_PRIORITY 3U
 #define LOS_KERNEL_SCHEDULER_BUSY_PRIORITY 2U
 #define LOS_KERNEL_SCHEDULER_EPHEMERAL_PRIORITY 1U
+#define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_PRIORITY 1U
 #define LOS_KERNEL_SCHEDULER_DEFAULT_QUANTUM_TICKS 1U
 #define LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS 0ULL
 #define LOS_KERNEL_SCHEDULER_AGING_INTERVAL_TICKS 100ULL
@@ -21,6 +22,8 @@
 #define LOS_KERNEL_SCHEDULER_BUSY_REPORT_PERIOD_TICKS 500ULL
 #define LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES 4ULL
 #define LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES (LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES * 4096ULL)
+#define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS 0x0000000000400000ULL
+#define LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS 0x000000007FFF0000ULL
 
 LOS_KERNEL_SCHEDULER_STATE *LosKernelSchedulerState(void);
 BOOLEAN LosKernelSchedulerCreateProcess(
@@ -34,6 +37,7 @@ BOOLEAN LosKernelSchedulerMarkProcessTerminated(
     UINT64 ExitStatus);
 const LOS_KERNEL_SCHEDULER_PROCESS *LosKernelSchedulerGetCurrentProcess(void);
 BOOLEAN LosKernelSchedulerHasActiveTransientProcess(void);
+BOOLEAN LosKernelSchedulerPrepareUserTransitionScaffold(void);
 void LosKernelSchedulerCleanupTerminatedProcesses(void);
 void LosKernelSchedulerBindPendingProcessAddressSpaces(void);
 BOOLEAN LosKernelSchedulerCreateTask(
@@ -58,6 +62,7 @@ void LosKernelSchedulerIdleThread(void *Context);
 void LosKernelSchedulerHeartbeatThread(void *Context);
 void LosKernelSchedulerLifecycleThread(void *Context);
 void LosKernelSchedulerEphemeralThread(void *Context);
+void LosKernelSchedulerUserTransitionTrapThread(void *Context);
 void LosKernelSchedulerBusyThread(void *Context);
 void LosKernelSchedulerThreadTrampoline(void);
 void LosKernelSchedulerYieldCurrent(void);

@@ -46,6 +46,12 @@ void LosKernelSchedulerTraceProcess(const char *Prefix, const LOS_KERNEL_SCHEDUL
     LosKernelSerialWriteUnsigned(Process->LastRunSliceTicks);
     LosKernelSerialWriteText(" max-run-slice=");
     LosKernelSerialWriteUnsigned(Process->MaxRunSliceTicks);
+    LosKernelSerialWriteText(" user-entry=");
+    LosKernelSerialWriteHex64(Process->UserEntryVirtualAddress);
+    LosKernelSerialWriteText(" user-stack=");
+    LosKernelSerialWriteHex64(Process->UserStackTopVirtualAddress);
+    LosKernelSerialWriteText(" user-state=");
+    LosKernelSerialWriteUnsigned(Process->UserTransitionState);
     LosKernelSerialWriteText(" root=");
     LosKernelSerialWriteHex64(Process->RootTablePhysicalAddress);
     LosKernelSerialWriteText(" inherited-root=");
@@ -106,6 +112,12 @@ void LosKernelSchedulerTraceTask(const char *Prefix, const LOS_KERNEL_SCHEDULER_
     LosKernelSerialWriteUnsigned(Task->LastRunSliceTicks);
     LosKernelSerialWriteText(" max-run-slice=");
     LosKernelSerialWriteUnsigned(Task->MaxRunSliceTicks);
+    LosKernelSerialWriteText(" user-entry=");
+    LosKernelSerialWriteHex64(Task->UserInstructionPointer);
+    LosKernelSerialWriteText(" user-stack=");
+    LosKernelSerialWriteHex64(Task->UserStackPointer);
+    LosKernelSerialWriteText(" user-state=");
+    LosKernelSerialWriteUnsigned(Task->UserTransitionState);
     LosKernelSerialWriteText(" last-wake=");
     LosKernelSerialWriteUnsigned(Task->LastWakeTick);
     LosKernelSerialWriteText(" preemptions=");
@@ -183,6 +195,14 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->IdleTicks);
     LosKernelSerialWriteText(" busy-ticks=");
     LosKernelSerialWriteUnsigned(State->BusyTicks);
+    LosKernelSerialWriteText(" user-scaffold-ready=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReady);
+    LosKernelSerialWriteText(" user-scaffold-prepared=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionPreparedCount);
+    LosKernelSerialWriteText(" user-scaffold-proc=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldProcessId);
+    LosKernelSerialWriteText(" user-scaffold-task=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldTaskId);
     LosKernelSerialWriteText(" stack-pool-ready=");
     LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
     LosKernelSerialWriteText(" stack-pool-used=");
@@ -266,6 +286,14 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->IdleTicks);
             LosKernelSerialWriteText(" busy-ticks=");
             LosKernelSerialWriteUnsigned(State->BusyTicks);
+            LosKernelSerialWriteText(" user-scaffold-ready=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReady);
+            LosKernelSerialWriteText(" user-scaffold-prepared=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionPreparedCount);
+            LosKernelSerialWriteText(" user-scaffold-proc=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldProcessId);
+            LosKernelSerialWriteText(" user-scaffold-task=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldTaskId);
             LosKernelSerialWriteText(" stack-pool-ready=");
             LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
             LosKernelSerialWriteText(" stack-pool-used=");
@@ -289,6 +317,11 @@ void LosKernelSchedulerLifecycleThread(void *Context)
     {
         UINT64 ProcessId;
         UINT64 TaskId;
+
+        if (LosKernelSchedulerState()->UserTransitionScaffoldReady == 0U)
+        {
+            (void)LosKernelSchedulerPrepareUserTransitionScaffold();
+        }
 
         if (LosKernelSchedulerHasActiveTransientProcess() != 0U)
         {
@@ -385,6 +418,22 @@ void LosKernelSchedulerEphemeralThread(void *Context)
     LosKernelSerialWriteUnsigned(Sequence);
     LosKernelSerialWriteText(" ticks=");
     LosKernelSerialWriteUnsigned(LosKernelSchedulerGetTickCount());
+    LosKernelSerialWriteText("\n");
+    LosKernelSchedulerTerminateCurrent();
+    LosKernelHaltForever();
+}
+
+void LosKernelSchedulerUserTransitionTrapThread(void *Context)
+{
+    const LOS_KERNEL_SCHEDULER_TASK *Task;
+
+    (void)Context;
+    Task = LosKernelSchedulerGetCurrentTask();
+    LosKernelTraceFail("Scheduler user-transition scaffold task was dispatched before a real ring transition path existed.");
+    LosKernelSerialWriteText("[Kernel] User-transition scaffold dispatch task=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
+    LosKernelSerialWriteText(" process=");
+    LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
     LosKernelSerialWriteText("\n");
     LosKernelSchedulerTerminateCurrent();
     LosKernelHaltForever();

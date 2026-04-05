@@ -1,3 +1,4 @@
+- 0.2.23: Added a first-stage **user-transition scaffold** to the scheduler. The lifecycle path now prepares a dedicated `UserScaffoldProcess` with its own distinct address space plus a blocked `UserScaffoldTask` that records the future user entry and user-stack top without attempting a ring transition yet. Scheduler state, task, and process diagnostics now expose scaffold readiness, prepared-count, scaffold process/task ids, and the recorded user entry/stack values so the serial log can prove that the first user-mode launch object exists before a real `iretq` path is wired.
 - 0.2.22: Added scheduler run-slice accounting and fixed the heartbeat summary so it now actually emits `max-ready-delay` and `max-wake-delay` alongside the new `max-run-slice` value. Per-task and per-process diagnostics now record `last-run-slice` and `max-run-slice`, which makes it easier to prove the real quantum behaviour of BusyWorker versus transient work.
 - 0.2.20: Added scheduler CPU accounting. Heartbeat and trace output now record per-task and per-process dispatch/runtime totals plus scheduler-wide `idle-ticks` and `busy-ticks`, so the serial log can show where execution time is actually going before the userland transition work starts.
 - 0.2.19: Fixed direct-claim scheduler stack-pool release accounting. Reaped direct-claim worker stacks now clear their own pool slot instead of accidentally touching the bootstrap fallback slot bitmap, so `stack-pool-used` drops again after transient workers are reclaimed and the direct-claim pool no longer trends toward false exhaustion.
@@ -18,7 +19,7 @@
 
 - 0.2.9: Scheduler process creation now keeps distinct-root processes hidden until their address-space bind succeeds, and deferred bind spam was removed from the scheduler loop.
 
-Version 0.2.22
+Version 0.2.23
 - Serialized scheduler-side transient process address-space binding so only one `CreateAddressSpace` request can be in flight for a given process at a time. This closes the race where a just-created process could be bound twice and end up leaking the first address-space object.
 - Added a `bind-in-progress` process flag plus `bind-count` and `bind-deferred` scheduler counters, so the serial log can now prove whether a non-kernel process root was bound once, deferred, or already being handled by another path.
 - Kept the existing rule that transient lifecycle processes require a real distinct address space; this update makes that rule race-safe rather than letting the lifecycle thread and the scheduler binder compete on the same process object.

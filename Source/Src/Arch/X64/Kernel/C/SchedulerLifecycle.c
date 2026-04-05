@@ -174,6 +174,35 @@ static const LOS_KERNEL_SCHEDULER_PROCESS *FindProcessById(UINT64 ProcessId)
     return (const LOS_KERNEL_SCHEDULER_PROCESS *)FindProcessByIdMutable(ProcessId);
 }
 
+static LOS_KERNEL_SCHEDULER_TASK *FindTaskByIdMutable(UINT64 TaskId)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+
+    if (TaskId == LOS_KERNEL_SCHEDULER_INVALID_TASK_ID)
+    {
+        return 0;
+    }
+
+    State = LosKernelSchedulerState();
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_TASKS; ++Index)
+    {
+        LOS_KERNEL_SCHEDULER_TASK *Task;
+
+        Task = &State->Tasks[Index];
+        if (Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_UNUSED)
+        {
+            continue;
+        }
+        if (Task->TaskId == TaskId)
+        {
+            return Task;
+        }
+    }
+
+    return 0;
+}
+
 BOOLEAN LosKernelSchedulerHasActiveTransientProcess(void)
 {
     const LOS_KERNEL_SCHEDULER_STATE *State;
@@ -767,9 +796,13 @@ BOOLEAN LosKernelSchedulerCreateProcess(
         Process->DispatchCount = 0ULL;
         Process->TotalTicks = 0ULL;
         Process->LastRunTick = 0ULL;
+        Process->UserEntryVirtualAddress = 0ULL;
+        Process->UserStackTopVirtualAddress = 0ULL;
         Process->ExitStatus = 0ULL;
+        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE;
         Process->CleanupPending = 0U;
         Process->Reserved0 = 0U;
+        Process->Reserved1 = 0U;
 
         State->NextProcessId += 1ULL;
         State->CreatedProcessCount += 1ULL;
@@ -922,8 +955,11 @@ BOOLEAN LosKernelSchedulerCreateTask(
             Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_NONE;
             Task->LastWakeTick = 0ULL;
             Task->ReadySinceTick = State->TickCount;
+            Task->UserInstructionPointer = 0ULL;
+            Task->UserStackPointer = 0ULL;
             Task->PreemptionCount = 0ULL;
             Task->ExitStatus = 0ULL;
+            Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE;
             Task->CleanupPending = 0U;
             Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
             Task->WakeDispatchPending = 0U;
@@ -960,6 +996,97 @@ BOOLEAN LosKernelSchedulerCreateTask(
     }
 
     return 0;
+}
+
+BOOLEAN LosKernelSchedulerPrepareUserTransitionScaffold(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+    UINT64 ProcessId;
+    UINT64 TaskId;
+    UINT64 CriticalSectionFlags;
+
+    State = LosKernelSchedulerState();
+    if (State == 0)
+    {
+        return 0;
+    }
+
+    if (State->UserTransitionScaffoldReady != 0U)
+    {
+        return 1;
+    }
+
+    if (LosIsMemoryManagerBootstrapReady() == 0U)
+    {
+        return 0;
+    }
+
+    ProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
+    TaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
+    if (!LosKernelSchedulerCreateProcess(
+            "UserScaffoldProcess",
+            LOS_KERNEL_SCHEDULER_PROCESS_FLAG_USER_TRANSITION |
+            LOS_KERNEL_SCHEDULER_PROCESS_FLAG_REQUIRE_OWN_ADDRESS_SPACE,
+            0ULL,
+            LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS,
+            &ProcessId))
+    {
+        return 0;
+    }
+
+    if (!LosKernelSchedulerCreateTask(
+            "UserScaffoldTask",
+            ProcessId,
+            LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE |
+            LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_SCAFFOLD,
+            LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_PRIORITY,
+            1U,
+            0ULL,
+            LosKernelSchedulerUserTransitionTrapThread,
+            0,
+            &TaskId))
+    {
+        (void)LosKernelSchedulerMarkProcessTerminated(ProcessId, 1ULL);
+        return 0;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    Process = FindProcessByIdMutable(ProcessId);
+    Task = FindTaskByIdMutable(TaskId);
+    if (Process != 0)
+    {
+        Process->Flags |= LOS_KERNEL_SCHEDULER_PROCESS_FLAG_USER_TRANSITION;
+        Process->UserEntryVirtualAddress = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS;
+        Process->UserStackTopVirtualAddress = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS;
+        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED;
+    }
+    if (Task != 0)
+    {
+        Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED;
+        Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION;
+        Task->ReadySinceTick = 0ULL;
+        Task->NextWakeTick = 0ULL;
+        Task->RemainingQuantumTicks = Task->QuantumTicks;
+        Task->Flags |= LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE | LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_SCAFFOLD;
+        Task->UserInstructionPointer = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS;
+        Task->UserStackPointer = LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS;
+        Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED;
+    }
+    State->UserTransitionScaffoldReady = 1U;
+    State->UserTransitionPreparedCount += 1ULL;
+    State->UserTransitionScaffoldProcessId = ProcessId;
+    State->UserTransitionScaffoldTaskId = TaskId;
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+
+    LosKernelTraceOk("Scheduler user-transition scaffold prepared.");
+    LosKernelTraceHex64("Scheduler user-transition scaffold entry: ", LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_ENTRY_VIRTUAL_ADDRESS);
+    LosKernelTraceHex64("Scheduler user-transition scaffold user-stack top: ", LOS_KERNEL_SCHEDULER_USER_SCAFFOLD_STACK_TOP_VIRTUAL_ADDRESS);
+    LosKernelSchedulerTraceProcess("Prepared scheduler user-transition scaffold process", Process);
+    LosKernelSchedulerTraceTask("Prepared scheduler user-transition scaffold task", Task);
+    return 1;
 }
 
 void LosKernelSchedulerCleanupTerminatedTasks(void)
@@ -1089,10 +1216,21 @@ void LosKernelSchedulerInitialize(void)
     State->AddressSpaceBindDeferredCount = 0ULL;
     State->WakeupCount = 0ULL;
     State->WakePriorityDispatchCount = 0ULL;
+    State->WakeResumeWindowDispatchCount = 0ULL;
+    State->MaxReadyDelayTicks = 0ULL;
+    State->MaxWakeDelayTicks = 0ULL;
+    State->MaxRunSliceTicks = 0ULL;
+    State->IdleTicks = 0ULL;
+    State->BusyTicks = 0ULL;
+    State->UserTransitionPreparedCount = 0ULL;
+    State->UserTransitionScaffoldProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
+    State->UserTransitionScaffoldTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
     State->DirectClaimStackPoolPhysicalAddress = 0ULL;
     State->DirectClaimStackPoolBytes = 0ULL;
     State->DirectClaimStackPoolReady = 0U;
     State->DirectClaimStackSlotsInUse = 0U;
+    State->UserTransitionScaffoldReady = 0U;
+    State->Reserved1 = 0U;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
 

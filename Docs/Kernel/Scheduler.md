@@ -1,3 +1,5 @@
+Added a first-stage **user-transition scaffold**. The scheduler lifecycle path now prepares a dedicated `UserScaffoldProcess` with its own distinct address space plus a blocked `UserScaffoldTask` that records the future user entry and user-stack top without attempting a ring transition yet. Scheduler-wide diagnostics now expose `user-scaffold-ready`, `user-scaffold-prepared`, `user-scaffold-proc`, and `user-scaffold-task`, while task/process traces now include the recorded user entry, user stack, and user-transition state. That gives LOS a concrete launch object to harden before the first real kernel-to-user transfer path is wired.
+
 ## 0.2.20
 
 Added first-stage scheduler runtime accounting. The scheduler now records per-task and per-process dispatch counts plus consumed run ticks, and the scheduler heartbeat/state diagnostics now expose scheduler-wide `idle-ticks` and `busy-ticks`. That makes the serial log useful for answering whether time is actually being spent in the idle thread, the busy worker, or transient work before the first user-mode transition path is added.
