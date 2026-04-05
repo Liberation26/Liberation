@@ -5,6 +5,8 @@
 static LOS_KERNEL_SCHEDULER_STATE LosKernelSchedulerGlobalState;
 static UINT8 LosKernelSchedulerBootstrapStacks[LOS_KERNEL_SCHEDULER_MAX_TASKS][LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES] __attribute__((aligned(4096)));
 static UINT8 LosKernelSchedulerBootstrapStackUsed[LOS_KERNEL_SCHEDULER_MAX_TASKS];
+static UINT8 LosKernelSchedulerDirectClaimStackUsed[LOS_KERNEL_SCHEDULER_MAX_TASKS];
+static void *LosKernelSchedulerDirectClaimStackPoolBase;
 
 LOS_KERNEL_SCHEDULER_STATE *LosKernelSchedulerState(void)
 {
@@ -73,6 +75,61 @@ static BOOLEAN SchedulerMayUseMemoryManagerBackedThreadStacks(void)
      * the normal scheduled-service path rather than the hosted bootstrap pump.
      */
     return 0;
+}
+
+static BOOLEAN ReserveDirectClaimKernelThreadStackPool(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_X64_CLAIM_FRAMES_REQUEST ClaimRequest;
+    LOS_X64_CLAIM_FRAMES_RESULT ClaimResult;
+    UINT64 TotalPages;
+
+    State = LosKernelSchedulerState();
+    if (State == 0)
+    {
+        return 0;
+    }
+
+    if (State->DirectClaimStackPoolReady != 0U)
+    {
+        return 1;
+    }
+
+    TotalPages = LOS_KERNEL_SCHEDULER_MAX_TASKS * LOS_KERNEL_SCHEDULER_THREAD_STACK_PAGES;
+    ZeroBytes(&ClaimRequest, sizeof(ClaimRequest));
+    ZeroBytes(&ClaimResult, sizeof(ClaimResult));
+    ClaimRequest.PageCount = TotalPages;
+    ClaimRequest.AlignmentBytes = 4096ULL;
+    ClaimRequest.Flags = LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS;
+    ClaimRequest.Owner = LOS_X64_MEMORY_REGION_OWNER_CLAIMED;
+    LosX64ClaimFrames(&ClaimRequest, &ClaimResult);
+    if (ClaimResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS ||
+        ClaimResult.BaseAddress == 0ULL ||
+        ClaimResult.PageCount != TotalPages)
+    {
+        LosKernelTraceFail("Kernel scheduler could not reserve direct-claim stack pool frames.");
+        LosKernelTraceUnsigned("Kernel scheduler direct-claim stack-pool status: ", ClaimResult.Status);
+        LosKernelTraceUnsigned("Kernel scheduler direct-claim stack-pool pages returned: ", ClaimResult.PageCount);
+        return 0;
+    }
+
+    LosKernelSchedulerDirectClaimStackPoolBase = LosX64GetDirectMapVirtualAddress(ClaimResult.BaseAddress, TotalPages * 4096ULL);
+    if (LosKernelSchedulerDirectClaimStackPoolBase == 0)
+    {
+        LosKernelTraceFail("Kernel scheduler could not direct-map the direct-claim stack pool.");
+        LosKernelTraceHex64("Kernel scheduler direct-claim stack-pool base: ", ClaimResult.BaseAddress);
+        return 0;
+    }
+
+    State->DirectClaimStackPoolPhysicalAddress = ClaimResult.BaseAddress;
+    State->DirectClaimStackPoolBytes = TotalPages * 4096ULL;
+    State->DirectClaimStackPoolReady = 1U;
+    State->DirectClaimStackSlotsInUse = 0U;
+    ZeroBytes(&LosKernelSchedulerDirectClaimStackUsed[0], sizeof(LosKernelSchedulerDirectClaimStackUsed));
+    LosKernelTraceOk("Kernel scheduler direct-claim stack pool ready.");
+    LosKernelTraceHex64("Kernel scheduler direct-claim stack-pool base: ", ClaimResult.BaseAddress);
+    LosKernelTraceUnsigned("Kernel scheduler direct-claim stack-pool pages: ", TotalPages);
+    return 1;
 }
 
 static void WriteStackReturnAddress(UINT64 StackAddress, UINT64 ReturnAddress)
@@ -406,6 +463,50 @@ static BOOLEAN AllocateBootstrapKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Tas
     return 0;
 }
 
+static BOOLEAN AllocateDirectClaimKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+    UINT8 *StackBase;
+    UINT64 StackPhysicalAddress;
+
+    if (Task == 0)
+    {
+        return 0;
+    }
+
+    State = LosKernelSchedulerState();
+    if (State == 0 || State->DirectClaimStackPoolReady == 0U ||
+        LosKernelSchedulerDirectClaimStackPoolBase == 0)
+    {
+        return 0;
+    }
+
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_TASKS; ++Index)
+    {
+        if (LosKernelSchedulerDirectClaimStackUsed[Index] != 0U)
+        {
+            continue;
+        }
+
+        LosKernelSchedulerDirectClaimStackUsed[Index] = 1U;
+        if (State->DirectClaimStackSlotsInUse < LOS_KERNEL_SCHEDULER_MAX_TASKS)
+        {
+            State->DirectClaimStackSlotsInUse += 1U;
+        }
+        StackBase = &((UINT8 *)LosKernelSchedulerDirectClaimStackPoolBase)[Index * LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES];
+        StackPhysicalAddress = State->DirectClaimStackPoolPhysicalAddress +
+            ((UINT64)Index * LOS_KERNEL_SCHEDULER_THREAD_STACK_BYTES);
+        Task->BootstrapStackSlot = Index;
+        InitializeTaskStackContext(Task, StackBase, StackPhysicalAddress);
+        Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_DIRECT_CLAIM;
+        LosKernelTraceOk("Kernel scheduler using direct-claim stack pool.");
+        return 1;
+    }
+
+    return 0;
+}
+
 static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
 {
     LOS_X64_CLAIM_FRAMES_REQUEST ClaimRequest;
@@ -419,6 +520,11 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
 
     Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
     Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
+
+    if (AllocateDirectClaimKernelThreadStack(Task) != 0U)
+    {
+        return 1;
+    }
 
     if (LosKernelSchedulerIsOnline() != 0U &&
         IsMemoryManagerSchedulerTransportReady() != 0U &&
@@ -515,8 +621,24 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
         }
         else if (Task->StackAllocationSource == LOS_KERNEL_SCHEDULER_STACK_SOURCE_DIRECT_CLAIM)
         {
-            LosKernelTraceFail("Kernel scheduler retained a direct-claimed terminated thread stack because it is not memory-manager tracked.");
-            LosKernelTraceHex64("Kernel scheduler retained direct-claimed stack base: ", Task->StackPhysicalAddress);
+            LOS_KERNEL_SCHEDULER_STATE *State;
+
+            State = LosKernelSchedulerState();
+            if (Task->BootstrapStackSlot != LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT &&
+                Task->BootstrapStackSlot < LOS_KERNEL_SCHEDULER_MAX_TASKS)
+            {
+                LosKernelSchedulerDirectClaimStackUsed[Task->BootstrapStackSlot] = 0U;
+                if (State != 0 && State->DirectClaimStackSlotsInUse > 0U)
+                {
+                    State->DirectClaimStackSlotsInUse -= 1U;
+                }
+                Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
+            }
+            else
+            {
+                LosKernelTraceFail("Kernel scheduler lost track of a direct-claim stack-pool slot.");
+                LosKernelTraceHex64("Kernel scheduler direct-claim stack base: ", Task->StackPhysicalAddress);
+            }
         }
     }
 
@@ -923,6 +1045,8 @@ void LosKernelSchedulerInitialize(void)
     State = LosKernelSchedulerState();
     ZeroBytes(State, sizeof(*State));
     ZeroBytes(&LosKernelSchedulerBootstrapStackUsed[0], sizeof(LosKernelSchedulerBootstrapStackUsed));
+    ZeroBytes(&LosKernelSchedulerDirectClaimStackUsed[0], sizeof(LosKernelSchedulerDirectClaimStackUsed));
+    LosKernelSchedulerDirectClaimStackPoolBase = 0;
     State->Signature = LOS_KERNEL_SCHEDULER_SIGNATURE;
     State->Version = LOS_KERNEL_SCHEDULER_VERSION;
     State->Online = 0U;
@@ -955,8 +1079,14 @@ void LosKernelSchedulerInitialize(void)
     State->AddressSpaceBindDeferredCount = 0ULL;
     State->WakeupCount = 0ULL;
     State->WakePriorityDispatchCount = 0ULL;
+    State->DirectClaimStackPoolPhysicalAddress = 0ULL;
+    State->DirectClaimStackPoolBytes = 0ULL;
+    State->DirectClaimStackPoolReady = 0U;
+    State->DirectClaimStackSlotsInUse = 0U;
     ZeroBytes(&State->SchedulerContext, sizeof(State->SchedulerContext));
     State->SchedulerContext.Rflags = 0x202ULL;
+
+    (void)ReserveDirectClaimKernelThreadStackPool();
 
     if (!LosKernelSchedulerCreateProcess(
             "KernelProcess",

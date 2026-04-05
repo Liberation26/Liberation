@@ -1,3 +1,7 @@
+## 0.2.18
+
+Scheduler threads now prefer a dedicated **kernel direct-claim stack pool** reserved once during scheduler initialization. That pool is backed by kernel-claimed frames and reused slot-by-slot as transient workers are created and reaped, so LOS no longer has to keep ordinary scheduler work on the embedded bootstrap fallback stacks just because hosted `AllocateFrames` replies are still being held back. The embedded bootstrap stack array now remains as an emergency fallback only.
+
 ## 0.2.17
 
 Scheduler-created transient threads now stay on bootstrap fallback stacks even after the hosted memory-manager attach completes. The hosted `AllocateFrames` request path can still lose replies once transient distinct-root process activation is live, so this stage deliberately keeps scheduler-owned stacks off that path while distinct process address spaces continue to be created and destroyed through the memory manager.
@@ -42,13 +46,14 @@ The scheduler is still intentionally small, but it now provides:
 - one non-cooperative busy worker thread to prove involuntary preemption
 - one lifecycle-manager kernel thread that spawns short-lived work to prove task creation and teardown
 - dedicated kernel stack per scheduled thread
+- scheduler-owned direct-claim stack pool reserved once at initialization and reused across transient task lifetimes
 - saved execution context for scheduler and threads
 - timer-driven wake-up for sleeping work
 - interrupt-driven quantum expiry and return-to-scheduler preemption
 - scheduler ownership of the post-init idle path
 - scheduler initialization moved to the post-bootstrap stage, after the memory-manager bootstrap address space exists
 - early boot fallback stacks reserved inside the kernel image so scheduler bring-up does not halt if physical-frame claiming is temporarily unavailable
-- scheduler-owned transient thread stacks currently stay on the bootstrap fallback pool while hosted `AllocateFrames` reply handling is being stabilized
+- hosted transient thread stacks currently stay off the hosted `AllocateFrames` path; scheduler threads now prefer the direct-claim kernel stack pool, with the bootstrap fallback array retained only as emergency backup
 - per-task ownership, generation, termination, and deferred cleanup bookkeeping
 - first-stage process objects with process ids, owner process ids, thread counts, and address-space metadata
 - inherited process root-table tracking so transient processes no longer carry a zero root while they still share the kernel mappings

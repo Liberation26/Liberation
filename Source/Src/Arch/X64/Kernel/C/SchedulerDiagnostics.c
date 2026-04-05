@@ -147,6 +147,10 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
     LosKernelSerialWriteText(" resume-window=");
     LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
+    LosKernelSerialWriteText(" stack-pool-ready=");
+    LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
+    LosKernelSerialWriteText(" stack-pool-used=");
+    LosKernelSerialWriteUnsigned(State->DirectClaimStackSlotsInUse);
     LosKernelSerialWriteText(" active-root=");
     LosKernelSerialWriteHex64(State->ActiveRootTablePhysicalAddress);
     LosKernelSerialWriteText(" current=");
@@ -216,6 +220,10 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->WakePriorityDispatchCount);
             LosKernelSerialWriteText(" resume-window=");
             LosKernelSerialWriteUnsigned(State->WakeResumeWindowDispatchCount);
+            LosKernelSerialWriteText(" stack-pool-ready=");
+            LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
+            LosKernelSerialWriteText(" stack-pool-used=");
+            LosKernelSerialWriteUnsigned(State->DirectClaimStackSlotsInUse);
             LosKernelSerialWriteText("\n");
         }
 
