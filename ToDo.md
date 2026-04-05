@@ -10,6 +10,7 @@
 - [x] Prevent starvation of lower-priority kernel work under sustained busy-thread load
 - [x] Add first-stage process objects with address-space ownership metadata above threads
 - [x] Bind real non-kernel address spaces to transient process objects
+- [x] Require distinct address spaces for transient non-kernel scheduler processes instead of silently inheriting the kernel root
 - [ ] Add a real user-mode transition path for first user tasks
 - [ ] Add real IPC: send, receive, reply, notifications, blocking, wake, and timeouts
 - [ ] Add capability enforcement tied to kernel objects and IPC operations

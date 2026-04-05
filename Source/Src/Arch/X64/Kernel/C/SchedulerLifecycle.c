@@ -87,6 +87,31 @@ static const LOS_KERNEL_SCHEDULER_PROCESS *FindProcessById(UINT64 ProcessId)
     return (const LOS_KERNEL_SCHEDULER_PROCESS *)FindProcessByIdMutable(ProcessId);
 }
 
+
+static void AbandonCreatedProcess(LOS_KERNEL_SCHEDULER_PROCESS *Process)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT64 CriticalSectionFlags;
+
+    if (Process == 0)
+    {
+        return;
+    }
+
+    CriticalSectionFlags = EnterSchedulerCriticalSection();
+    State = LosKernelSchedulerState();
+    if (Process->State != LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED &&
+        Process->ThreadCount == 0U)
+    {
+        if (State->ProcessCount > 0U)
+        {
+            State->ProcessCount -= 1U;
+        }
+        ZeroBytes(Process, sizeof(*Process));
+    }
+    LeaveSchedulerCriticalSection(CriticalSectionFlags);
+}
+
 static UINT64 GetKernelRootTablePhysicalAddress(void);
 static BOOLEAN BindOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Process)
 {
@@ -105,6 +130,7 @@ static BOOLEAN BindOwnedProcessAddressSpace(LOS_KERNEL_SCHEDULER_PROCESS *Proces
     }
     if (LosIsMemoryManagerBootstrapReady() == 0U)
     {
+        LosKernelTraceUnsigned("Kernel scheduler deferred process address-space binding because the memory manager bootstrap is not ready for process id: ", Process->ProcessId);
         return 0;
     }
 
@@ -372,6 +398,43 @@ static void ReleaseTaskStackResources(LOS_KERNEL_SCHEDULER_TASK *Task)
     ZeroBytes(&Task->ExecutionContext, sizeof(Task->ExecutionContext));
 }
 
+
+void LosKernelSchedulerBindPendingProcessAddressSpaces(void)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    UINT32 Index;
+
+    State = LosKernelSchedulerState();
+    for (Index = 0U; Index < LOS_KERNEL_SCHEDULER_MAX_PROCESSES; ++Index)
+    {
+        LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+        Process = &State->Processes[Index];
+        if (Process->State == LOS_KERNEL_SCHEDULER_PROCESS_STATE_UNUSED)
+        {
+            continue;
+        }
+        if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) != 0U)
+        {
+            continue;
+        }
+        if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_OWNS_ADDRESS_SPACE) != 0U)
+        {
+            continue;
+        }
+        if ((Process->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_INHERITS_ROOT) == 0U)
+        {
+            continue;
+        }
+        if (Process->AddressSpaceId != 0ULL || Process->AddressSpaceObjectPhysicalAddress != 0ULL)
+        {
+            continue;
+        }
+
+        (void)BindOwnedProcessAddressSpace(Process);
+    }
+}
+
 BOOLEAN LosKernelSchedulerCreateProcess(
     const char *Name,
     UINT32 Flags,
@@ -436,15 +499,23 @@ BOOLEAN LosKernelSchedulerCreateProcess(
 
     if (CreatedProcess != 0)
     {
-        if (ProcessId != 0)
-        {
-            *ProcessId = LocalProcessId;
-        }
         if ((CreatedProcess->Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_KERNEL) == 0U &&
             RootTablePhysicalAddress == LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS &&
             AddressSpaceId == 0ULL)
         {
-            (void)BindOwnedProcessAddressSpace(CreatedProcess);
+            if (!BindOwnedProcessAddressSpace(CreatedProcess) &&
+                (Flags & LOS_KERNEL_SCHEDULER_PROCESS_FLAG_REQUIRE_OWN_ADDRESS_SPACE) != 0U)
+            {
+                LosKernelTraceFail("Kernel scheduler rejected process creation because a distinct address space was required but not available.");
+                LosKernelTraceUnsigned("Kernel scheduler rejected process id: ", LocalProcessId);
+                AbandonCreatedProcess(CreatedProcess);
+                return 0;
+            }
+        }
+
+        if (ProcessId != 0)
+        {
+            *ProcessId = LocalProcessId;
         }
         LosKernelSchedulerTraceProcess("Registered scheduler process", CreatedProcess);
         return 1;

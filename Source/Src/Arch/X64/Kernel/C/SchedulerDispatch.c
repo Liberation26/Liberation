@@ -258,6 +258,7 @@ void LosKernelSchedulerEnter(void)
         State->InScheduler = 1U;
         LosKernelSchedulerCleanupTerminatedTasks();
         LosKernelSchedulerCleanupTerminatedProcesses();
+        LosKernelSchedulerBindPendingProcessAddressSpaces();
         LosKernelSchedulerWakeDueTasks();
         SelectedIndex = LosKernelSchedulerSelectNextTaskIndex();
         if (SelectedIndex == LOS_KERNEL_SCHEDULER_INVALID_TASK_INDEX)

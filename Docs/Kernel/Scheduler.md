@@ -2,7 +2,7 @@
 
 ## Current State
 
-LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, **scheduler-managed process root activation**, and now **distinct memory-manager-created address spaces bound to transient scheduler processes** so dispatch can switch between genuinely different CR3 roots even before user mode exists.
+LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, **scheduler-managed process root activation**, and now **distinct memory-manager-created address spaces bound to transient scheduler processes** so dispatch can switch between genuinely different CR3 roots even before user mode exists. Transient non-kernel scheduler processes now **require** that distinct address-space bind; if the bind is unavailable, creation is rejected instead of silently leaving the process on the inherited kernel root.
 
 The scheduler is still intentionally small, but it now provides:
 
@@ -104,6 +104,8 @@ Each process carries:
 The kernel bootstrap work now runs inside a persistent `KernelProcess`, while the lifecycle manager spawns short-lived `EphemeralProcess` objects that each own one ephemeral worker thread. When the worker exits, the scheduler reclaims the thread and then reclaims the now-empty transient process object.
 
 When a process is created without its own root yet, the scheduler now inherits the creator root and records that fact explicitly. For transient non-kernel processes, the scheduler then immediately asks the hosted memory manager to create a distinct address-space object, replaces the inherited root with the returned root-table physical address, and records the owning address-space object for later teardown. During dispatch, the scheduler activates the selected process root before entering the thread context and restores the kernel-process root when control returns to the scheduler loop. When a transient process is reaped, the scheduler now asks the memory manager to destroy the owned address-space object before freeing the process slot.
+
+If that distinct bind cannot be completed for a transient process that requires its own address space, the scheduler now rejects the process creation rather than pretending that the process boundary exists while it is still running on the inherited kernel root. The main scheduler loop also retries pending binds for any non-kernel process that still carries the inherited-root marker.
 
 That gives LOS a real place to hang later address-space ownership, fault accounting, IPC ownership, and user-mode launch state without pretending that a thread alone is the whole execution object.
 

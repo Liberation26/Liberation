@@ -210,7 +210,7 @@ void LosKernelSchedulerLifecycleThread(void *Context)
 
         if (!LosKernelSchedulerCreateProcess(
                 "EphemeralProcess",
-                LOS_KERNEL_SCHEDULER_PROCESS_FLAG_TRANSIENT,
+                LOS_KERNEL_SCHEDULER_PROCESS_FLAG_TRANSIENT | LOS_KERNEL_SCHEDULER_PROCESS_FLAG_REQUIRE_OWN_ADDRESS_SPACE,
                 0ULL,
                 LOS_KERNEL_SCHEDULER_INVALID_ROOT_TABLE_PHYSICAL_ADDRESS,
                 &ProcessId))

@@ -1,4 +1,9 @@
-Version 0.2.6
+Version 0.2.7
+
+- Hardened transient scheduler-process creation so lifecycle-spawned non-kernel processes now **require** a distinct memory-manager-created address space instead of silently falling back to an inherited kernel root when a bind attempt cannot be completed.
+- Added scheduler-side rebinding of any pending inherited transient processes from the main dispatch loop, so if a distinct process root is temporarily unavailable at creation time the scheduler keeps retrying the bind point instead of leaving the process permanently on the kernel root.
+- Added explicit diagnostics for deferred process address-space binding and process-creation rejection when a distinct root is mandatory. This keeps the serial log honest about whether LOS really created a separate process root or intentionally refused that process.
+- This stage tightens the process/address-space boundary before the first user-mode transition work.
 
 - Added **memory-manager-backed distinct process address spaces** for transient scheduler processes. The lifecycle thread now creates ephemeral processes that receive their own address-space object, address-space id, and root table instead of always inheriting the kernel root.
 - Added scheduler bookkeeping for `address-space-object` ownership and an `owns-address-space` marker in process diagnostics, so the serial log can now prove which process is carrying a distinct memory-manager-created root.
