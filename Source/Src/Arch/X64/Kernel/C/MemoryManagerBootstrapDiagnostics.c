@@ -347,6 +347,27 @@ static void BuildMemoryManagerKnowledgeLine3(char *Buffer, UINTN Capacity, const
     AppendUnsigned(Buffer, Capacity, &Length, Result->PageFrameDatabaseEntryCount);
 }
 
+static void BuildMemoryManagerKnowledgeLine4(char *Buffer, UINTN Capacity, const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
+{
+    UINTN Length;
+
+    if (Buffer == 0 || Capacity == 0U || Result == 0)
+    {
+        return;
+    }
+
+    Buffer[0] = '\0';
+    Length = 0U;
+    AppendText(Buffer, Capacity, &Length, "MM heap meta ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->HeapMetadataPages);
+    AppendText(Buffer, Capacity, &Length, " heap ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->HeapReservedPages);
+    AppendText(Buffer, Capacity, &Length, " slabcap ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->HeapSlabPageCapacity);
+    AppendText(Buffer, Capacity, &Length, " largecap ");
+    AppendUnsigned(Buffer, Capacity, &Length, Result->HeapLargeAllocationCapacity);
+}
+
 static void BuildBootstrapAddressSpaceLine(char *Buffer, UINTN Capacity, const LOS_MEMORY_MANAGER_BOOTSTRAP_STATE *State)
 {
     UINTN Length;
@@ -417,9 +438,15 @@ static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTA
     LosKernelTraceUnsigned("Memory-manager MMIO pages: ", Result->MmioPages);
     LosKernelTraceUnsigned("Memory-manager descriptor count: ", Result->InternalDescriptorCount);
     LosKernelTraceUnsigned("Memory-manager frame-database ranges: ", Result->PageFrameDatabaseEntryCount);
+    LosKernelTraceUnsigned("Memory-manager heap metadata pages: ", Result->HeapMetadataPages);
+    LosKernelTraceUnsigned("Memory-manager heap reserved pages: ", Result->HeapReservedPages);
+    LosKernelTraceUnsigned("Memory-manager heap slab capacity: ", Result->HeapSlabPageCapacity);
+    LosKernelTraceUnsigned("Memory-manager heap large-allocation capacity: ", Result->HeapLargeAllocationCapacity);
 
     LosKernelTraceOk("Frame allocator ready.");
     LosKernelStatusScreenWriteOk("Frame allocator ready.");
+    LosKernelTraceOk("Heap subsystem ready.");
+    LosKernelStatusScreenWriteOk("Heap subsystem ready.");
     LosKernelStatusScreenWriteOk("Memory view from Memory Manager ready.");
     BuildMemoryManagerKnowledgeLine0(ScreenLine, sizeof(ScreenLine), Result);
     LosKernelStatusScreenWriteOk(ScreenLine);
@@ -428,6 +455,8 @@ static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTA
     BuildMemoryManagerKnowledgeLine2(ScreenLine, sizeof(ScreenLine), Result);
     LosKernelStatusScreenWriteOk(ScreenLine);
     BuildMemoryManagerKnowledgeLine3(ScreenLine, sizeof(ScreenLine), Result);
+    LosKernelStatusScreenWriteOk(ScreenLine);
+    BuildMemoryManagerKnowledgeLine4(ScreenLine, sizeof(ScreenLine), Result);
     LosKernelStatusScreenWriteOk(ScreenLine);
 }
 

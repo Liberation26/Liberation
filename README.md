@@ -1,3 +1,9 @@
+Version 0.1.80
+
+- Added an explicit `Heap subsystem ready.` notification on both the memory-manager service serial path and the kernel bootstrap diagnostics path, so heap bring-up is now visible alongside the existing frame-allocator readiness line.
+- Extended the bootstrap-attach result contract to return heap metadata pages, reserved heap pages, slab capacity, and large-allocation capacity from `MEMORYMGR.ELF` back to the kernel.
+- The kernel now logs those heap metrics to serial and writes a dedicated on-screen heap summary line after `Heap subsystem ready.` so the visible boot output proves the heap subsystem is live.
+
 Version 0.1.79
 
 - Added a real internal memory-manager heap subsystem with a bootstrap metadata bump allocator, fixed-size slab pools, and page-backed heap growth.

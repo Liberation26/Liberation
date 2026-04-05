@@ -309,6 +309,10 @@ typedef struct
     UINT64 MmioPages;
     UINT64 InternalDescriptorCount;
     UINT64 PageFrameDatabaseEntryCount;
+    UINT64 HeapMetadataPages;
+    UINT64 HeapReservedPages;
+    UINT64 HeapSlabPageCapacity;
+    UINT64 HeapLargeAllocationCapacity;
 } LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT;
 
 typedef struct

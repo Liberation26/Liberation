@@ -1117,6 +1117,10 @@ static void PopulateBootstrapAttachResponse(
     Response->Payload.BootstrapAttach.MmioPages = State->MemoryView.MmioPages;
     Response->Payload.BootstrapAttach.InternalDescriptorCount = (UINT64)State->MemoryView.InternalDescriptorCount;
     Response->Payload.BootstrapAttach.PageFrameDatabaseEntryCount = (UINT64)State->MemoryView.PageFrameDatabaseEntryCount;
+    Response->Payload.BootstrapAttach.HeapMetadataPages = State->Heap.TotalReservedMetadataPages;
+    Response->Payload.BootstrapAttach.HeapReservedPages = State->Heap.TotalReservedHeapPages;
+    Response->Payload.BootstrapAttach.HeapSlabPageCapacity = (UINT64)State->Heap.SlabPageCapacity;
+    Response->Payload.BootstrapAttach.HeapLargeAllocationCapacity = (UINT64)State->Heap.LargeAllocationCapacity;
 }
 
 static void PostEvent(UINT32 EventType, UINT32 Status, UINT64 Value0, UINT64 Value1)
@@ -1343,6 +1347,7 @@ void LosMemoryManagerServiceBootstrapEntry(UINT64 LaunchBlockAddress)
         ServiceSerialWriteNamedUnsigned("Heap slab descriptor capacity", (UINT64)State->Heap.SlabPageCapacity);
         ServiceSerialWriteNamedUnsigned("Heap large descriptor capacity", (UINT64)State->Heap.LargeAllocationCapacity);
         ServiceSerialWriteLine("[MemManager] Frame allocator ready.");
+        ServiceSerialWriteLine("[MemManager] Heap subsystem ready.");
         ServiceSerialWriteLine("[MemManager] Internal heap ready.");
         ServiceSerialWriteLine("[MemManager] Memory-manager attach complete.");
         PostEvent(LOS_MEMORY_MANAGER_EVENT_SERVICE_ONLINE, 0U, LaunchBlock->ServiceEntryVirtualAddress, LaunchBlock->ServiceStackTopPhysicalAddress);
