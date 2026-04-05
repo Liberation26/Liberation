@@ -41,7 +41,7 @@
 #define LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION 5U
 
 #define LOS_KERNEL_SCHEDULER_SIGNATURE 0x52454C5544454843ULL
-#define LOS_KERNEL_SCHEDULER_VERSION 26U
+#define LOS_KERNEL_SCHEDULER_VERSION 27U
 
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_NONE 0U
 #define LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_PREPARED 1U
@@ -201,6 +201,7 @@ typedef struct
     UINT64 UserTransitionArmedCount;
     UINT64 UserTransitionLaunchRequestCount;
     UINT64 UserTransitionEntryReadyCount;
+    UINT64 UserTransitionLiveCount;
     UINT64 UserTransitionDispatchSkipCount;
     UINT64 UserTransitionScaffoldProcessId;
     UINT64 UserTransitionScaffoldTaskId;
@@ -209,7 +210,7 @@ typedef struct
     UINT32 DirectClaimStackPoolReady;
     UINT32 DirectClaimStackSlotsInUse;
     UINT32 UserTransitionScaffoldReady;
-    UINT32 Reserved1;
+    UINT32 UserTransitionLiveGateClosed;
     LOS_KERNEL_SCHEDULER_CONTEXT SchedulerContext;
     LOS_KERNEL_SCHEDULER_PROCESS Processes[LOS_KERNEL_SCHEDULER_MAX_PROCESSES];
     LOS_KERNEL_SCHEDULER_TASK Tasks[LOS_KERNEL_SCHEDULER_MAX_TASKS];

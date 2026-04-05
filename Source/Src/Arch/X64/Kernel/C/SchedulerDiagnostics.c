@@ -207,6 +207,10 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
     LosKernelSerialWriteText(" user-scaffold-entry-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-scaffold-live=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
+    LosKernelSerialWriteText(" user-live-gate-closed=");
+    LosKernelSerialWriteUnsigned(State->UserTransitionLiveGateClosed);
     LosKernelSerialWriteText(" user-dispatch-skip=");
     LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
     LosKernelSerialWriteText(" user-scaffold-proc=");
@@ -308,6 +312,10 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
             LosKernelSerialWriteText(" user-scaffold-entry-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-scaffold-live=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
+            LosKernelSerialWriteText(" user-live-gate-closed=");
+            LosKernelSerialWriteUnsigned(State->UserTransitionLiveGateClosed);
             LosKernelSerialWriteText(" user-dispatch-skip=");
             LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
             LosKernelSerialWriteText(" user-scaffold-proc=");
@@ -357,6 +365,11 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         else if (LosKernelSchedulerState()->UserTransitionEntryReadyCount == 0ULL)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldEntryReady();
+        }
+        else if (LosKernelSchedulerState()->UserTransitionLiveGateClosed == 0U &&
+                 LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
+        {
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed();
         }
 
         if (LosKernelSchedulerHasActiveTransientProcess() != 0U)

@@ -1,3 +1,7 @@
+# 0.2.29
+
+Added an explicit **live-gate-closed** stop after the user-transition scaffold reaches **entry-ready**. The lifecycle thread now emits a one-time `Scheduler user-transition scaffold live gate closed...` line, scheduler diagnostics expose `user-scaffold-live` and `user-live-gate-closed`, and a dedicated `LosKernelSchedulerMarkUserTransitionScaffoldLive()` helper is now in place for the future real ring-transition entry path to flip the scaffold to LIVE without reopening dispatch early.
+
 # 0.2.28
 
 Added an explicit **entry-ready** stage to the user-transition scaffold. After launch is requested, the scaffold now advances to an entry-ready state once the blocked user task and its distinct address space still carry non-zero user entry and user-stack values. Scheduler diagnostics now expose `user-scaffold-entry-ready`, and dispatch eligibility stays closed to user-mode tasks until a future real ring-transition path marks them live.
