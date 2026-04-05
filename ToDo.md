@@ -6,7 +6,7 @@
 - Verify the 0.2.13 pending-wake resume-window path by proving transient owned-root workers wake, get an immediate post-wake slice, resume, exit, reap, and destroy their address spaces cleanly under sustained busy-thread load.
 # ToDo
 
-- Re-test 0.2.16 bootstrap-thread stack staging to confirm early scheduler threads stay on bootstrap fallback stacks, later transient threads switch to memory-manager-backed stacks, and no premature hosted `AllocateFrames` request appears during scheduler initialization.
+- Re-test 0.2.17 hosted-stack fallback so transient scheduler threads stay on bootstrap stacks while distinct process address-space create/destroy requests still round-trip through the memory manager without triggering the hosted `AllocateFrames` no-reply halt.
 ## Priority Order
 
 - [x] Prove timer and interrupt stability
@@ -24,6 +24,7 @@
 - [ ] Add capability enforcement tied to kernel objects and IPC operations
 - [ ] Add fault and exception handling against tasks, not just machine halt paths
 - [ ] Add a real executable and program loader path for user images
+- [ ] Re-enable memory-manager-backed scheduler thread stacks only after hosted `AllocateFrames` and `FreeFrames` round-trips are proven stable, or after `MEMORYMGR.ELF` is running as a normal scheduled task instead of the hosted bootstrap helper.
 - [ ] Run `MEMORYMGR.ELF` as a real scheduled user task
 - [ ] Move memory-manager request servicing from bootstrap dispatch to real endpoint delivery
 - [ ] Keep the memory-manager address space alive after bootstrap

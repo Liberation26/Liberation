@@ -64,6 +64,17 @@ static BOOLEAN IsMemoryManagerSchedulerTransportReady(void)
     return 1;
 }
 
+static BOOLEAN SchedulerMayUseMemoryManagerBackedThreadStacks(void)
+{
+    /*
+     * The hosted bootstrap path can still lose AllocateFrames replies after
+     * transient process-root activation. Keep scheduler-owned thread stacks on
+     * the bootstrap fallback pool until the memory manager is running through
+     * the normal scheduled-service path rather than the hosted bootstrap pump.
+     */
+    return 0;
+}
+
 static void WriteStackReturnAddress(UINT64 StackAddress, UINT64 ReturnAddress)
 {
     UINT64 *Pointer;
@@ -410,7 +421,8 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
     Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
 
     if (LosKernelSchedulerIsOnline() != 0U &&
-        IsMemoryManagerSchedulerTransportReady() != 0U)
+        IsMemoryManagerSchedulerTransportReady() != 0U &&
+        SchedulerMayUseMemoryManagerBackedThreadStacks() != 0U)
     {
         ZeroBytes(&ClaimRequest, sizeof(ClaimRequest));
         ZeroBytes(&ClaimResult, sizeof(ClaimResult));
@@ -450,6 +462,12 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
             LosKernelTraceUnsigned("Kernel scheduler stack-claim status: ", ClaimResult.Status);
             LosKernelTraceUnsigned("Kernel scheduler stack-claim pages returned: ", ClaimResult.PageCount);
         }
+    }
+
+    if (LosKernelSchedulerIsOnline() != 0U &&
+        IsMemoryManagerSchedulerTransportReady() != 0U)
+    {
+        LosKernelTrace("Kernel scheduler keeping hosted transient thread stack on bootstrap fallback until AllocateFrames replies are stable.");
     }
 
     return AllocateBootstrapKernelThreadStack(Task);

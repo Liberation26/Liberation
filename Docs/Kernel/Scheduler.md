@@ -1,3 +1,7 @@
+## 0.2.17
+
+Scheduler-created transient threads now stay on bootstrap fallback stacks even after the hosted memory-manager attach completes. The hosted `AllocateFrames` request path can still lose replies once transient distinct-root process activation is live, so this stage deliberately keeps scheduler-owned stacks off that path while distinct process address spaces continue to be created and destroyed through the memory manager.
+
 ## 0.2.16
 
 Scheduler bootstrap threads now stay on bootstrap fallback stacks until the scheduler is online and the memory-manager attach handshake is complete. That prevents early scheduler initialization from issuing premature hosted `AllocateFrames` requests before the hosted service path is stable enough to guarantee a real reply.
@@ -44,6 +48,7 @@ The scheduler is still intentionally small, but it now provides:
 - scheduler ownership of the post-init idle path
 - scheduler initialization moved to the post-bootstrap stage, after the memory-manager bootstrap address space exists
 - early boot fallback stacks reserved inside the kernel image so scheduler bring-up does not halt if physical-frame claiming is temporarily unavailable
+- scheduler-owned transient thread stacks currently stay on the bootstrap fallback pool while hosted `AllocateFrames` reply handling is being stabilized
 - per-task ownership, generation, termination, and deferred cleanup bookkeeping
 - first-stage process objects with process ids, owner process ids, thread counts, and address-space metadata
 - inherited process root-table tracking so transient processes no longer carry a zero root while they still share the kernel mappings
