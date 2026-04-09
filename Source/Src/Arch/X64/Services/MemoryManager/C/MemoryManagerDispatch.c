@@ -1,10 +1,10 @@
 /*
  * File Name: MemoryManagerDispatch.c
- * File Version: 0.4.28
+ * File Version: 0.4.29
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T14:20:00Z
+ * Last Update Timestamp: 2026-04-09T14:45:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS service component.
  */
@@ -33,6 +33,49 @@ static UINTN LosMemoryManagerStringLength(const char *Text)
     }
 
     return Length;
+}
+
+static BOOLEAN LosMemoryManagerTextEqual(const char *Left, const char *Right)
+{
+    UINTN Index;
+
+    if (Left == 0 || Right == 0)
+    {
+        return 0;
+    }
+
+    for (Index = 0U;; ++Index)
+    {
+        if (Left[Index] != Right[Index])
+        {
+            return 0;
+        }
+        if (Left[Index] == 0)
+        {
+            return 1;
+        }
+    }
+}
+
+static BOOLEAN LosMemoryManagerIsKernelBootstrapCaller(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request)
+{
+    if (Request == 0)
+    {
+        return 0;
+    }
+
+    if (Request->CallerPrincipalType != LOS_CAPABILITIES_PRINCIPAL_TYPE_TASK &&
+        Request->CallerPrincipalType != LOS_CAPABILITIES_PRINCIPAL_TYPE_BOOTSTRAP)
+    {
+        return 0;
+    }
+
+    if (Request->CallerPrincipalName[0] == 0)
+    {
+        return 0;
+    }
+
+    return LosMemoryManagerTextEqual(Request->CallerPrincipalName, "kernel");
 }
 
 void LosMemoryManagerInitializeServiceResponse(
@@ -69,6 +112,18 @@ BOOLEAN LosMemoryManagerServiceAuthorizeRequest(const LOS_MEMORY_MANAGER_REQUEST
     if (Request == 0 || Namespace == 0 || Name == 0)
     {
         return 0;
+    }
+
+    /*
+     * The kernel remains the bootstrap authority for frame and memory-view
+     * operations even when the hosted memory-manager service is already online.
+     * Keep that path alive here so post-attach scheduler reservations do not
+     * regress into direct raw frame claims when CAPSMGR transport is absent or
+     * not yet linked into this service image.
+     */
+    if (LosMemoryManagerIsKernelBootstrapCaller(Request))
+    {
+        return 1;
     }
 
     LosMemoryManagerZeroMemory(&AccessRequest, sizeof(AccessRequest));
