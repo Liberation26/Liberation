@@ -1,18 +1,18 @@
 /*
  * File Name: ShellRuntimeSection01.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T20:05:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from ShellRuntime.c.
  */
 
-extern const UINT8 LosInstalledLoginImageStart[];
-extern const UINT8 LosInstalledLoginImageEnd[];
-extern const UINT8 LosInstalledStringImageStart[];
-extern const UINT8 LosInstalledStringImageEnd[];
+extern const UINT8 LosInstalledLoginImageStart[] __attribute__((weak));
+extern const UINT8 LosInstalledLoginImageEnd[] __attribute__((weak));
+extern const UINT8 LosInstalledStringImageStart[] __attribute__((weak));
+extern const UINT8 LosInstalledStringImageEnd[] __attribute__((weak));
 
 typedef struct
 {
@@ -275,6 +275,25 @@ __attribute__((weak)) UINT64 LosUserExecuteLoadedImage(const LOS_USER_IMAGE_EXEC
                                               Context->StackSize);
     LosShellRuntimeWriteDebugUnsigned("[shell] returned from ELF status=", Status, "\n");
     return Status;
+}
+
+__attribute__((weak)) UINT64 LosMemoryManagerCompleteUserAddressSpaceCall(const LOS_USER_IMAGE_ISOLATED_SPACE *IsolatedSpace,
+                                                                                    UINT64 *CompletionStatus,
+                                                                                    UINT64 *CompletionResult)
+{
+    if (IsolatedSpace == 0 || IsolatedSpace->Version != LOS_USER_IMAGE_CALL_VERSION)
+    {
+        return LOS_USER_IMAGE_CALL_STATUS_INVALID_PARAMETER;
+    }
+    if (CompletionStatus != 0 && *CompletionStatus == 0ULL)
+    {
+        *CompletionStatus = LOS_USER_IMAGE_CALL_STATUS_SUCCESS;
+    }
+    if (CompletionResult != 0)
+    {
+        *CompletionResult = *CompletionResult;
+    }
+    return LOS_USER_IMAGE_CALL_STATUS_SUCCESS;
 }
 
 __attribute__((weak)) UINT64 LosUserExecuteIsolatedImage(const LOS_USER_IMAGE_EXECUTION_CONTEXT *Context,

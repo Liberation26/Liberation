@@ -1,14 +1,15 @@
 /*
  * File Name: SchedulerDispatchSection01.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T20:12:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerDispatch.c.
  */
 
+#if defined(__GNUC__)
 __attribute__((weak)) const LOS_BOOT_CONTEXT *LosKernelGetBootContext(void)
 {
     return 0;
