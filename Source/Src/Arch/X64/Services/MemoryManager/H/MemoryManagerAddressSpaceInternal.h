@@ -70,6 +70,12 @@ BOOLEAN LosMemoryManagerQueryAddressSpaceMapping(
     UINT64 VirtualAddress,
     UINT64 *PhysicalAddress,
     UINT64 *PageFlags);
+void LosMemoryManagerDiagnosticsSetAttachImageContext(
+    UINT64 ImagePhysicalBase,
+    UINT64 ImageMappedBytes,
+    UINT64 TargetRootPhysicalAddress,
+    UINT64 TargetObjectPhysicalAddress);
+void LosMemoryManagerDiagnosticsClearAttachImageContext(void);
 BOOLEAN LosMemoryManagerReserveVirtualRegion(
     LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
     UINT64 BaseVirtualAddress,

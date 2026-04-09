@@ -11,6 +11,35 @@
 
 #include "MemoryManagerAddressSpaceInternal.h"
 
+static UINT64 LosMemoryManagerDiagnosticAttachImagePhysicalBase;
+static UINT64 LosMemoryManagerDiagnosticAttachImageMappedBytes;
+static UINT64 LosMemoryManagerDiagnosticAttachTargetRootPhysicalAddress;
+static UINT64 LosMemoryManagerDiagnosticAttachTargetObjectPhysicalAddress;
+static UINT32 LosMemoryManagerDiagnosticAttachContextActive;
+
+void LosMemoryManagerDiagnosticsSetAttachImageContext(
+    UINT64 ImagePhysicalBase,
+    UINT64 ImageMappedBytes,
+    UINT64 TargetRootPhysicalAddress,
+    UINT64 TargetObjectPhysicalAddress)
+{
+    LosMemoryManagerDiagnosticAttachImagePhysicalBase = ImagePhysicalBase;
+    LosMemoryManagerDiagnosticAttachImageMappedBytes = ImageMappedBytes;
+    LosMemoryManagerDiagnosticAttachTargetRootPhysicalAddress = TargetRootPhysicalAddress;
+    LosMemoryManagerDiagnosticAttachTargetObjectPhysicalAddress = TargetObjectPhysicalAddress;
+    LosMemoryManagerDiagnosticAttachContextActive = 1U;
+}
+
+void LosMemoryManagerDiagnosticsClearAttachImageContext(void)
+{
+    LosMemoryManagerDiagnosticAttachImagePhysicalBase = 0ULL;
+    LosMemoryManagerDiagnosticAttachImageMappedBytes = 0ULL;
+    LosMemoryManagerDiagnosticAttachTargetRootPhysicalAddress = 0ULL;
+    LosMemoryManagerDiagnosticAttachTargetObjectPhysicalAddress = 0ULL;
+    LosMemoryManagerDiagnosticAttachContextActive = 0U;
+}
+
+
 static UINT64 AlignUpToPage(UINT64 Value)
 {
     return (Value + 0xFFFULL) & ~0xFFFULL;
@@ -180,6 +209,23 @@ static BOOLEAN EnsureChildTable(
             }
         }
 
+        if (LosMemoryManagerDiagnosticAttachContextActive != 0U)
+        {
+            LosMemoryManagerServiceSerialWriteText("[MemManager][diag] child-table-allocated-phys=");
+            LosMemoryManagerServiceSerialWriteHex64(ChildPhysicalAddress);
+            LosMemoryManagerServiceSerialWriteText("\n");
+            LosMemoryManagerServiceSerialWriteText("[MemManager][diag] child-table-entry-index=");
+            LosMemoryManagerServiceSerialWriteUnsigned((UINT64)EntryIndex);
+            LosMemoryManagerServiceSerialWriteText("\n");
+            if ((LosMemoryManagerDiagnosticAttachImageMappedBytes != 0ULL &&
+                 RangesOverlap(ChildPhysicalAddress, 1ULL, LosMemoryManagerDiagnosticAttachImagePhysicalBase, LosMemoryManagerDiagnosticAttachImageMappedBytes / 0x1000ULL)) ||
+                RangesOverlap(ChildPhysicalAddress, 1ULL, LosMemoryManagerDiagnosticAttachTargetRootPhysicalAddress, 1ULL) ||
+                RangesOverlap(ChildPhysicalAddress, 1ULL, LosMemoryManagerDiagnosticAttachTargetObjectPhysicalAddress & ~0xFFFULL, 1ULL))
+            {
+                LosMemoryManagerHardFail("attach-child-table-overlap", ChildPhysicalAddress, LosMemoryManagerDiagnosticAttachImagePhysicalBase, LosMemoryManagerDiagnosticAttachTargetRootPhysicalAddress);
+            }
+        }
+
         ParentTable[EntryIndex] = ChildPhysicalAddress | LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_WRITABLE | LOS_X64_PAGE_USER;
         return 1;
     }
@@ -288,6 +334,22 @@ BOOLEAN LosMemoryManagerReserveVirtualRegion(
     UINT32 InsertIndex;
     UINT32 ScanIndex;
 
+    if (LosMemoryManagerDiagnosticAttachContextActive != 0U)
+    {
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-enter-base=");
+        LosMemoryManagerServiceSerialWriteHex64(BaseVirtualAddress);
+        LosMemoryManagerServiceSerialWriteText("\n");
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-enter-pages=");
+        LosMemoryManagerServiceSerialWriteUnsigned(PageCount);
+        LosMemoryManagerServiceSerialWriteText("\n");
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-enter-backing=");
+        LosMemoryManagerServiceSerialWriteHex64(BackingPhysicalAddress);
+        LosMemoryManagerServiceSerialWriteText("\n");
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-enter-count=");
+        LosMemoryManagerServiceSerialWriteUnsigned(AddressSpaceObject != 0 ? AddressSpaceObject->ReservedVirtualRegionCount : 0ULL);
+        LosMemoryManagerServiceSerialWriteText("\n");
+    }
+
     if (AddressSpaceObject == 0 ||
         PageCount == 0ULL ||
         (BaseVirtualAddress & 0xFFFULL) != 0ULL ||
@@ -322,8 +384,21 @@ BOOLEAN LosMemoryManagerReserveVirtualRegion(
         }
     }
 
+    if (LosMemoryManagerDiagnosticAttachContextActive != 0U)
+    {
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-insert-index=");
+        LosMemoryManagerServiceSerialWriteUnsigned(InsertIndex);
+        LosMemoryManagerServiceSerialWriteText("\n");
+    }
+
     for (ScanIndex = AddressSpaceObject->ReservedVirtualRegionCount; ScanIndex > InsertIndex; --ScanIndex)
     {
+        if (LosMemoryManagerDiagnosticAttachContextActive != 0U)
+        {
+            LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-shift-index=");
+            LosMemoryManagerServiceSerialWriteUnsigned(ScanIndex);
+            LosMemoryManagerServiceSerialWriteText("\n");
+        }
         AddressSpaceObject->ReservedVirtualRegions[ScanIndex] = AddressSpaceObject->ReservedVirtualRegions[ScanIndex - 1U];
     }
 
@@ -333,6 +408,12 @@ BOOLEAN LosMemoryManagerReserveVirtualRegion(
     AddressSpaceObject->ReservedVirtualRegions[InsertIndex].Flags = Flags;
     AddressSpaceObject->ReservedVirtualRegions[InsertIndex].BackingPhysicalAddress = BackingPhysicalAddress;
     AddressSpaceObject->ReservedVirtualRegionCount += 1U;
+    if (LosMemoryManagerDiagnosticAttachContextActive != 0U)
+    {
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-exit-count=");
+        LosMemoryManagerServiceSerialWriteUnsigned(AddressSpaceObject->ReservedVirtualRegionCount);
+        LosMemoryManagerServiceSerialWriteText("\n");
+    }
     return 1;
 }
 

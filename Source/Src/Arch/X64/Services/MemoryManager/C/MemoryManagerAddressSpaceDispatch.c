@@ -1569,6 +1569,7 @@ void LosMemoryManagerServiceUnmapPages(
         return;
     }
 
+    LosMemoryManagerDiagnosticsClearAttachImageContext();
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
 }
 
@@ -2049,6 +2050,12 @@ void LosMemoryManagerServiceAttachStagedImage(
         LosMemoryManagerHardFail("attach-image-overlaps-target-address-space", ImagePhysicalBase, Request->AddressSpaceObjectPhysicalAddress, AddressSpaceObject->RootTablePhysicalAddress);
     }
 
+    LosMemoryManagerDiagnosticsSetAttachImageContext(
+        ImagePhysicalBase,
+        ImageMappedBytes,
+        AddressSpaceObject->RootTablePhysicalAddress,
+        Request->AddressSpaceObjectPhysicalAddress);
+
     for (PageIndex = 0ULL; PageIndex < ImagePageCount; )
     {
         UINT64 RunVirtualAddress;
@@ -2061,6 +2068,7 @@ void LosMemoryManagerServiceAttachStagedImage(
         PageFlags = ComputeImagePageFlags(Header, ProgramHeaders, RunVirtualAddress);
         if (PageFlags == 0ULL)
         {
+            LosMemoryManagerDiagnosticsClearAttachImageContext();
             LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
             Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_INVALID_ARGUMENT;
             return;
@@ -2107,9 +2115,11 @@ void LosMemoryManagerServiceAttachStagedImage(
                     ProgramHeaders,
                     Result))
             {
+                LosMemoryManagerDiagnosticsClearAttachImageContext();
                 LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
                 return;
             }
+            LosMemoryManagerDiagnosticsClearAttachImageContext();
             LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
             Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
             return;
@@ -2125,10 +2135,37 @@ void LosMemoryManagerServiceAttachStagedImage(
             RunPhysicalAddress,
             RunPageCount);
 
+        {
+            UINT64 VerifiedPhysicalAddress;
+            UINT64 VerifiedPageFlags;
+
+            VerifiedPhysicalAddress = 0ULL;
+            VerifiedPageFlags = 0ULL;
+            if (!LosMemoryManagerQueryAddressSpaceMapping(
+                    State,
+                    AddressSpaceObject->RootTablePhysicalAddress,
+                    RunVirtualAddress,
+                    &VerifiedPhysicalAddress,
+                    &VerifiedPageFlags) ||
+                VerifiedPhysicalAddress != RunPhysicalAddress)
+            {
+                AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-post-map-query-mismatch\n");
+                AddressSpaceServiceSerialWriteNamedHex("attach-post-map-virt", RunVirtualAddress);
+                AddressSpaceServiceSerialWriteNamedHex("attach-post-map-phys-expected", RunPhysicalAddress);
+                AddressSpaceServiceSerialWriteNamedHex("attach-post-map-phys-actual", VerifiedPhysicalAddress);
+                AddressSpaceServiceSerialWriteNamedHex("attach-post-map-flags", VerifiedPageFlags);
+                LosMemoryManagerHardFail("attach-post-map-query-mismatch", RunVirtualAddress, RunPhysicalAddress, VerifiedPhysicalAddress);
+            }
+            AddressSpaceServiceSerialWriteNamedHex("attach-post-map-phys", VerifiedPhysicalAddress);
+            AddressSpaceServiceSerialWriteNamedHex("attach-post-map-flags", VerifiedPageFlags);
+        }
+
         PageIndex += RunPageCount;
     }
 
     AddressSpaceServiceVerifyAttachImageState(State, Request, AddressSpaceObject, 0xA300ULL, PageIndex, ImageVirtualBase, ImagePhysicalBase, ImagePageCount);
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-pre-reserve\n");
+    AddressSpaceServiceSerialWriteNamedUnsigned("attach-reserved-count-before", AddressSpaceObject->ReservedVirtualRegionCount);
 
     if (!LosMemoryManagerReserveVirtualRegion(
             AddressSpaceObject,
@@ -2146,9 +2183,11 @@ void LosMemoryManagerServiceAttachStagedImage(
                 ProgramHeaders,
                 Result))
         {
+            LosMemoryManagerDiagnosticsClearAttachImageContext();
             LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
             return;
         }
+        LosMemoryManagerDiagnosticsClearAttachImageContext();
         LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
@@ -2166,6 +2205,7 @@ void LosMemoryManagerServiceAttachStagedImage(
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
     }
+    LosMemoryManagerDiagnosticsClearAttachImageContext();
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
 }
 
@@ -2343,5 +2383,6 @@ void LosMemoryManagerServiceAllocateAddressSpaceStack(
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
     }
+    LosMemoryManagerDiagnosticsClearAttachImageContext();
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
 }
