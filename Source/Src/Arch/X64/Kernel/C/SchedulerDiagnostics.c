@@ -1,3 +1,14 @@
+/*
+ * File Name: SchedulerDiagnostics.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 #include "SchedulerInternal.h"
 
 #undef LosKernelTrace
@@ -293,49 +304,49 @@ void LosKernelSchedulerTraceState(const char *Prefix)
     LosKernelSerialWriteUnsigned(State->IdleTicks);
     LosKernelSerialWriteText(" busy-ticks=");
     LosKernelSerialWriteUnsigned(State->BusyTicks);
-    LosKernelSerialWriteText(" user-scaffold-ready=");
+    LosKernelSerialWriteText(" first-user-task-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReady);
-    LosKernelSerialWriteText(" user-scaffold-prepared=");
+    LosKernelSerialWriteText(" first-user-task-prepared=");
     LosKernelSerialWriteUnsigned(State->UserTransitionPreparedCount);
-    LosKernelSerialWriteText(" user-scaffold-validated=");
+    LosKernelSerialWriteText(" first-user-task-validated=");
     LosKernelSerialWriteUnsigned(State->UserTransitionValidatedCount);
-    LosKernelSerialWriteText(" user-scaffold-armed=");
+    LosKernelSerialWriteText(" first-user-task-armed=");
     LosKernelSerialWriteUnsigned(State->UserTransitionArmedCount);
-    LosKernelSerialWriteText(" user-scaffold-requested=");
+    LosKernelSerialWriteText(" first-user-task-requested=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-entry-ready=");
+    LosKernelSerialWriteText(" first-user-task-entry-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-descriptor-ready=");
+    LosKernelSerialWriteText(" first-user-task-descriptor-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionDescriptorReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-frame-ready=");
+    LosKernelSerialWriteText(" first-user-task-frame-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionFrameReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-trampoline-ready=");
+    LosKernelSerialWriteText(" first-user-task-trampoline-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionTrampolineReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-bridge-ready=");
+    LosKernelSerialWriteText(" first-user-task-bridge-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionBridgeReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-chain-ready=");
+    LosKernelSerialWriteText(" first-user-task-chain-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionChainReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-contract-ready=");
+    LosKernelSerialWriteText(" first-user-task-contract-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionContractReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-seal-ready=");
+    LosKernelSerialWriteText(" first-user-task-seal-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionSealReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-handoff-ready=");
+    LosKernelSerialWriteText(" first-user-task-handoff-ready=");
     LosKernelSerialWriteUnsigned(State->UserTransitionHandoffReadyCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-complete=");
+    LosKernelSerialWriteText(" first-user-task-complete=");
     LosKernelSerialWriteUnsigned(State->UserTransitionCompleteCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-scaffold-live=");
+    LosKernelSerialWriteText(" first-user-task-live=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
-    LosKernelSerialWriteText(" user-live-gate-closed=");
+    LosKernelSerialWriteText(" first-user-task-live-gate-closed=");
     LosKernelSerialWriteUnsigned(State->UserTransitionLiveGateClosed);
-    LosKernelSerialWriteText(" user-scaffold-blocked=");
+    LosKernelSerialWriteText(" first-user-task-blocked=");
     LosKernelSerialWriteUnsigned(LosKernelSchedulerIsUserTransitionScaffoldBlocked());
-    LosKernelSerialWriteText(" user-scaffold-reblocked=");
+    LosKernelSerialWriteText(" first-user-task-reblocked=");
     LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReblockCount);
     LosKernelSerialWriteText(" user-dispatch-skip=");
     LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
-    LosKernelSerialWriteText(" user-scaffold-proc=");
+    LosKernelSerialWriteText(" first-user-task-proc=");
     LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldProcessId);
-    LosKernelSerialWriteText(" user-scaffold-task=");
+    LosKernelSerialWriteText(" first-user-task-task=");
     LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldTaskId);
     LosKernelSerialWriteText(" stack-pool-ready=");
     LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
@@ -420,49 +431,49 @@ void LosKernelSchedulerHeartbeatThread(void *Context)
             LosKernelSerialWriteUnsigned(State->IdleTicks);
             LosKernelSerialWriteText(" busy-ticks=");
             LosKernelSerialWriteUnsigned(State->BusyTicks);
-            LosKernelSerialWriteText(" user-scaffold-ready=");
+            LosKernelSerialWriteText(" first-user-task-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReady);
-            LosKernelSerialWriteText(" user-scaffold-prepared=");
+            LosKernelSerialWriteText(" first-user-task-prepared=");
             LosKernelSerialWriteUnsigned(State->UserTransitionPreparedCount);
-            LosKernelSerialWriteText(" user-scaffold-validated=");
+            LosKernelSerialWriteText(" first-user-task-validated=");
             LosKernelSerialWriteUnsigned(State->UserTransitionValidatedCount);
-            LosKernelSerialWriteText(" user-scaffold-armed=");
+            LosKernelSerialWriteText(" first-user-task-armed=");
             LosKernelSerialWriteUnsigned(State->UserTransitionArmedCount);
-            LosKernelSerialWriteText(" user-scaffold-requested=");
+            LosKernelSerialWriteText(" first-user-task-requested=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLaunchRequestCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-entry-ready=");
+            LosKernelSerialWriteText(" first-user-task-entry-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionEntryReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-descriptor-ready=");
+            LosKernelSerialWriteText(" first-user-task-descriptor-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionDescriptorReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-frame-ready=");
+            LosKernelSerialWriteText(" first-user-task-frame-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionFrameReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-trampoline-ready=");
+            LosKernelSerialWriteText(" first-user-task-trampoline-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionTrampolineReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-bridge-ready=");
+            LosKernelSerialWriteText(" first-user-task-bridge-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionBridgeReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-chain-ready=");
+            LosKernelSerialWriteText(" first-user-task-chain-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionChainReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-contract-ready=");
+            LosKernelSerialWriteText(" first-user-task-contract-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionContractReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-seal-ready=");
+            LosKernelSerialWriteText(" first-user-task-seal-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionSealReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-handoff-ready=");
+            LosKernelSerialWriteText(" first-user-task-handoff-ready=");
             LosKernelSerialWriteUnsigned(State->UserTransitionHandoffReadyCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-complete=");
+            LosKernelSerialWriteText(" first-user-task-complete=");
             LosKernelSerialWriteUnsigned(State->UserTransitionCompleteCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-scaffold-live=");
+            LosKernelSerialWriteText(" first-user-task-live=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveCount != 0ULL ? 1ULL : 0ULL);
-            LosKernelSerialWriteText(" user-live-gate-closed=");
+            LosKernelSerialWriteText(" first-user-task-live-gate-closed=");
             LosKernelSerialWriteUnsigned(State->UserTransitionLiveGateClosed);
-            LosKernelSerialWriteText(" user-scaffold-blocked=");
+            LosKernelSerialWriteText(" first-user-task-blocked=");
             LosKernelSerialWriteUnsigned(LosKernelSchedulerIsUserTransitionScaffoldBlocked());
-            LosKernelSerialWriteText(" user-scaffold-reblocked=");
+            LosKernelSerialWriteText(" first-user-task-reblocked=");
             LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldReblockCount);
             LosKernelSerialWriteText(" user-dispatch-skip=");
             LosKernelSerialWriteUnsigned(State->UserTransitionDispatchSkipCount);
-            LosKernelSerialWriteText(" user-scaffold-proc=");
+            LosKernelSerialWriteText(" first-user-task-proc=");
             LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldProcessId);
-            LosKernelSerialWriteText(" user-scaffold-task=");
+            LosKernelSerialWriteText(" first-user-task-task=");
             LosKernelSerialWriteUnsigned(State->UserTransitionScaffoldTaskId);
             LosKernelSerialWriteText(" stack-pool-ready=");
             LosKernelSerialWriteUnsigned(State->DirectClaimStackPoolReady);
@@ -543,22 +554,25 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         {
             (void)LosKernelSchedulerMarkUserTransitionScaffoldHandoffReady();
         }
-        else if (LosKernelSchedulerState()->UserTransitionLiveGateClosed == 0U &&
-                 LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
+        else if (LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL &&
+                 LosKernelSchedulerState()->UserTransitionHandoffReadyCount != 0ULL)
         {
-            (void)LosKernelSchedulerMarkUserTransitionScaffoldLiveGateClosed();
-        }
-        else if (LosKernelSchedulerState()->UserTransitionCompleteCount == 0ULL &&
-                 LosKernelSchedulerState()->UserTransitionLiveGateClosed != 0U &&
-                 LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
-        {
-            (void)LosKernelSchedulerMarkUserTransitionScaffoldComplete();
+            (void)LosKernelSchedulerMarkUserTransitionScaffoldLive();
         }
 
         if (LosKernelSchedulerState()->UserTransitionScaffoldReady != 0U &&
             LosKernelSchedulerState()->UserTransitionLiveCount == 0ULL)
         {
+            /*
+             * Keep the prepared first user task blocked until the real live
+             * promotion succeeds, but do not route it back through the old
+             * COMPLETE/live-gate-closed scaffold stop.
+             */
             (void)LosKernelSchedulerGuardUserTransitionScaffold();
+            if (LosKernelSchedulerState()->UserTransitionHandoffReadyCount != 0ULL)
+            {
+                (void)LosKernelSchedulerMarkUserTransitionScaffoldLive();
+            }
         }
 
         if (LosKernelSchedulerHasActiveTransientProcess() != 0U)
@@ -682,8 +696,8 @@ void LosKernelSchedulerUserTransitionTrapThread(void *Context)
 
     (void)Context;
     Task = LosKernelSchedulerGetCurrentTask();
-    LosKernelTraceFail("Scheduler user-transition scaffold task was dispatched before a real ring transition path existed.");
-    LosKernelSerialWriteText("[Kernel] User-transition scaffold dispatch task=");
+    LosKernelTraceFail("Scheduler first user task was dispatched before a real ring transition path existed.");
+    LosKernelSerialWriteText("[Kernel] First-user-task dispatch task=");
     LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
     LosKernelSerialWriteText(" process=");
     LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);
@@ -698,8 +712,8 @@ void LosKernelSchedulerUserTransitionBridgeTrap(UINT64 KernelStackPointer)
     const LOS_KERNEL_SCHEDULER_TASK *Task;
 
     Task = LosKernelSchedulerGetCurrentTask();
-    LosKernelTraceFail("Scheduler user-transition bridge ran before the real ring-transition entry path existed.");
-    LosKernelSerialWriteText("[Kernel] User-transition bridge task=");
+    LosKernelTraceFail("Scheduler first user task bridge ran before the real ring-transition entry path existed.");
+    LosKernelSerialWriteText("[Kernel] First-user-task bridge task=");
     LosKernelSerialWriteUnsigned(Task != 0 ? Task->TaskId : 0ULL);
     LosKernelSerialWriteText(" process=");
     LosKernelSerialWriteUnsigned(Task != 0 ? Task->ProcessId : 0ULL);

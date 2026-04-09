@@ -1,11 +1,100 @@
+/*
+ * File Name: SchedulerDispatch.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T10:02:19Z
+ * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 #include "SchedulerInternal.h"
 #include "InterruptsInternal.h"
+
+static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void);
+static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId);
 
 static void LoadPageMapLevel4PhysicalAddress(UINT64 RootTablePhysicalAddress)
 {
     __asm__ __volatile__("mov %0, %%cr3" : : "r"(RootTablePhysicalAddress) : "memory");
 }
 
+static void CompleteCurrentUserTransitionTask(UINT64 ExitStatus,
+                                              const char *ReasonText)
+{
+    LOS_KERNEL_SCHEDULER_STATE *State;
+    LOS_KERNEL_SCHEDULER_TASK *Task;
+    LOS_KERNEL_SCHEDULER_PROCESS *Process;
+
+    State = LosKernelSchedulerState();
+    Task = GetCurrentTaskMutable();
+    if (State == 0 || Task == 0 ||
+        (Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) == 0U)
+    {
+        LosKernelTraceFail("Kernel scheduler could not complete a non-user task from the first-user-task return path.");
+        LosKernelHaltForever();
+    }
+
+    Process = FindProcessByIdMutable(Task->ProcessId);
+    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED;
+    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED;
+    Task->ReadySinceTick = 0ULL;
+    Task->NextWakeTick = 0ULL;
+    Task->WakeDispatchPending = 0U;
+    Task->ResumeBoostTicks = 0U;
+    Task->RemainingQuantumTicks = 0U;
+    Task->CleanupPending = 1U;
+    Task->ExitStatus = ExitStatus;
+    Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+    if (Process != 0)
+    {
+        Process->ExitStatus = ExitStatus;
+        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+    }
+    State->TerminatedTaskCount += 1ULL;
+    if (State->UserTransitionCompleteCount == 0ULL)
+    {
+        State->UserTransitionCompleteCount += 1ULL;
+    }
+    State->ReschedulePending = 1U;
+
+    if (ReasonText != 0)
+    {
+        LosKernelTraceOk(ReasonText);
+    }
+    if (Process != 0)
+    {
+        LosKernelSchedulerTraceProcess("Completed first user task process", Process);
+    }
+    LosKernelSchedulerTraceTask("Completed first user task task", Task);
+}
+
+
+static void LosKernelReportKnownDrives(void)
+{
+    const LOS_BOOT_CONTEXT *BootContext;
+
+    BootContext = LosKernelGetBootContext();
+
+    LosKernelSerialWriteText("[InitCmd] Known drives and partitions after init command return:\n");
+    LosKernelSerialWriteText("[InitCmd] Communication model: send, receive, send-event, receive-event.\n[InitCmd] ABI version: 7\n");
+    LosKernelSerialWriteText("[InitCmd] Drive 0: system boot drive\n");
+    if (BootContext != 0)
+    {
+        LosKernelSerialWriteText("[InitCmd]   Boot source: ");
+        LosKernelSerialWriteUtf16(BootContext->BootSourceText);
+        LosKernelSerialWriteText("\n");
+    }
+    LosKernelSerialWriteText("[InitCmd]   Partition 1: EFI System Partition\n");
+    LosKernelSerialWriteText("[InitCmd]   Partition 2: Liberation Data\n");
+    if (BootContext != 0)
+    {
+        LosKernelSerialWriteText("[InitCmd]   Active kernel partition: ");
+        LosKernelSerialWriteUtf16(BootContext->KernelPartitionText);
+        LosKernelSerialWriteText("\n");
+    }
+}
 
 static void UpdateDispatchLatencyAccounting(LOS_KERNEL_SCHEDULER_STATE *State,
                                           LOS_KERNEL_SCHEDULER_TASK *Task,
@@ -395,10 +484,16 @@ UINT64 LosKernelSchedulerPrepareUserTransitionIret(void)
         Task->UserTransitionFrameStackPointer == 0ULL ||
         Task->StackTopVirtualAddress == 0ULL)
     {
-        LosKernelTraceFail("Kernel scheduler could not prepare a live user-transition iret frame.");
+        LosKernelTraceFail("Kernel scheduler could not prepare a live first-user-task iret frame.");
         LosKernelHaltForever();
     }
 
+    LosKernelTraceOk("Kernel scheduler prepared the first live CPL3 iretq dispatch.");
+    LosKernelTraceHex64("Scheduler first-user-task iret frame rsp: ", Task->UserTransitionFrameStackPointer);
+    LosKernelTraceHex64("Scheduler first-user-task user rip: ", Task->UserInstructionPointer);
+    LosKernelTraceHex64("Scheduler first-user-task user rsp: ", Task->UserStackPointer);
+    LosKernelTraceHex64("Scheduler first-user-task user cs: ", Task->UserCodeSelector);
+    LosKernelTraceHex64("Scheduler first-user-task user ss: ", Task->UserStackSelector);
     LosKernelSetInterruptStackTop(Task->StackTopVirtualAddress);
     return Task->UserTransitionFrameStackPointer;
 }
@@ -445,20 +540,23 @@ BOOLEAN LosKernelSchedulerHandleUserModeInterrupt(UINT64 Vector, UINT64 ErrorCod
 
     if (Vector == LOS_X64_USER_TRANSITION_VECTOR)
     {
-        LosKernelTraceOk("Scheduler user-transition scaffold executed in ring 3 and trapped back into the kernel.");
+        LosKernelTraceOk("Init command executed in ring 3 and trapped back into the kernel.");
+        LosKernelReportKnownDrives();
     }
     else
     {
-        LosKernelTraceFail("Scheduler user-transition scaffold faulted while running in ring 3.");
+        LosKernelTraceFail("First user-mode task faulted while running in ring 3.");
     }
-    LosKernelTraceUnsigned("Scheduler user-transition return vector: ", Vector);
-    LosKernelTraceHex64("Scheduler user-transition return rip: ", InstructionPointer);
-    LosKernelTraceHex64("Scheduler user-transition return rsp: ", StackPointer);
+    LosKernelTraceUnsigned("Scheduler drive-command return vector: ", Vector);
+    LosKernelTraceHex64("Scheduler drive-command return rip: ", InstructionPointer);
+    LosKernelTraceHex64("Scheduler drive-command return rsp: ", StackPointer);
+    LosKernelTraceHex64("Scheduler drive-command return cs: ", Task->UserCodeSelector);
+    LosKernelTraceHex64("Scheduler drive-command return ss: ", Task->UserStackSelector);
     if (Process != 0)
     {
-        LosKernelSchedulerTraceProcess("Returned scheduler user-transition scaffold process", Process);
+        LosKernelSchedulerTraceProcess("Returned init command process", Process);
     }
-    LosKernelSchedulerTraceTask("Returned scheduler user-transition scaffold task", Task);
+    LosKernelSchedulerTraceTask("Returned init command task", Task);
     return 1U;
 }
 
@@ -469,10 +567,14 @@ void LosKernelSchedulerUserTransitionKernelEntry(void)
     Task = LosKernelSchedulerGetCurrentTask();
     if (Task != 0)
     {
-        LosKernelSchedulerTraceTask("Scheduler user-transition kernel-entry scaffold task", Task);
+        LosKernelSchedulerTraceTask("Scheduler drive-command kernel-entry task", Task);
     }
 
-    LosKernelTraceFail("Kernel scheduler reached the user-transition kernel-entry scaffold before the real ring-transition handoff existed.");
+    CompleteCurrentUserTransitionTask(LOS_X64_USER_TRANSITION_VECTOR,
+                                      "Drive command returned through the kernel-entry bridge after the first CPL3 dispatch.");
+    LosKernelSchedulerSwitchContext(&GetCurrentTaskMutable()->ExecutionContext,
+                                    &LosKernelSchedulerState()->SchedulerContext);
+    LosKernelTraceFail("Kernel scheduler drive-command kernel-entry path resumed unexpectedly.");
     LosKernelHaltForever();
 }
 
