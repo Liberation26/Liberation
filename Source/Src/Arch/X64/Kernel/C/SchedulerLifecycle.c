@@ -1273,11 +1273,6 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
     Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
     Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
 
-    if (AllocateDirectClaimKernelThreadStack(Task) != 0U)
-    {
-        return 1;
-    }
-
     if (LosKernelSchedulerIsOnline() != 0U &&
         IsMemoryManagerSchedulerTransportReady() != 0U &&
         SchedulerMayUseMemoryManagerBackedThreadStacks() != 0U)
@@ -1320,6 +1315,11 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
             LosKernelTraceUnsigned("Kernel scheduler stack-claim status: ", ClaimResult.Status);
             LosKernelTraceUnsigned("Kernel scheduler stack-claim pages returned: ", ClaimResult.PageCount);
         }
+    }
+
+    if (AllocateDirectClaimKernelThreadStack(Task) != 0U)
+    {
+        return 1;
     }
 
     if (LosKernelSchedulerIsOnline() != 0U &&

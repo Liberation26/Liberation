@@ -581,6 +581,13 @@ void LosKernelSchedulerLifecycleThread(void *Context)
             continue;
         }
 
+        if (LosKernelSchedulerState()->UserTransitionLiveCount != 0ULL &&
+            LosKernelSchedulerState()->UserTransitionCompleteCount == 0ULL)
+        {
+            LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS);
+            continue;
+        }
+
         Sequence += 1ULL;
         ProcessId = LOS_KERNEL_SCHEDULER_INVALID_PROCESS_ID;
         TaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
