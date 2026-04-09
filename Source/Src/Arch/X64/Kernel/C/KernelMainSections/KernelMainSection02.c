@@ -1,10 +1,10 @@
 /*
  * File Name: KernelMainSection02.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T21:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from KernelMain.c.
  */
@@ -233,6 +233,6 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
 
     LosKernelTraceUnsigned("Timer tick count before enabling interrupts: ", LosX64GetTimerTickCount());
     LosKernelEnableInterrupts();
-    LosKernelTraceOk("Interrupts enabled. Waiting for timer IRQ heartbeat while remaining in the idle path.");
+    LosKernelTraceOk("Interrupts enabled. Entering the scheduler; timer proof and user-shell bootstrap continue there.");
     LosKernelIdleLoop();
 }

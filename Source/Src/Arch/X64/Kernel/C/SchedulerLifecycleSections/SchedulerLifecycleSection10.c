@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection10.c
- * File Version: 0.0.2
+ * File Version: 0.0.3
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T20:25:00Z
+ * Last Update Timestamp: 2026-04-09T21:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -266,9 +266,11 @@ void LosKernelSchedulerInitialize(void)
 void LosKernelSchedulerRegisterBootstrapTasks(void)
 {
     UINT64 TaskId;
+    UINT64 LifecycleTaskId;
     UINT64 KernelProcessId;
 
     TaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
+    LifecycleTaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
     KernelProcessId = LosKernelSchedulerState()->KernelProcessId;
     if (!LosKernelSchedulerCreateTask(
             "Heartbeat",
@@ -285,8 +287,23 @@ void LosKernelSchedulerRegisterBootstrapTasks(void)
         LosKernelHaltForever();
     }
 
+    if (!LosKernelSchedulerCreateTask(
+            "Lifecycle",
+            KernelProcessId,
+            LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC,
+            LOS_KERNEL_SCHEDULER_LIFECYCLE_PRIORITY,
+            1U,
+            LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS,
+            LosKernelSchedulerLifecycleThread,
+            0,
+            &LifecycleTaskId))
+    {
+        LosKernelTraceFail("Kernel scheduler could not create lifecycle task.");
+        LosKernelHaltForever();
+    }
+
     LosKernelTraceOk("Kernel scheduler bootstrap heartbeat registered.");
-    LosKernelTraceOk("Kernel scheduler deferred lifecycle and busy-worker bootstrap tasks until the post-timer idle path is stable.");
+    LosKernelTraceOk("Kernel scheduler bootstrap lifecycle registered; the first user shell will launch after timer proof.");
 }
 
 BOOLEAN LosKernelSchedulerIsOnline(void)

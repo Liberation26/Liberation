@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerDiagnosticsSection02.c
- * File Version: 0.0.2
+ * File Version: 0.0.3
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T21:10:00Z
+ * Last Update Timestamp: 2026-04-09T21:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerDiagnostics.c.
  */
@@ -149,6 +149,12 @@ void LosKernelSchedulerLifecycleThread(void *Context)
     {
         UINT64 ProcessId;
         UINT64 TaskId;
+
+        if (LosKernelSchedulerGetTickCount() < LOS_KERNEL_SCHEDULER_HEARTBEAT_PERIOD_TICKS)
+        {
+            LosKernelSchedulerSleepCurrent(1ULL);
+            continue;
+        }
 
         if (LosKernelSchedulerState()->UserTransitionScaffoldReady == 0U)
         {
