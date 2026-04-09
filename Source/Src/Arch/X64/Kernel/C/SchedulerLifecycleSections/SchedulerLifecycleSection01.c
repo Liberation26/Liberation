@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection01.c
- * File Version: 0.0.2
+ * File Version: 0.0.3
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T20:40:00Z
+ * Last Update Timestamp: 2026-04-09T22:45:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -14,6 +14,8 @@ static UINT8 LosKernelSchedulerBootstrapStacks[LOS_KERNEL_SCHEDULER_MAX_TASKS][L
 static UINT8 LosKernelSchedulerBootstrapStackUsed[LOS_KERNEL_SCHEDULER_MAX_TASKS];
 static UINT8 LosKernelSchedulerDirectClaimStackUsed[LOS_KERNEL_SCHEDULER_MAX_TASKS];
 static void *LosKernelSchedulerDirectClaimStackPoolBase;
+static UINT64 LosKernelSchedulerStagedUserImagePhysicalAddress;
+static UINT64 LosKernelSchedulerStagedUserImageBytes;
 
 LOS_KERNEL_SCHEDULER_STATE *LosKernelSchedulerState(void)
 {

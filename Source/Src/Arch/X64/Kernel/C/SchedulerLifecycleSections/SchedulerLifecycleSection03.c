@@ -1,13 +1,96 @@
 /*
  * File Name: SchedulerLifecycleSection03.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T22:45:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
+
+static BOOLEAN EnsureFirstUserTaskImageStaged(UINT64 *ImagePhysicalAddress, UINT64 *ImageSize)
+{
+    LOS_X64_CLAIM_FRAMES_REQUEST ClaimRequest;
+    LOS_X64_CLAIM_FRAMES_RESULT ClaimResult;
+    UINT64 AlignedImageBytes;
+    UINT64 ImagePageCount;
+    void *MappedBuffer;
+    UINTN ByteIndex;
+
+    if (ImagePhysicalAddress != 0)
+    {
+        *ImagePhysicalAddress = 0ULL;
+    }
+    if (ImageSize != 0)
+    {
+        *ImageSize = 0ULL;
+    }
+
+    if (LosKernelSchedulerStagedUserImagePhysicalAddress != 0ULL &&
+        LosKernelSchedulerStagedUserImageBytes >= LosKernelSchedulerUserImageSize)
+    {
+        if (ImagePhysicalAddress != 0)
+        {
+            *ImagePhysicalAddress = LosKernelSchedulerStagedUserImagePhysicalAddress;
+        }
+        if (ImageSize != 0)
+        {
+            *ImageSize = LosKernelSchedulerUserImageSize;
+        }
+        return 1U;
+    }
+
+    AlignedImageBytes = (LosKernelSchedulerUserImageSize + 0xFFFULL) & ~0xFFFULL;
+    ImagePageCount = AlignedImageBytes / 0x1000ULL;
+    if (LosKernelSchedulerUserImageSize == 0ULL || ImagePageCount == 0ULL)
+    {
+        return 0U;
+    }
+
+    ZeroBytes(&ClaimRequest, sizeof(ClaimRequest));
+    ZeroBytes(&ClaimResult, sizeof(ClaimResult));
+    ClaimRequest.AlignmentBytes = 4096ULL;
+    ClaimRequest.PageCount = ImagePageCount;
+    ClaimRequest.Flags = LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS;
+    ClaimRequest.Owner = LOS_X64_MEMORY_REGION_OWNER_CLAIMED;
+    LosX64ClaimFrames(&ClaimRequest, &ClaimResult);
+    if (ClaimResult.Status != LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS ||
+        ClaimResult.BaseAddress == 0ULL ||
+        ClaimResult.PageCount != ImagePageCount)
+    {
+        LosKernelTraceFail("Kernel scheduler could not claim staging frames for the first user-task image.");
+        LosKernelTraceUnsigned("Kernel scheduler first user-task staging status: ", ClaimResult.Status);
+        LosKernelTraceUnsigned("Kernel scheduler first user-task staging pages returned: ", ClaimResult.PageCount);
+        return 0U;
+    }
+
+    MappedBuffer = LosX64GetDirectMapVirtualAddress(ClaimResult.BaseAddress, AlignedImageBytes);
+    if (MappedBuffer == 0)
+    {
+        LosKernelTraceFail("Kernel scheduler could not direct-map the staged first user-task image buffer.");
+        LosKernelTraceHex64("Kernel scheduler first user-task staging base: ", ClaimResult.BaseAddress);
+        return 0U;
+    }
+
+    ZeroBytes(MappedBuffer, (UINTN)AlignedImageBytes);
+    for (ByteIndex = 0U; ByteIndex < (UINTN)LosKernelSchedulerUserImageSize; ++ByteIndex)
+    {
+        ((UINT8 *)MappedBuffer)[ByteIndex] = LosKernelSchedulerUserImage[ByteIndex];
+    }
+
+    LosKernelSchedulerStagedUserImagePhysicalAddress = ClaimResult.BaseAddress;
+    LosKernelSchedulerStagedUserImageBytes = AlignedImageBytes;
+    if (ImagePhysicalAddress != 0)
+    {
+        *ImagePhysicalAddress = LosKernelSchedulerStagedUserImagePhysicalAddress;
+    }
+    if (ImageSize != 0)
+    {
+        *ImageSize = LosKernelSchedulerUserImageSize;
+    }
+    return 1U;
+}
 
 static BOOLEAN EnsureFirstUserTaskMappings(LOS_KERNEL_SCHEDULER_PROCESS *Process, LOS_KERNEL_SCHEDULER_TASK *Task)
 {
@@ -65,7 +148,7 @@ static BOOLEAN EnsureFirstUserTaskMappings(LOS_KERNEL_SCHEDULER_PROCESS *Process
     if (!ImageMapped)
     {
         ImagePhysicalAddress = 0ULL;
-        if (!LosX64TryTranslateKernelVirtualToPhysical((UINT64)(UINTN)LosKernelSchedulerUserImage, &ImagePhysicalAddress) ||
+        if (!EnsureFirstUserTaskImageStaged(&ImagePhysicalAddress, &MappedPhysicalAddress) ||
             ImagePhysicalAddress == 0ULL)
         {
             return 0U;
@@ -75,7 +158,7 @@ static BOOLEAN EnsureFirstUserTaskMappings(LOS_KERNEL_SCHEDULER_PROCESS *Process
         ZeroBytes(&AttachResult, sizeof(AttachResult));
         AttachRequest.AddressSpaceObjectPhysicalAddress = Process->AddressSpaceObjectPhysicalAddress;
         AttachRequest.StagedImagePhysicalAddress = ImagePhysicalAddress;
-        AttachRequest.StagedImageSize = LosKernelSchedulerUserImageSize;
+        AttachRequest.StagedImageSize = MappedPhysicalAddress != 0ULL ? MappedPhysicalAddress : LosKernelSchedulerUserImageSize;
         LosMemoryManagerSendAttachStagedImage(&AttachRequest, &AttachResult);
         if (AttachResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS ||
             AttachResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT)
@@ -99,6 +182,8 @@ static BOOLEAN EnsureFirstUserTaskMappings(LOS_KERNEL_SCHEDULER_PROCESS *Process
         {
             LosKernelTraceFail("Kernel scheduler could not attach the first user-task image into its owned address space.");
             LosKernelTraceUnsigned("Kernel scheduler user-image attach status: ", AttachResult.Status);
+            LosKernelTraceHex64("Kernel scheduler staged first user-task image base: ", ImagePhysicalAddress);
+            LosKernelTraceUnsigned("Kernel scheduler staged first user-task image bytes: ", AttachRequest.StagedImageSize);
             return 0U;
         }
     }
