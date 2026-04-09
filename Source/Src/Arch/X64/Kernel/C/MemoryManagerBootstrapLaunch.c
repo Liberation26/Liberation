@@ -1,3 +1,14 @@
+/*
+ * File Name: MemoryManagerBootstrapLaunch.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 #include "MemoryManagerBootstrapInternal.h"
 #include "VirtualMemoryInternal.h"
 
@@ -37,7 +48,7 @@
 #define LOS_MEMORY_MANAGER_PREP_DETAIL_ENTRY_ZERO 110ULL
 #define LOS_MEMORY_MANAGER_PREP_DETAIL_ROOT_ZERO 111ULL
 
-#define LOS_X64_SERVICE_STACK_VIRTUAL_BASE 0x0000000000800000ULL
+#define LOS_X64_SERVICE_STACK_GAP_BYTES 0x0000000000010000ULL
 
 typedef struct __attribute__((packed))
 {
@@ -127,6 +138,19 @@ static UINT64 AlignDown(UINT64 Value, UINT64 Alignment)
 static UINT64 AlignUp(UINT64 Value, UINT64 Alignment)
 {
     return (Value + Alignment - 1ULL) & ~(Alignment - 1ULL);
+}
+
+static UINT64 SelectServiceStackBaseVirtualAddress(UINT64 ImageVirtualBase, UINT64 ImagePageCount)
+{
+    UINT64 ImageEndVirtualAddress;
+
+    if (ImageVirtualBase == 0ULL || ImagePageCount == 0ULL)
+    {
+        return 0ULL;
+    }
+
+    ImageEndVirtualAddress = ImageVirtualBase + (ImagePageCount * 0x1000ULL);
+    return AlignUp(ImageEndVirtualAddress + LOS_X64_SERVICE_STACK_GAP_BYTES, 0x1000ULL);
 }
 
 static UINT64 ReadCr3(void)
@@ -597,6 +621,7 @@ static BOOLEAN MapStagedServiceImageIntoAddressSpace(
 
 static BOOLEAN MapServiceStackIntoAddressSpace(
     UINT64 PageMapLevel4PhysicalAddress,
+    UINT64 StackBaseVirtualAddress,
     UINT64 StackPhysicalAddress,
     UINT64 StackPageCount,
     UINT64 *StackTopVirtualAddress)
@@ -604,6 +629,7 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
     LOS_X64_MAP_PAGES_REQUEST MapRequest;
     LOS_X64_MAP_PAGES_RESULT MapResult;
     if (PageMapLevel4PhysicalAddress == 0ULL ||
+        StackBaseVirtualAddress == 0ULL ||
         StackPhysicalAddress == 0ULL ||
         StackPageCount == 0ULL ||
         StackTopVirtualAddress == 0)
@@ -617,7 +643,7 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
     ZeroMemory(&MapRequest, sizeof(MapRequest));
     ZeroMemory(&MapResult, sizeof(MapResult));
     MapRequest.PageMapLevel4PhysicalAddress = PageMapLevel4PhysicalAddress;
-    MapRequest.VirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE;
+    MapRequest.VirtualAddress = StackBaseVirtualAddress;
     MapRequest.PhysicalAddress = StackPhysicalAddress;
     MapRequest.PageCount = StackPageCount;
     MapRequest.PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_WRITABLE | LOS_X64_PAGE_USER | LOS_X64_PAGE_NX;
@@ -625,7 +651,7 @@ static BOOLEAN MapServiceStackIntoAddressSpace(
     LosX64MapPages(&MapRequest, &MapResult);
     if (MapResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS && MapResult.PagesProcessed == StackPageCount)
     {
-        *StackTopVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE + (StackPageCount * 0x1000ULL);
+        *StackTopVirtualAddress = StackBaseVirtualAddress + (StackPageCount * 0x1000ULL);
         return 1;
     }
 
@@ -647,6 +673,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     UINT64 ImageMappedBytes;
     UINT64 ImagePageCount;
     UINT64 ImagePhysicalBase;
+    UINT64 ServiceStackBaseVirtualAddress;
 
     State = LosMemoryManagerBootstrapState();
     if (State->ServiceImageVirtualAddress == 0ULL)
@@ -708,6 +735,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
         return 0;
     }
 
+    ServiceStackBaseVirtualAddress = SelectServiceStackBaseVirtualAddress(ImageVirtualBase, ImagePageCount);
     Layout = LosX64GetVirtualMemoryLayout();
     State->ServiceAddressSpaceObject->RootTablePhysicalAddress = ServiceRootPhysicalAddress;
     State->Info.ServicePageMapLevel4PhysicalAddress = ServiceRootPhysicalAddress;
@@ -721,6 +749,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->ServiceAddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
     if (!MapServiceStackIntoAddressSpace(
             ServiceRootPhysicalAddress,
+            ServiceStackBaseVirtualAddress,
             State->Info.ServiceStackPhysicalAddress,
             State->Info.ServiceStackPageCount,
             &State->ServiceTaskObject->StackTopVirtualAddress))
@@ -735,7 +764,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     }
     State->ServiceAddressSpaceObject->StackPhysicalAddress = State->Info.ServiceStackPhysicalAddress;
     State->ServiceAddressSpaceObject->StackPageCount = State->Info.ServiceStackPageCount;
-    State->ServiceAddressSpaceObject->StackBaseVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE;
+    State->ServiceAddressSpaceObject->StackBaseVirtualAddress = ServiceStackBaseVirtualAddress;
     State->ServiceAddressSpaceObject->StackTopVirtualAddress = State->ServiceTaskObject->StackTopVirtualAddress;
     State->ServiceAddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK;
     State->ServiceAddressSpaceObject->ReservedVirtualRegionCount = 2U;
@@ -744,7 +773,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].Type = LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE;
     State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].Flags = 0U;
     State->ServiceAddressSpaceObject->ReservedVirtualRegions[0].BackingPhysicalAddress = ImagePhysicalBase;
-    State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].BaseVirtualAddress = LOS_X64_SERVICE_STACK_VIRTUAL_BASE;
+    State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].BaseVirtualAddress = ServiceStackBaseVirtualAddress;
     State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].PageCount = State->Info.ServiceStackPageCount;
     State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].Type = LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_STACK;
     State->ServiceAddressSpaceObject->ReservedVirtualRegions[1].Flags = 0U;
