@@ -1,10 +1,10 @@
 /*
  * File Name: InterruptDispatch.c
- * File Version: 0.3.12
+ * File Version: 0.3.13
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T21:10:00Z
+ * Last Update Timestamp: 2026-04-09T20:25:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
@@ -212,12 +212,12 @@ void LosX64HandleInterrupt(
         return;
     }
 
-    LosKernelSerialWriteText("[Kernel] Exception vector ");
+    LosKernelSerialWriteText("[FAIL] [Kernel] Exception vector ");
     LosKernelSerialWriteUnsigned(Vector);
     LosKernelSerialWriteText(": ");
     LosKernelSerialWriteText(LosX64GetExceptionName(Vector));
     LosKernelSerialWriteText("\n");
-    LosKernelSerialWriteText("[Kernel] Error code: ");
+    LosKernelSerialWriteText("[FAIL] [Kernel] Error code: ");
     LosKernelSerialWriteHex64(ErrorCode);
     LosKernelSerialWriteText("\n");
     LosX64DescribeFault(Vector, ErrorCode);

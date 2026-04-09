@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection10.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T20:25:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -268,6 +268,7 @@ void LosKernelSchedulerRegisterBootstrapTasks(void)
     UINT64 TaskId;
     UINT64 KernelProcessId;
 
+    TaskId = LOS_KERNEL_SCHEDULER_INVALID_TASK_ID;
     KernelProcessId = LosKernelSchedulerState()->KernelProcessId;
     if (!LosKernelSchedulerCreateTask(
             "Heartbeat",
@@ -284,37 +285,8 @@ void LosKernelSchedulerRegisterBootstrapTasks(void)
         LosKernelHaltForever();
     }
 
-    if (!LosKernelSchedulerCreateTask(
-            "LifecycleManager",
-            KernelProcessId,
-            LOS_KERNEL_SCHEDULER_TASK_FLAG_PERIODIC,
-            LOS_KERNEL_SCHEDULER_LIFECYCLE_PRIORITY,
-            1U,
-            LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS,
-            LosKernelSchedulerLifecycleThread,
-            0,
-            &TaskId))
-    {
-        LosKernelTraceFail("Kernel scheduler could not create lifecycle manager task.");
-        LosKernelHaltForever();
-    }
-
-    if (!LosKernelSchedulerCreateTask(
-            "BusyWorker",
-            KernelProcessId,
-            0U,
-            LOS_KERNEL_SCHEDULER_BUSY_PRIORITY,
-            1U,
-            0ULL,
-            LosKernelSchedulerBusyThread,
-            0,
-            &TaskId))
-    {
-        LosKernelTraceFail("Kernel scheduler could not create busy worker task.");
-        LosKernelHaltForever();
-    }
-
-    LosKernelTraceOk("Kernel scheduler bootstrap tasks registered.");
+    LosKernelTraceOk("Kernel scheduler bootstrap heartbeat registered.");
+    LosKernelTraceOk("Kernel scheduler deferred lifecycle and busy-worker bootstrap tasks until the post-timer idle path is stable.");
 }
 
 BOOLEAN LosKernelSchedulerIsOnline(void)
