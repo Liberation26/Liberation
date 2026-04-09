@@ -1,10 +1,10 @@
 /*
  * File Name: MemoryManagerDispatch.c
- * File Version: 0.4.29
+ * File Version: 0.4.30
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T14:45:00Z
+ * Last Update Timestamp: 2026-04-09T15:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS service component.
  */
@@ -112,6 +112,18 @@ BOOLEAN LosMemoryManagerServiceAuthorizeRequest(const LOS_MEMORY_MANAGER_REQUEST
     if (Request == 0 || Namespace == 0 || Name == 0)
     {
         return 0;
+    }
+
+    /*
+     * The kernel remains the bootstrap authority for frame and memory-view
+     * operations even when the hosted memory-manager service is already online.
+     * Keep that path alive here so post-attach scheduler reservations do not
+     * regress into direct raw frame claims when CAPSMGR transport is absent,
+     * lagging, or compiled from an older caller-unlabelled tree.
+     */
+    if (LosMemoryManagerIsKernelBootstrapCaller(Request))
+    {
+        return 1;
     }
 
     /*

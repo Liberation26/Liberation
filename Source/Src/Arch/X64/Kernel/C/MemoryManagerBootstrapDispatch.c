@@ -104,7 +104,7 @@ static void PopulateCallerIdentity(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request)
         return;
     }
 
-    Request->CallerPrincipalType = LOS_CAPABILITIES_PRINCIPAL_TYPE_TASK;
+    Request->CallerPrincipalType = LOS_CAPABILITIES_PRINCIPAL_TYPE_BOOTSTRAP;
     Request->CallerPrincipalId = 0ULL;
     CopyText(Request->CallerPrincipalName, LOS_CAPABILITIES_PRINCIPAL_NAME_LENGTH, "kernel");
 }
