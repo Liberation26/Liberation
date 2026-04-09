@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# File Name: MakeIso.sh
+# File Version: 0.3.11
+# Author: OpenAI
+# Email: dave66samaa@gmail.com
+# Creation Timestamp: 2026-04-07T07:24:34Z
+# Last Update Timestamp: 2026-04-07T12:35:00Z
+# Operating System Name: Liberation OS
+# Purpose: Automates Liberation OS build, packaging, runtime, or maintenance tasks.
+
 set -euo pipefail
 
 RootDir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,6 +20,7 @@ BootFile="${ImageDir}/EFI/BOOT/BOOTX64.EFI"
 LoaderFile="${ImageDir}/EFI/BOOT/LOADERX64.EFI"
 MonitorFile="${ImageDir}/EFI/BOOT/MONITORX64.EFI"
 KernelFile="${ImageDir}/EFI/BOOT/KERNELX64.ELF"
+LiberationDir="${ImageDir}/LIBERATION"
 
 RequireTool() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -27,6 +37,7 @@ RequireTool dd
 RequireTool mkdir
 RequireTool rm
 RequireTool cp
+RequireTool mkdir
 
 if [[ ! -f "${BootFile}" ]]; then
     echo "[Liberation] Missing boot file: ${BootFile}"
@@ -50,13 +61,17 @@ fi
 
 rm -rf "${IsoRootDir}"
 mkdir -p "${IsoRootDir}/EFI/BOOT"
+mkdir -p "${IsoRootDir}/LIBERATION"
 rm -f "${IsoFile}"
 
-echo "[Liberation] Copying BOOTX64.EFI, LOADERX64.EFI, MONITORX64.EFI, and KERNELX64.ELF into ISO tree..."
+echo "[Liberation] Copying boot payloads and Liberation assets into ISO tree..."
 cp "${BootFile}" "${IsoRootDir}/EFI/BOOT/BOOTX64.EFI"
 cp "${LoaderFile}" "${IsoRootDir}/EFI/BOOT/LOADERX64.EFI"
 cp "${MonitorFile}" "${IsoRootDir}/EFI/BOOT/MONITORX64.EFI"
 cp "${KernelFile}" "${IsoRootDir}/EFI/BOOT/KERNELX64.ELF"
+if [[ -d "${LiberationDir}" ]]; then
+    cp -R "${LiberationDir}/." "${IsoRootDir}/LIBERATION/"
+fi
 
 echo "[Liberation] Creating EFI boot image for ISO..."
 dd if=/dev/zero of="${EspFile}" bs=1M count=8 status=none
