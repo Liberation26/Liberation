@@ -1619,7 +1619,7 @@ static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
 
 static BOOLEAN RequestMayUseBootstrapFallback(UINT32 Operation)
 {
-    LOS_UNUSED_PARAMETER(Operation);
+    (void)Operation;
     return 0;
 }
 
