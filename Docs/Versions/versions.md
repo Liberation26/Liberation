@@ -1,6 +1,4 @@
 # Versions
-- 0.4.73
-- 0.4.71
 
 This directory contains per-version notes extracted from the project README and tracked as separate files.
 
@@ -34,7 +32,6 @@ This directory contains per-version notes extracted from the project README and 
 
 - 0.4.46
 - 0.4.47
-- 0.4.48
 - 0.4.49
 - 0.4.50
 - 0.4.51
@@ -44,16 +41,8 @@ This directory contains per-version notes extracted from the project README and 
 - 0.4.55
 - 0.4.56
 - 0.4.57
-- 0.4.60
-- 0.4.62
-- 0.4.61
-- 0.4.63
-- 0.4.66
 - 0.4.67
-- 0.4.68
-- 0.4.69
-- 0.4.70
-- 0.4.72
 - 0.4.74
-- 0.4.75
 - 0.4.79
+- 0.4.80
+- 0.4.81

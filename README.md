@@ -1,4 +1,6 @@
-LOS 0.4.8
+LOS 0.4.81
+
+This update reduces the scheduler lifecycle wait between first-user-task preparation stages and moves the staged live-dispatch frame/chain much deeper into the kernel stack to target the remaining post-`marked live` reset loop.
 
 This update pivots the shell toward actual command input. Internal commands execute inside the shell service, while external names resolve to command images under `\LIBERATION\COMMANDS`.
 

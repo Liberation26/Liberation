@@ -1,3 +1,90 @@
+## 0.4.81
+
+- Reduced the lifecycle-manager cadence from 250 ticks to 25 ticks so the first-user-task ladder no longer pauses for multiple seconds between each preparation stage. At 100 Hz this cuts each step from 2.5 seconds to 0.25 seconds, so `Interrupts enabled` to `seal-ready`/`handoff-ready` no longer feels stalled.
+- Moved the synthetic first-user-task chain stack and initial `iretq` frame much deeper into the kernel task stack. This leaves several kilobytes of headroom for the first user-mode IRQ/trap entry and its C call chain before anything can touch the staged live-dispatch data.
+- This specifically targets the remaining reset loop where the machine survived the real live mark, then died as soon as the first user-mode interrupt path started running on the task's kernel stack.
+
+<!--
+File Name: Scheduler.md
+File Version: 0.3.11
+Author: OpenAI
+Email: dave66samaa@gmail.com
+Creation Timestamp: 2026-04-07T08:42:21Z
+Last Update Timestamp: 2026-04-07T12:35:00Z
+Operating System Name: Liberation OS
+Purpose: Documents Liberation OS design, behavior, usage, or integration details.
+-->
+
+## 0.3.4
+
+- The first init-command handshake now carries explicit sender, receive, send-event, and receive-event endpoint ids in ABI version 6.
+- Scheduler-side serial reporting now labels the init-command transport contract as ABI version 6 after the first ring-3 return.
+
+## 0.3.3
+
+- The first init-command handshake now assumes a richer fixed-size send packet and matching receive packet in ABI version 5.
+- Scheduler-side serial reporting now labels the init-command transport contract as ABI version 5 after the first ring-3 return.
+
+## 0.2.68
+
+- `LosKernelSchedulerCreateTask()` now always creates a task through the ordinary ready-task path.
+- The first-user-task bootstrap path still reblocks and annotates its special task immediately afterward, but that policy now lives in the user-transition preparation flow instead of being hidden inside generic task creation.
+- This keeps normal scheduler task registration semantics consistent for all callers and makes special bootstrap behavior explicit at the call site.
+
+The first live MM launch now carries explicit CPL3 proof instrumentation: right before `iretq`, the scheduler logs the exact frame and selectors it is about to dispatch, and on first user-mode entry the MM emits a serial proof line with live CS/CPL/RSP/RFLAGS values. This makes it obvious whether the first user task actually executed after the real ring transition.
+
+The kernel-hosted scheduler now treats the launch ladder as the **first user task** lifecycle path. Remaining bootstrap-scaffold terminology is transitional documentation only and should keep shrinking as endpoint-backed userland MM startup becomes ordinary task launch.
+
+
+Update 0.2.63
+-------------
+
+Scheduler-visible diagnostics now expose the live CPL3 ladder as `first-user-task-*` instead of `user-scaffold-*`, and the remaining lifecycle traces around image attach, stack allocation, live promotion, guarding, and completion now describe the launched object as the **first user task** once it enters the real dispatch path. This keeps the historical scaffold concept inside bootstrap internals while making serial/trace output match the kernel-hosted scheduler architecture.
+
+## 0.2.61
+
+Reduced remaining bootstrap-scaffold language in the kernel-hosted scheduler. Once the first runnable CPL3 object is prepared for real dispatch, lifecycle, dispatch, and diagnostics now describe it as the **first user task** rather than continuing to call the live path a scaffold.
+
+This does not change the underlying bootstrap states or object names yet, but it does tighten the architectural boundary: scaffold terminology now belongs to preparation, while the live dispatch/return path is treated as the lifecycle of the first real user task.
+
+Delivery packages continue to omit build outputs.
+
+## 0.2.59
+
+The first CPL3 dispatch path is now hardened against a direct return through `LosKernelSchedulerUserTransitionKernelEntry()`. Instead of treating that kernel-entry landing point as an impossible condition and halting forever, the scheduler now treats it as a controlled completion of the one-shot first-user-task bring-up path: the current user task is marked terminated, the scaffold is marked complete, the returned task/process are traced, and control switches cleanly back into the kernel scheduler.
+
+Delivery packages continue to omit build outputs.
+
+## 0.2.49
+
+The memory manager is now pushed closer to being the authoritative owner of scaffold memory setup. Its service-side `AttachStagedImage` and `AllocateAddressSpaceStack` paths are idempotent, so a repeated scheduler probe no longer turns a previously successful image or stack attach into a hard conflict. The MM service can also answer `QueryMapping` from its own reserved-region metadata when page-table verification lags during hosted bootstrap, which keeps scheduler bring-up moving without bouncing back into kernel-side MM emulation.
+
+Delivery packages continue to omit build outputs.
+
+## 0.2.47
+
+Scheduler scaffold bring-up now leans harder into the agreed split: the scheduler stays fully kernel-hosted and consumes memory state, while the memory manager remains the authority for image/stack metadata on an address space. The scheduler now prefers a direct walk of its owned scaffold page tables before asking the hosted bootstrap MM transport to confirm a mapping, and a conflicting `AttachStagedImage`/stack setup is treated as evidence to re-read the address-space object and reuse already-recorded image/stack metadata rather than spiraling into more attach retries.
+
+Delivery packages also now omit build outputs so the target tar contains source/docs only.
+
+## 0.2.46
+
+LOS now treats the scheduler as a **fully kernel-hosted subsystem** rather than a future userland policy server. Task creation, runnable-state transitions, dispatch choice, CR3 activation on dispatch, kernel-stack ownership, timer-driven preemption, and the ring-transition entry/return substrate all remain scheduler responsibilities inside the kernel.
+
+That clarifies the boundary for the current bring-up stage:
+
+- the **scheduler** owns tasks, dispatch, and user-entry mechanics
+- the **memory manager** owns address spaces, mappings, staged images, and user stacks
+- the **kernel** continues to host the scheduler directly rather than acting as a generic worker for an external scheduling policy service
+
+Follow-on cleanup should therefore remove bootstrap fallbacks and fixed scaffold assumptions, but it should not move scheduler policy into user space.
+
+## 0.2.45
+
+The scheduler scaffold bring-up now treats hosted-bootstrap mapping verification as a hybrid path rather than an all-or-nothing round-trip through the hosted memory-manager pump. When the bootstrap transport reports a `QueryMapping` miss for a user address space the kernel can already inspect directly, the scheduler now falls back to a local walk of the scaffold root page tables and accepts the mapping if the page is present there.
+
+The scaffold setup path also now consumes the actual entry and stack metadata recorded on the address-space object after image attach / stack allocation instead of reusing fixed constants for every verification pass. That prevents a successful first attach from degenerating into repeated `AttachStagedImage` retries and conflict returns simply because the follow-up verification query did not come back through the hosted service path.
+
 ## 0.2.44
 
 - Fixed the hosted-bootstrap fallback path used during scheduler scaffold bring-up. `QueryMapping` fallback can now actually execute when the hosted step does not publish a reply, instead of halting on the first failed hosted step.
@@ -18,21 +105,21 @@ Added the first **real x64 ring-transition substrate** for the scheduler user sc
 
 Interrupt vector `128` is now installed as a DPL3 gate so that first user image can trap back into ring 0 on the TSS-provided kernel stack. The interrupt path recognizes that user-origin return, terminates the scaffold task, requests reschedule, and lets the ordinary reap path clean it up. This proves the real kernel->user->kernel transition substrate needed before resumable syscalls, timer-driven user preemption, and general loader-backed user tasks can be layered on top.
 
-Added an explicit **complete** stage after **live-gate-closed** for the user-transition scaffold. Normal scheduler serial output now stays quiet until the scaffold reaches **seal-ready**, so the first scheduler-side serial lines appear only once the staged user handoff metadata is materially in place. After the live gate closes, the scaffold now advances once more to a scheduler-side **complete** state, heartbeat/state diagnostics expose `user-scaffold-complete`, and the scaffold process/task report `user-state=15` to show that scheduler-side staging is finished even though a future real TSS-backed ring transition is still required before the task can be marked LIVE.
+Added an explicit **complete** stage after **live-gate-closed** for the first-user-task bring-up path. Normal scheduler serial output now stays quiet until the scaffold reaches **seal-ready**, so the first scheduler-side serial lines appear only once the staged user handoff metadata is materially in place. After the live gate closes, the scaffold now advances once more to a scheduler-side **complete** state, heartbeat/state diagnostics expose `user-scaffold-complete`, and the scaffold process/task report `user-state=15` to show that scheduler-side staging is finished even though a future real TSS-backed ring transition is still required before the task can be marked LIVE.
 
-Added an explicit **chain-ready** stage after **bridge-ready** for the user-transition scaffold. The scheduler now stages a dedicated non-live dispatch chain on the blocked scaffold task's kernel stack, records that prepared chain stack pointer as `user-chain-sp` on the scaffold process/task objects, and exposes `user-scaffold-chain-ready` in heartbeat output. The live gate now closes only after that chain metadata is present, so the future real ring-transition path has a preserved bridge -> kernel-entry stack chain ready before anything can be marked live.
+Added an explicit **chain-ready** stage after **bridge-ready** for the first-user-task bring-up path. The scheduler now stages a dedicated non-live dispatch chain on the blocked scaffold task's kernel stack, records that prepared chain stack pointer as `user-chain-sp` on the scaffold process/task objects, and exposes `user-scaffold-chain-ready` in heartbeat output. The live gate now closes only after that chain metadata is present, so the future real ring-transition path has a preserved bridge -> kernel-entry stack chain ready before anything can be marked live.
 
 # 0.2.33
 
-Added an explicit **trampoline-ready** stage after **frame-ready** for the user-transition scaffold. The scheduler now rewrites the blocked scaffold task's first kernel return address to a dedicated non-live kernel-entry helper, records that address as `user-kentry` on both the scaffold process/task objects, and exposes `user-scaffold-trampoline-ready` in the heartbeat. The live gate now closes only after that trampoline metadata is present, so the future real ring-transition path has a dedicated kernel-entry landing point ready before anything can be marked live.
+Added an explicit **trampoline-ready** stage after **frame-ready** for the first-user-task bring-up path. The scheduler now rewrites the blocked scaffold task's first kernel return address to a dedicated non-live kernel-entry helper, records that address as `user-kentry` on both the scaffold process/task objects, and exposes `user-scaffold-trampoline-ready` in the heartbeat. The live gate now closes only after that trampoline metadata is present, so the future real ring-transition path has a dedicated kernel-entry landing point ready before anything can be marked live.
 
 # 0.2.32
 
-Added an explicit **frame-ready** stage after **descriptor-ready** for the user-transition scaffold. The scheduler now writes a future `iretq` return-frame template onto the blocked scaffold task's kernel stack and records the prepared frame stack pointer as `user-frame-sp` on both the scaffold process/task traces. Scheduler heartbeats now expose `user-scaffold-frame-ready`, and the live-gate/live-marking helpers now require that non-zero prepared frame metadata to exist before any future real ring-transition handoff can mark the scaffold live.
+Added an explicit **frame-ready** stage after **descriptor-ready** for the first-user-task bring-up path. The scheduler now writes a future `iretq` return-frame template onto the blocked scaffold task's kernel stack and records the prepared frame stack pointer as `user-frame-sp` on both the scaffold process/task traces. Scheduler heartbeats now expose `user-scaffold-frame-ready`, and the live-gate/live-marking helpers now require that non-zero prepared frame metadata to exist before any future real ring-transition handoff can mark the scaffold live.
 
 # 0.2.31
 
-Added an explicit **descriptor-ready** stage after **entry-ready** for the user-transition scaffold. The kernel GDT now carries user code/data descriptors, the scheduler records future user `CS`, `SS`, and `RFLAGS` values on the scaffold process/task objects, and scheduler heartbeats now expose `user-scaffold-descriptor-ready`. The scaffold still stops at the live gate and remains blocked until a future real ring-transition path marks it live.
+Added an explicit **descriptor-ready** stage after **entry-ready** for the first-user-task bring-up path. The kernel GDT now carries user code/data descriptors, the scheduler records future user `CS`, `SS`, and `RFLAGS` values on the scaffold process/task objects, and scheduler heartbeats now expose `user-scaffold-descriptor-ready`. The scaffold still stops at the live gate and remains blocked until a future real ring-transition path marks it live.
 
 # 0.2.30
 
@@ -40,13 +127,13 @@ Added an explicit **non-live scaffold guard** for the user-transition ladder. Sc
 
 # 0.2.29
 
-Added an explicit **live-gate-closed** stop after the user-transition scaffold reaches **entry-ready**. The lifecycle thread now emits a one-time `Scheduler user-transition scaffold live gate closed...` line, scheduler diagnostics expose `user-scaffold-live` and `user-live-gate-closed`, and a dedicated `LosKernelSchedulerMarkUserTransitionScaffoldLive()` helper is now in place for the future real ring-transition entry path to flip the scaffold to LIVE without reopening dispatch early.
+Added an explicit **live-gate-closed** stop after the first-user-task bring-up path reaches **entry-ready**. The lifecycle thread now emits a one-time `Scheduler first-user-task bring-up path live gate closed...` line, scheduler diagnostics expose `user-scaffold-live` and `user-live-gate-closed`, and a dedicated `LosKernelSchedulerMarkUserTransitionScaffoldLive()` helper is now in place for the future real ring-transition entry path to flip the scaffold to LIVE without reopening dispatch early.
 
 # 0.2.28
 
-Added an explicit **entry-ready** stage to the user-transition scaffold. After launch is requested, the scaffold now advances to an entry-ready state once the blocked user task and its distinct address space still carry non-zero user entry and user-stack values. Scheduler diagnostics now expose `user-scaffold-entry-ready`, and dispatch eligibility stays closed to user-mode tasks until a future real ring-transition path marks them live.
+Added an explicit **entry-ready** stage to the first-user-task bring-up path. After launch is requested, the scaffold now advances to an entry-ready state once the blocked user task and its distinct address space still carry non-zero user entry and user-stack values. Scheduler diagnostics now expose `user-scaffold-entry-ready`, and dispatch eligibility stays closed to user-mode tasks until a future real ring-transition path marks them live.
 
-Added a first-stage **user-transition scaffold**. The scheduler lifecycle path now prepares a dedicated `UserScaffoldProcess` with its own distinct address space plus a blocked `UserScaffoldTask` that records the future user entry and user-stack top without attempting a ring transition yet. Scheduler-wide diagnostics now expose `user-scaffold-ready`, `user-scaffold-prepared`, `user-scaffold-proc`, and `user-scaffold-task`, while task/process traces now include the recorded user entry, user stack, and user-transition state. That gives LOS a concrete launch object to harden before the first real kernel-to-user transfer path is wired.
+Added a first-stage **first-user-task bring-up path**. The scheduler lifecycle path now prepares a dedicated `FirstUserTaskProcess` with its own distinct address space plus a blocked `FirstUserTaskTask` that records the future user entry and user-stack top without attempting a ring transition yet. Scheduler-wide diagnostics now expose `user-scaffold-ready`, `user-scaffold-prepared`, `user-scaffold-proc`, and `user-scaffold-task`, while task/process traces now include the recorded user entry, user stack, and user-transition state. That gives LOS a concrete launch object to harden before the first real kernel-to-user transfer path is wired.
 
 ## 0.2.20
 
@@ -75,6 +162,10 @@ Scheduler bootstrap threads now stay on bootstrap fallback stacks until the sche
 - Task cleanup now only sends `FreeFrames` for memory-manager-owned stacks, which fixes the `freeing-unowned-pages` hard-fail seen when transient workers exited and the scheduler tried to reclaim their stacks.
 
 # Scheduler
+
+## 0.2.57
+
+The scheduler no longer closes the old non-live gate after the first-user-task bring-up path reaches **handoff-ready**. Instead, the lifecycle diagnostics thread now promotes the scaffold to **LIVE** by calling `LosKernelSchedulerMarkUserTransitionScaffoldLive()`, which requeues the prepared blocked task for dispatch through the real scheduler user-transition bridge. This turns the staged handoff metadata into the first actual CPL3 `iretq` attempt instead of stopping at a scheduler-only **complete** marker.
 
 ## 0.2.40
 
@@ -113,7 +204,7 @@ Scheduler bootstrap threads now stay on bootstrap fallback stacks until the sche
 
 LOS now has a kernel-internal scheduler with **timer-driven preemptive kernel threads**, **reclaimable task objects**, a **first-stage process layer above threads**, a **first-stage starvation-relief policy** for lower-priority ready work, **scheduler-managed process root activation**, and **distinct memory-manager-created address spaces bound to transient scheduler processes** so dispatch can switch between genuinely different CR3 roots even before user mode exists. Transient non-kernel scheduler processes now **require** that distinct address-space bind; if the bind is unavailable, creation is rejected instead of silently leaving the process on the inherited kernel root. The lifecycle test path is now also **serialized to one transient owned-root process at a time**, so LOS does not keep issuing new distinct-root process-creation attempts while an earlier transient process is still alive or waiting to be reaped.
 
-The scheduler is still intentionally small, but it now provides:
+The scheduler is still intentionally small, but it is now explicitly the complete kernel-hosted task authority for this stage. It provides:
 
 - fixed-priority task selection with ready-time aging for starvation relief
 - one always-runnable idle thread
@@ -159,7 +250,7 @@ This means LOS now has a preemptive kernel-thread substrate, explicit task-lifet
 
 ## How Preemption Works In This Stage
 
-The current design keeps the scheduler itself in kernel context and uses the timer interrupt path to trigger preemption.
+The current design keeps the scheduler itself entirely in kernel context and uses the timer interrupt path to trigger preemption. The kernel is the complete host for scheduling; there is no separate userland scheduler-policy service in this stage.
 
 When the PIT interrupt fires:
 
@@ -277,19 +368,19 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 
 
 
-- Added a launch-requested stage to the user-transition scaffold. The scaffold remains blocked, but now records that the kernel has accepted the next entry request before any future ring-transition implementation.
+- Added a launch-requested stage to the first-user-task bring-up path. The scaffold remains blocked, but now records that the kernel has accepted the next entry request before any future ring-transition implementation.
 
 
 ## 0.2.36
 
-- Added a `contract-ready` user-transition scaffold stage after `chain-ready`.
+- Added a `contract-ready` first-user-task bring-up path stage after `chain-ready`.
 - The scheduler now verifies the staged frame and saved dispatch chain, then freezes a non-zero `user-contract` signature across that metadata so the serial log can prove the future handoff contract is internally consistent before a real ring transition exists.
 - Diagnostics now report `user-contract=` in detailed task/process traces and `user-scaffold-contract-ready=` in heartbeat output.
 - The live gate still remains closed until the real ring-transition entry path exists, and both live-gating and future `LIVE` promotion now require the prepared contract metadata.
 
 ## 0.2.34
 
-- Added a `bridge-ready` user-transition scaffold stage after `trampoline-ready`.
+- Added a `bridge-ready` first-user-task bring-up path stage after `trampoline-ready`.
 - The blocked scaffold task now carries a dedicated future dispatch-bridge entry address in addition to the staged kernel-entry and user return-frame metadata.
 - Diagnostics now report `user-bridge=` in detailed task/process traces and `user-scaffold-bridge-ready=` in heartbeat output.
 - The live gate still stays closed until the real ring-transition entry path exists, so this remains scaffold hardening rather than actual user-mode dispatch.
@@ -297,7 +388,7 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 
 ## 0.2.37
 
-- Added a `seal-ready` user-transition scaffold stage after `contract-ready`.
+- Added a `seal-ready` first-user-task bring-up path stage after `contract-ready`.
 - The scheduler now writes and verifies a non-zero `user-seal` value on the staged dispatch chain so the blocked scaffold carries an explicit sealed handoff marker before the live gate closes.
 - Diagnostics now report `user-seal=` in detailed task/process traces and `user-scaffold-seal-ready=` in heartbeat output.
 - The live gate still remains closed until the real ring-transition entry path exists, and both live-gating and future `LIVE` promotion now require the prepared seal metadata.
@@ -305,7 +396,47 @@ This gives LOS the first real preemptive thread substrate inside the kernel toge
 
 ## 0.2.38
 
-- Added a `handoff-ready` user-transition scaffold stage after `seal-ready`.
+- Added a `handoff-ready` first-user-task bring-up path stage after `seal-ready`.
 - The scheduler now freezes the final blocked-task handoff stack pointer as non-zero `user-handoff-sp` metadata after verifying it still matches the staged chain stack pointer and current saved execution stack pointer.
 - Diagnostics now report `user-handoff-sp=` in detailed task/process traces and `user-scaffold-handoff-ready=` in heartbeat output.
 - The live gate still remains closed until the real ring-transition entry path exists, and both live-gating and future `LIVE` promotion now require the prepared handoff stack metadata.
+
+
+## 0.2.49 integration note
+The kernel-hosted scheduler now treats MM-recorded image and stack metadata as authoritative during scaffold verification, while the memory manager returns success for already-established image/stack state so bootstrap retries do not degenerate into attach conflicts.
+
+
+- 0.2.50: tightened MM-owned scaffold image/stack metadata reuse and page-rounded image accounting; scheduler final verification now accepts MM-recorded mappings before retrying scaffold creation.
+
+
+## 0.2.51
+- made MM-owned scaffold image and stack metadata authoritative during bootstrap retries
+- AttachStagedImage and AllocateAddressSpaceStack now repair from reserved-region records before reporting conflicts
+- QueryMapping now prefers MM-owned reserved-region answers before relying on the live page-table walk
+- scheduler accepts successful MM image/stack metadata directly instead of forcing an immediate re-query before advancing
+
+
+## 0.2.52
+- hardened MM-owned scaffold recovery so `AttachStagedImage` and `AllocateAddressSpaceStack` can repair address-space metadata from live mappings when earlier bootstrap bookkeeping lagged
+- MM now treats already-mapped contiguous image and stack ranges as reusable success instead of falling back to conflict on retry paths
+- kept scheduler kernel-hosted while pushing more memory truth back under the MM service
+
+0.2.54:
+- hardened the memory-manager address-space metadata path so image/stack reserved-region records are repaired from MM-owned metadata and reused for later mapping queries
+- MM query, image attach, and stack allocation now keep reserved-region truth synchronized with recorded image/stack state
+
+
+0.2.57: the scheduler now promotes the handoff-ready first-user-task bring-up path to LIVE and dispatches it through the real `iretq` bridge instead of closing the old non-live gate.
+0.2.56: scheduler scaffold bring-up now accepts coherent MM-returned image/stack metadata directly, while MM success replies are normalized from recorded address-space state so image/stack results stay authoritative across bootstrap retries.
+
+
+### 0.2.60
+The kernel-hosted scheduler now treats the first CPL3 dispatch as the first user task lifecycle path rather than a permanent scaffold concept. Diagnostics and completion reporting were updated accordingly.
+
+
+0.2.67: Added MM endpoint-ready and first endpoint-reply proof instrumentation for the first user-mode service path.
+
+
+## 0.2.67 update
+
+The first-user-task MM launch path now requires authoritative MM endpoint replies. Kernel bootstrap local rescue handling for QueryMapping / AttachStagedImage / AllocateAddressSpaceStack is no longer used, and scheduler mapping verification no longer falls back to kernel page-table walks or recorded metadata synthesis.
