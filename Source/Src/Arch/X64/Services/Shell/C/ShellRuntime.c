@@ -34,6 +34,39 @@ static const LOS_SHELL_RUNTIME_INSTALLED_USER_IMAGE LosShellRuntimeInstalledUser
 
 static LOS_SHELL_SERVICE_STATE LosShellGlobalState;
 
+
+static UINT8 LosShellRuntimeImageBuffer[LOS_USER_IMAGE_MAX_STAGED_IMAGE_SIZE];
+static UINT8 LosShellRuntimeMappedImageBuffer[LOS_USER_IMAGE_MAX_STAGED_IMAGE_SIZE];
+static UINT8 LosShellRuntimeUserStack[16U * 1024U];
+static LOS_USER_IMAGE_ISOLATED_SPACE LosShellRuntimeLastIsolatedSpace;
+static LOS_USER_IMAGE_RING3_CONTEXT LosShellRuntimeLastRing3Context;
+static LOS_USER_IMAGE_COMPLETION_RECORD LosShellRuntimeCompletionRecord;
+static LOS_USER_IMAGE_CALL LosShellRuntimeLastCall;
+static volatile UINT64 LosShellRuntimeUserModeCompletionStatus = LOS_USER_IMAGE_CALL_STATUS_UNSUPPORTED;
+static volatile UINT64 LosShellRuntimeUserModeCompletionResult = 0ULL;
+static UINT64 LosShellRuntimeCallResultShadow = 0ULL;
+
+static void LosShellRuntimeWriteDebugText(const char *Text);
+static void LosShellRuntimeWriteDebugUnsigned(const char *Prefix, UINT64 Value, const char *Suffix);
+static void LosShellRuntimeZeroMemory(void *Buffer, UINTN Length);
+static UINT64 LosShellRuntimeAlignDown64(UINT64 Value, UINT64 Alignment);
+static UINT64 LosShellRuntimeAlignUp64(UINT64 Value, UINT64 Alignment);
+static UINT64 LosShellRuntimeMaterializeLoadedImage(const void *Image,
+                                                    UINTN ImageSize,
+                                                    UINT64 *LoadedBaseAddress,
+                                                    UINT64 *LoadedSize,
+                                                    UINT64 *LoadedEntryAddress);
+static UINT64 LosShellRuntimeInvokeLoadedEntry(UINT64 EntryAddress,
+                                               const LOS_USER_IMAGE_CALL *Call,
+                                               UINT64 StackAddress,
+                                               UINT64 StackSize);
+static BOOLEAN LosShellRuntimeValidateElfImage(const void *Image, UINTN ImageSize, UINT64 *EntryAddress);
+static UINT64 LosShellRuntimeDispatchBootstrapImage(const LOS_USER_IMAGE_CALL *Call);
+static UINT64 LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call);
+static void LosShellRuntimeStageCompletion(UINT64 Status, UINT64 ResultValue);
+static void LosShellRuntimeCommitCompletionToShell(LOS_USER_IMAGE_CALL *Call);
+
+
 static BOOLEAN LosShellRuntimeTextEqual(const char *Left, const char *Right)
 {
     UINTN Index;
@@ -221,12 +254,9 @@ __attribute__((weak)) UINT64 LosUserExecuteLoadedImage(const LOS_USER_IMAGE_EXEC
                                          &LosShellRuntimeLastRing3Context);
     if (Status == LOS_USER_IMAGE_CALL_STATUS_SUCCESS)
     {
-        LosShellRuntimeWriteDebugUnsigned("[shell] isolated address space id=", LosShellRuntimeLastIsolatedSpace.AddressSpaceId, "
-");
-        LosShellRuntimeWriteDebugUnsigned("[shell] isolated root table=", LosShellRuntimeLastIsolatedSpace.RootTablePhysicalAddress, "
-");
-        LosShellRuntimeWriteDebugUnsigned("[shell] ring3 entry=", LosShellRuntimeLastRing3Context.UserInstructionPointer, "
-");
+        LosShellRuntimeWriteDebugUnsigned("[shell] isolated address space id=", LosShellRuntimeLastIsolatedSpace.AddressSpaceId, "\n");
+        LosShellRuntimeWriteDebugUnsigned("[shell] isolated root table=", LosShellRuntimeLastIsolatedSpace.RootTablePhysicalAddress, "\n");
+        LosShellRuntimeWriteDebugUnsigned("[shell] ring3 entry=", LosShellRuntimeLastRing3Context.UserInstructionPointer, "\n");
         return LosShellEnterUserMode(&LosShellRuntimeLastRing3Context);
     }
 
@@ -240,18 +270,14 @@ __attribute__((weak)) UINT64 LosUserExecuteLoadedImage(const LOS_USER_IMAGE_EXEC
         return Status;
     }
 
-    LosShellRuntimeWriteDebugUnsigned("[shell] mapped image base=", LoadedBaseAddress, "
-");
-    LosShellRuntimeWriteDebugUnsigned("[shell] mapped image size=", LoadedSize, "
-");
-    LosShellRuntimeWriteDebugUnsigned("[shell] executing ELF entry=", LoadedEntryAddress, "
-");
+    LosShellRuntimeWriteDebugUnsigned("[shell] mapped image base=", LoadedBaseAddress, "\n");
+    LosShellRuntimeWriteDebugUnsigned("[shell] mapped image size=", LoadedSize, "\n");
+    LosShellRuntimeWriteDebugUnsigned("[shell] executing ELF entry=", LoadedEntryAddress, "\n");
     Status = LosShellRuntimeInvokeLoadedEntry(LoadedEntryAddress,
                                               (const LOS_USER_IMAGE_CALL *)(UINTN)Context->CallAddress,
                                               Context->StackAddress,
                                               Context->StackSize);
-    LosShellRuntimeWriteDebugUnsigned("[shell] returned from ELF status=", Status, "
-");
+    LosShellRuntimeWriteDebugUnsigned("[shell] returned from ELF status=", Status, "\n");
     return Status;
 }
 
@@ -272,15 +298,6 @@ __attribute__((weak)) UINT64 LosUserExecuteIsolatedImage(const LOS_USER_IMAGE_EX
 }
 __attribute__((weak)) void LosUserWriteUnsigned(UINT64 Value) { (void)Value; }
 
-static UINT8 LosShellRuntimeImageBuffer[LOS_USER_IMAGE_MAX_STAGED_IMAGE_SIZE];
-static UINT8 LosShellRuntimeMappedImageBuffer[LOS_USER_IMAGE_MAX_STAGED_IMAGE_SIZE];
-static UINT8 LosShellRuntimeUserStack[16U * 1024U];
-static LOS_USER_IMAGE_ISOLATED_SPACE LosShellRuntimeLastIsolatedSpace;
-static LOS_USER_IMAGE_RING3_CONTEXT LosShellRuntimeLastRing3Context;
-static volatile UINT64 LosShellRuntimeUserModeCompletionStatus = LOS_USER_IMAGE_CALL_STATUS_UNSUPPORTED;
-static volatile UINT64 LosShellRuntimeUserModeCompletionResult = 0ULL;
-static LOS_USER_IMAGE_COMPLETION_RECORD LosShellRuntimeCompletionRecord;
-static UINT64 LosShellRuntimeCallResultShadow = 0ULL;
 
 static void LosShellRuntimeWriteDebugText(const char *Text)
 {
@@ -507,14 +524,10 @@ UINT64 LosShellEnterUserMode(const LOS_USER_IMAGE_RING3_CONTEXT *Context)
         return LOS_USER_IMAGE_CALL_STATUS_TRANSITION_FAILED;
     }
 
-    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 cr3=", Context->PageMapLevel4PhysicalAddress, "
-");
-    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 rip=", Context->UserInstructionPointer, "
-");
-    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 rsp=", Context->UserStackPointer, "
-");
-    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 arg=", Context->UserCallArgument, "
-");
+    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 cr3=", Context->PageMapLevel4PhysicalAddress, "\n");
+    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 rip=", Context->UserInstructionPointer, "\n");
+    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 rsp=", Context->UserStackPointer, "\n");
+    LosShellRuntimeWriteDebugUnsigned("[shell] ring3 arg=", Context->UserCallArgument, "\n");
 
 #if defined(__x86_64__)
     return LosShellEnterUserModeAsm(Context);
@@ -618,6 +631,56 @@ static UINT64 LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call)
     ExecuteStatus = LosUserExecuteLoadedImage(&Context);
     LosShellRuntimeWriteDebugUnsigned("[shell] loaded user image status=", ExecuteStatus, "\n");
     return ExecuteStatus;
+}
+
+
+
+static void LosShellRuntimeStageCompletion(UINT64 Status, UINT64 ResultValue)
+{
+    LosShellRuntimeCompletionRecord.Version = LOS_USER_IMAGE_CALL_VERSION;
+    LosShellRuntimeCompletionRecord.Flags = 0U;
+    LosShellRuntimeCompletionRecord.Status = Status;
+    LosShellRuntimeCompletionRecord.ResultValue = ResultValue;
+    LosShellRuntimeUserModeCompletionStatus = Status;
+    LosShellRuntimeUserModeCompletionResult = ResultValue;
+    LosShellRuntimeCallResultShadow = ResultValue;
+}
+
+void LosShellStageUserModeCompletion(UINT64 Status, UINT64 ResultValue)
+{
+    UINT64 CompletionStatus = Status;
+    UINT64 CompletionResult = ResultValue;
+
+    if (LosShellRuntimeLastIsolatedSpace.Version == LOS_USER_IMAGE_CALL_VERSION &&
+        LosShellRuntimeLastIsolatedSpace.AddressSpaceId != 0ULL)
+    {
+        UINT64 FinalizeStatus = LosMemoryManagerCompleteUserAddressSpaceCall(&LosShellRuntimeLastIsolatedSpace,
+                                                                             &CompletionStatus,
+                                                                             &CompletionResult);
+        if (FinalizeStatus != LOS_USER_IMAGE_CALL_STATUS_SUCCESS)
+        {
+            CompletionStatus = FinalizeStatus;
+            CompletionResult = 0ULL;
+        }
+
+        LosShellRuntimeZeroMemory(&LosShellRuntimeLastIsolatedSpace, sizeof(LosShellRuntimeLastIsolatedSpace));
+        LosShellRuntimeZeroMemory(&LosShellRuntimeLastRing3Context, sizeof(LosShellRuntimeLastRing3Context));
+    }
+
+    LosShellRuntimeStageCompletion(CompletionStatus, CompletionResult);
+}
+
+static void LosShellRuntimeCommitCompletionToShell(LOS_USER_IMAGE_CALL *Call)
+{
+    if (Call == 0)
+    {
+        return;
+    }
+
+    if (Call->ResultAddress != 0ULL && Call->ResultSize >= sizeof(UINT64))
+    {
+        *(UINT64 *)(UINTN)Call->ResultAddress = LosShellRuntimeCompletionRecord.ResultValue;
+    }
 }
 
 
@@ -918,7 +981,7 @@ void LosShellServiceInitialize(void)
     for (Index = 0U; Index < sizeof(*State); ++Index) { ((UINT8 *)State)[Index] = 0U; }
     State->LoginRequired = 1ULL;
     LosShellServiceCopyText(State->ServiceName, sizeof(State->ServiceName), "shell");
-    LosShellServiceCopyText(State->WorkingDirectory, sizeof(State->WorkingDirectory), "\");
+    LosShellServiceCopyText(State->WorkingDirectory, sizeof(State->WorkingDirectory), "\\");
     LosShellServiceCopyText(State->LastNormalizedCommand, sizeof(State->LastNormalizedCommand), "");
 }
 

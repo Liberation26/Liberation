@@ -215,9 +215,9 @@ BOOLEAN LosShellServiceBringOnline(void)
     LosShellServiceAttachBootstrapChannel();
     LosShellServiceWriteLine("[Shell] bootstrap starting.");
     LosShellServiceWriteLine("[Shell] login is required before commands run.");
-    LosShellServiceWriteLine("[Shell] login is an external command at \LIBERATION\COMMANDS\LOGIN.ELF.");
-    LosShellServiceWriteLine("[Shell] authenticated commands are uppercased through \LIBERATION\LIBRARIES\STRING.ELF.");
-    LosShellServiceWriteLine("[Shell] external commands resolve under \LIBERATION\COMMANDS\*.ELF.");
+    LosShellServiceWriteLine("[Shell] login is an external command at \\LIBERATION\\COMMANDS\\LOGIN.ELF.");
+    LosShellServiceWriteLine("[Shell] authenticated commands are uppercased through \\LIBERATION\\LIBRARIES\\STRING.ELF.");
+    LosShellServiceWriteLine("[Shell] external commands resolve under \\LIBERATION\\COMMANDS\\*.ELF.");
     State->Online = 1U;
     (void)LosShellServiceSignalEvent(LOS_SHELL_SERVICE_EVENT_ONLINE, State->TransportGeneration);
     LosShellServiceWriteLine("[Shell] ONLINE.");
