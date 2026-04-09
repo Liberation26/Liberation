@@ -315,6 +315,7 @@ static BOOLEAN IngestNormalizedRegionTable(LOS_MEMORY_MANAGER_SERVICE_STATE *Sta
 BOOLEAN LosMemoryManagerServiceBuildMemoryView(LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT64 *Detail)
 {
     LOS_MEMORY_MANAGER_MEMORY_VIEW *View;
+    UINT64 EffectiveServiceImageSize;
 
     if (!IngestNormalizedRegionTable(State, Detail))
     {
@@ -322,7 +323,12 @@ BOOLEAN LosMemoryManagerServiceBuildMemoryView(LOS_MEMORY_MANAGER_SERVICE_STATE 
     }
 
     View = &State->MemoryView;
-    if (!LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->ServiceImagePhysicalAddress, State->LaunchBlock->ServiceImageSize, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_SERVICE_IMAGE, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
+    EffectiveServiceImageSize = State->LaunchBlock->ServiceImageSize;
+    if (State->AddressSpaceObject != 0 && State->AddressSpaceObject->ServiceImageSize > EffectiveServiceImageSize)
+    {
+        EffectiveServiceImageSize = State->AddressSpaceObject->ServiceImageSize;
+    }
+    if (!LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->ServiceImagePhysicalAddress, EffectiveServiceImageSize, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_SERVICE_IMAGE, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
         !LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->ServiceStackPhysicalAddress, State->LaunchBlock->ServiceStackPageCount * 4096ULL, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_SERVICE_STACK, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
         !LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->RequestMailboxPhysicalAddress, State->LaunchBlock->RequestMailboxSize, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_REQUEST_MAILBOX, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
         !LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->ResponseMailboxPhysicalAddress, State->LaunchBlock->ResponseMailboxSize, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_RESPONSE_MAILBOX, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||

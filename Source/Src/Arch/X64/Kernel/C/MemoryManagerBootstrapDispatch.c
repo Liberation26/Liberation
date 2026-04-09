@@ -1760,9 +1760,16 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
                 State->LaunchBlock->ServiceImagePhysicalAddress = State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress;
             }
         }
-        if (State->Info.ServiceImageSize != 0ULL && State->LaunchBlock != 0 && State->LaunchBlock->ServiceImageSize == 0ULL)
+        if (State->LaunchBlock != 0)
         {
-            State->LaunchBlock->ServiceImageSize = State->Info.ServiceImageSize;
+            if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->ServiceImageSize != 0ULL)
+            {
+                State->LaunchBlock->ServiceImageSize = State->ServiceAddressSpaceObject->ServiceImageSize;
+            }
+            else if (State->Info.ServiceImageSize != 0ULL && State->LaunchBlock->ServiceImageSize == 0ULL)
+            {
+                State->LaunchBlock->ServiceImageSize = State->Info.ServiceImageSize;
+            }
         }
     }
 
@@ -1771,9 +1778,16 @@ static void PopulateBootstrapAttachRequest(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *R
     {
         Request->Payload.BootstrapAttach.ServiceImagePhysicalAddress = State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress;
     }
-    if (State != 0 && State->Info.ServiceImageSize != 0ULL)
+    if (State != 0)
     {
-        Request->Payload.BootstrapAttach.ServiceImageSize = State->Info.ServiceImageSize;
+        if (State->ServiceAddressSpaceObject != 0 && State->ServiceAddressSpaceObject->ServiceImageSize != 0ULL)
+        {
+            Request->Payload.BootstrapAttach.ServiceImageSize = State->ServiceAddressSpaceObject->ServiceImageSize;
+        }
+        else if (State->Info.ServiceImageSize != 0ULL)
+        {
+            Request->Payload.BootstrapAttach.ServiceImageSize = State->Info.ServiceImageSize;
+        }
     }
     Request->Payload.BootstrapAttach.ServiceEntryVirtualAddress = ServiceEntryVirtualAddress;
     Request->Payload.BootstrapAttach.ServiceStackTopVirtualAddress = ServiceStackTopVirtualAddress;

@@ -744,6 +744,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->ServiceAddressSpaceObject->DirectMapSize = Layout->HigherHalfDirectMapSize;
     State->ServiceAddressSpaceObject->ServiceImagePhysicalAddress = ImagePhysicalBase;
     State->ServiceAddressSpaceObject->ServiceImageSize = ImageMappedBytes;
+    State->LaunchBlock->ServiceImageSize = ImageMappedBytes;
     State->ServiceAddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
     State->ServiceAddressSpaceObject->EntryVirtualAddress = Header->Entry;
     State->ServiceAddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
