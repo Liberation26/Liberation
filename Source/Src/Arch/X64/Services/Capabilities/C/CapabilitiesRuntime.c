@@ -100,7 +100,8 @@ void LosCapabilitiesServiceInitialize(void)
     State->ReceiveEndpoint.Version = LOS_CAPABILITIES_SERVICE_VERSION;
     State->ReceiveEndpoint.Role = 0U;
     State->ReceiveEndpoint.State = LOS_CAPABILITIES_ENDPOINT_STATE_OFFLINE;
-    State->ReceiveEndpoint.Reserved0 = 0U;
+    State->ReceiveEndpoint.EndpointClass = 0U;
+    State->ReceiveEndpoint.SecurityMode = 0U;
     State->ReceiveEndpoint.Flags = 0ULL;
     State->ReceiveEndpoint.EndpointId = 0ULL;
     State->ReceiveEndpoint.MailboxAddress = 0ULL;
