@@ -43,3 +43,4 @@ This directory contains per-version notes extracted from the project README and 
 - 0.4.56
 - 0.4.57
 - 0.4.60
+- 0.4.61

@@ -173,6 +173,98 @@ static void AddressSpaceServiceSerialWriteUnsigned(UINT64 Value)
     }
 }
 
+static void AddressSpaceServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
+{
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] " );
+    AddressSpaceServiceSerialWriteText(Name != 0 ? Name : "value");
+    AddressSpaceServiceSerialWriteText("=");
+    AddressSpaceServiceSerialWriteHex64(Value);
+    AddressSpaceServiceSerialWriteText("\n");
+}
+
+static void AddressSpaceServiceSerialWriteNamedUnsigned(const char *Name, UINT64 Value)
+{
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] " );
+    AddressSpaceServiceSerialWriteText(Name != 0 ? Name : "value");
+    AddressSpaceServiceSerialWriteText("=");
+    AddressSpaceServiceSerialWriteUnsigned(Value);
+    AddressSpaceServiceSerialWriteText("\n");
+}
+
+static BOOLEAN AddressSpaceServiceRangesOverlap(UINT64 LeftBase, UINT64 LeftLength, UINT64 RightBase, UINT64 RightLength)
+{
+    UINT64 LeftEnd;
+    UINT64 RightEnd;
+
+    if (LeftLength == 0ULL || RightLength == 0ULL)
+    {
+        return 0;
+    }
+
+    LeftEnd = LeftBase + LeftLength;
+    RightEnd = RightBase + RightLength;
+    if (LeftEnd <= LeftBase || RightEnd <= RightBase)
+    {
+        return 1;
+    }
+
+    return !(LeftEnd <= RightBase || RightEnd <= LeftBase);
+}
+
+static void AddressSpaceServiceVerifyAttachImageState(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_REQUEST *Request,
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 StageCode,
+    UINT64 PageIndex,
+    UINT64 RunVirtualAddress,
+    UINT64 RunPhysicalAddress,
+    UINT64 RunPageCount)
+{
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *ExpectedAddressSpaceObject;
+    UINT64 ExpectedPointerValue;
+    UINT64 ActualPointerValue;
+
+    if (State == 0 || Request == 0)
+    {
+        return;
+    }
+
+    ExpectedAddressSpaceObject = (LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)LosMemoryManagerTranslatePhysical(
+        State,
+        Request->AddressSpaceObjectPhysicalAddress,
+        sizeof(LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT));
+    ExpectedPointerValue = (UINT64)(UINTN)ExpectedAddressSpaceObject;
+    ActualPointerValue = (UINT64)(UINTN)AddressSpaceObject;
+
+    if ((StageCode & 0xFFULL) == 0ULL)
+    {
+        AddressSpaceServiceSerialWriteNamedHex("attach-stage", StageCode);
+        AddressSpaceServiceSerialWriteNamedHex("attach-object-phys", Request->AddressSpaceObjectPhysicalAddress);
+        AddressSpaceServiceSerialWriteNamedHex("attach-object-expected", ExpectedPointerValue);
+        AddressSpaceServiceSerialWriteNamedHex("attach-object-actual", ActualPointerValue);
+        AddressSpaceServiceSerialWriteNamedUnsigned("attach-page-index", PageIndex);
+        AddressSpaceServiceSerialWriteNamedHex("attach-run-virt", RunVirtualAddress);
+        AddressSpaceServiceSerialWriteNamedHex("attach-run-phys", RunPhysicalAddress);
+        AddressSpaceServiceSerialWriteNamedUnsigned("attach-run-pages", RunPageCount);
+    }
+
+    if (ExpectedAddressSpaceObject == 0 || AddressSpaceObject != ExpectedAddressSpaceObject)
+    {
+        AddressSpaceServiceSerialWriteText("[MemManager][diag] attach image state mismatch detected before reserve/map continuation.\n");
+        AddressSpaceServiceSerialWriteNamedHex("attach-object-expected", ExpectedPointerValue);
+        AddressSpaceServiceSerialWriteNamedHex("attach-object-actual", ActualPointerValue);
+        AddressSpaceServiceSerialWriteNamedHex("attach-stage", StageCode);
+        LosMemoryManagerHardFail("attach-image-address-space-pointer-clobbered", ActualPointerValue, ExpectedPointerValue, StageCode);
+    }
+
+    if (AddressSpaceObject->RootTablePhysicalAddress == 0ULL)
+    {
+        AddressSpaceServiceSerialWriteNamedHex("attach-stage", StageCode);
+        LosMemoryManagerHardFail("attach-image-root-became-zero", Request->AddressSpaceObjectPhysicalAddress, ActualPointerValue, StageCode);
+    }
+}
+
 static void AddressSpaceServiceLogCreated(UINT64 AddressSpaceId, UINT64 AddressSpaceObjectPhysicalAddress, UINT64 RootTablePhysicalAddress)
 {
     AddressSpaceServiceSerialWriteText("[MemManager] Address space created id=");
@@ -1091,6 +1183,28 @@ static BOOLEAN StageImageIntoPhysicalMemory(
         return 0;
     }
 
+    if (State->LaunchBlock != 0)
+    {
+        if (AddressSpaceServiceRangesOverlap(*ImagePhysicalBase, *ImageMappedBytes, State->LaunchBlock->ServiceImagePhysicalAddress, State->LaunchBlock->ServiceImageSize))
+        {
+            AddressSpaceServiceSerialWriteText("[MemManager][diag] staged image overlaps current MM service image range.\n");
+            AddressSpaceServiceSerialWriteNamedHex("claimed-image-phys", *ImagePhysicalBase);
+            AddressSpaceServiceSerialWriteNamedHex("claimed-image-bytes", *ImageMappedBytes);
+            AddressSpaceServiceSerialWriteNamedHex("current-service-image-phys", State->LaunchBlock->ServiceImagePhysicalAddress);
+            AddressSpaceServiceSerialWriteNamedHex("current-service-image-bytes", State->LaunchBlock->ServiceImageSize);
+            LosMemoryManagerHardFail("attach-image-overlaps-mm-image", *ImagePhysicalBase, *ImageMappedBytes, State->LaunchBlock->ServiceImagePhysicalAddress);
+        }
+        if (AddressSpaceServiceRangesOverlap(*ImagePhysicalBase, *ImageMappedBytes, State->LaunchBlock->ServiceStackPhysicalAddress, State->LaunchBlock->ServiceStackPageCount * 0x1000ULL))
+        {
+            AddressSpaceServiceSerialWriteText("[MemManager][diag] staged image overlaps current MM service stack range.\n");
+            AddressSpaceServiceSerialWriteNamedHex("claimed-image-phys", *ImagePhysicalBase);
+            AddressSpaceServiceSerialWriteNamedHex("claimed-image-bytes", *ImageMappedBytes);
+            AddressSpaceServiceSerialWriteNamedHex("current-service-stack-phys", State->LaunchBlock->ServiceStackPhysicalAddress);
+            AddressSpaceServiceSerialWriteNamedHex("current-service-stack-bytes", State->LaunchBlock->ServiceStackPageCount * 0x1000ULL);
+            LosMemoryManagerHardFail("attach-image-overlaps-mm-stack", *ImagePhysicalBase, *ImageMappedBytes, State->LaunchBlock->ServiceStackPhysicalAddress);
+        }
+    }
+
     ImageTarget = LosMemoryManagerTranslatePhysical(State, *ImagePhysicalBase, *ImageMappedBytes);
     if (ImageTarget == 0)
     {
@@ -1633,6 +1747,8 @@ void LosMemoryManagerServiceAttachStagedImage(
         return;
     }
 
+    AddressSpaceServiceVerifyAttachImageState(State, Request, AddressSpaceObject, 0xA100ULL, 0ULL, 0ULL, 0ULL, 0ULL);
+
     Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)LosMemoryManagerTranslatePhysical(
         State,
         Request->StagedImagePhysicalAddress,
@@ -1752,6 +1868,16 @@ void LosMemoryManagerServiceAttachStagedImage(
             RunPageCount += 1ULL;
         }
 
+        AddressSpaceServiceVerifyAttachImageState(
+            State,
+            Request,
+            AddressSpaceObject,
+            0xA200ULL + PageIndex,
+            PageIndex,
+            RunVirtualAddress,
+            RunPhysicalAddress,
+            RunPageCount);
+
         if (!LosMemoryManagerMapPagesIntoAddressSpace(
                 State,
                 AddressSpaceObject->RootTablePhysicalAddress,
@@ -1776,8 +1902,20 @@ void LosMemoryManagerServiceAttachStagedImage(
             return;
         }
 
+        AddressSpaceServiceVerifyAttachImageState(
+            State,
+            Request,
+            AddressSpaceObject,
+            0xA280ULL + PageIndex,
+            PageIndex,
+            RunVirtualAddress,
+            RunPhysicalAddress,
+            RunPageCount);
+
         PageIndex += RunPageCount;
     }
+
+    AddressSpaceServiceVerifyAttachImageState(State, Request, AddressSpaceObject, 0xA300ULL, PageIndex, ImageVirtualBase, ImagePhysicalBase, ImagePageCount);
 
     if (!LosMemoryManagerReserveVirtualRegion(
             AddressSpaceObject,
