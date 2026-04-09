@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection01.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T20:40:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -112,7 +112,8 @@ static BOOLEAN ReserveDirectClaimKernelThreadStackPool(void)
     ClaimRequest.Owner = LOS_X64_MEMORY_REGION_OWNER_CLAIMED;
     ClaimedThroughMemoryManager = 0;
 
-    if (IsMemoryManagerSchedulerTransportReady() != 0U)
+    if (SchedulerMayUseMemoryManagerBackedThreadStacks() != 0U &&
+        IsMemoryManagerSchedulerTransportReady() != 0U)
     {
         LosMemoryManagerSendClaimFrames(&ClaimRequest, &ClaimResult);
         if (ClaimResult.Status == LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS &&
@@ -123,9 +124,7 @@ static BOOLEAN ReserveDirectClaimKernelThreadStackPool(void)
         }
         else
         {
-            LosKernelTraceFail("Kernel scheduler could not reserve stack-pool frames through the memory manager; falling back to direct claims.");
-            LosKernelTraceUnsigned("Kernel scheduler stack-pool claim status: ", ClaimResult.Status);
-            LosKernelTraceUnsigned("Kernel scheduler stack-pool pages returned: ", ClaimResult.PageCount);
+            LosKernelTrace("Kernel scheduler deferred the unstable memory-manager-backed stack-pool path and is using direct claims.");
             ZeroBytes(&ClaimResult, sizeof(ClaimResult));
         }
     }
