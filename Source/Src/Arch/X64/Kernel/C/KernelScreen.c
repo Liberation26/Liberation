@@ -1,10 +1,10 @@
 /*
  * File Name: KernelScreen.c
- * File Version: 0.3.12
+ * File Version: 0.3.13
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T18:35:00Z
+ * Last Update Timestamp: 2026-04-09T19:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -56,14 +56,17 @@ typedef struct
     UINT32 FontRowStride;
     const UINT8 *FontGlyphs;
     UINT32 FontScale;
+    UINT64 LastDisplayedTimerTick;
+    volatile UINT32 UpdateBusy;
     BOOLEAN FontLoaded;
+    BOOLEAN TimerLive;
     BOOLEAN Ready;
 } LOS_KERNEL_SCREEN_STATE;
 
 static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 
-#define LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE 2U
-#define LOS_KERNEL_SCREEN_LINE_SPACING 6U
+#define LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE 1U
+#define LOS_KERNEL_SCREEN_LINE_SPACING 2U
 #define LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS 1U
 #define LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS 8U
 #define LOS_KERNEL_SCREEN_RIGHT_MARGIN_COLUMNS 1U
@@ -81,6 +84,8 @@ static void ResetLogCursor(void);
 static void ScrollLogRegionUp(void);
 static void CopyPixelsForward(UINT32 *Destination, const UINT32 *Source, UINTN PixelCount);
 static void FillPixels(UINT32 *Destination, UINT32 Color, UINTN PixelCount);
+static BOOLEAN TryBeginScreenUpdate(void);
+static void EndScreenUpdate(void);
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -160,6 +165,24 @@ static void FillPixels(UINT32 *Destination, UINT32 Color, UINTN PixelCount)
     {
         Destination[PixelCount - 1U] = Color;
     }
+}
+
+static BOOLEAN TryBeginScreenUpdate(void)
+{
+    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.UpdateBusy != 0U)
+    {
+        return 0U;
+    }
+
+    LosKernelScreenState.UpdateBusy = 1U;
+    __asm__ __volatile__("" : : : "memory");
+    return 1U;
+}
+
+static void EndScreenUpdate(void)
+{
+    __asm__ __volatile__("" : : : "memory");
+    LosKernelScreenState.UpdateBusy = 0U;
 }
 
 static UINT8 GetGlyphRow(char Character, UINT32 Row)
@@ -390,6 +413,7 @@ static void ScrollLogRegionUp(void)
 
     CopyPixelsForward(Destination, Source, VisiblePixelCount);
     FillPixels(Destination + VisiblePixelCount, 0x00000000U, ClearPixelCount);
+    DrawStaticScreenDecorations();
 }
 
 static void AdvanceLine(void)
@@ -869,7 +893,10 @@ static void InitializeDefaultFont(void)
     LosKernelScreenState.FontRowStride = 0U;
     LosKernelScreenState.FontGlyphs = 0;
     LosKernelScreenState.FontScale = LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE;
+    LosKernelScreenState.LastDisplayedTimerTick = 0ULL;
+    LosKernelScreenState.UpdateBusy = 0U;
     LosKernelScreenState.FontLoaded = 0U;
+    LosKernelScreenState.TimerLive = 0U;
 }
 
 static void TryInitializePsfFont(const LOS_BOOT_CONTEXT *BootContext)
@@ -941,14 +968,19 @@ void LosKernelScreenUpdateSpinner(UINT64 TickCount)
     UINT32 SpinnerColumn;
     char SpinnerCharacter;
 
-    if (LosKernelScreenState.Ready == 0U || LosKernelScreenState.MaxColumns < 4U)
+    if (LosKernelScreenState.Ready == 0U ||
+        LosKernelScreenState.MaxColumns < 4U ||
+        LosKernelScreenState.TimerLive != 0U ||
+        (TickCount & 0x3ULL) != 0ULL ||
+        TryBeginScreenUpdate() == 0U)
     {
         return;
     }
 
     SpinnerColumn = LosKernelScreenState.MaxColumns - 3U;
-    SpinnerCharacter = LosSpinnerFrames[(UINTN)(TickCount & 0x3ULL)];
+    SpinnerCharacter = LosSpinnerFrames[(UINTN)((TickCount >> 2U) & 0x3ULL)];
     DrawCharacterAt(SpinnerColumn, 0U, SpinnerCharacter, GetOkPrefixColor());
+    EndScreenUpdate();
 }
 
 void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN InterruptsLive)
@@ -961,12 +993,30 @@ void LosKernelScreenUpdateTimer(UINT64 TickCount, UINT64 TargetHz, BOOLEAN Inter
         return;
     }
 
+    if (InterruptsLive != 0U &&
+        LosKernelScreenState.TimerLive != 0U &&
+        TargetHz != 0ULL &&
+        TickCount >= LosKernelScreenState.LastDisplayedTimerTick &&
+        (TickCount - LosKernelScreenState.LastDisplayedTimerTick) < TargetHz)
+    {
+        return;
+    }
+
+    if (TryBeginScreenUpdate() == 0U)
+    {
+        return;
+    }
+
     StatusColor = InterruptsLive != 0U ? GetOkPrefixColor() : GetFailPrefixColor();
     Row = LOS_KERNEL_SCREEN_TIMER_ROW;
 
     DrawTextAt(10U, Row, InterruptsLive != 0U ? "LIVE" : "WAIT", StatusColor);
     DrawUnsignedAt(19U, Row, TargetHz, 3U, GetTextColor());
     DrawUnsignedAt(30U, Row, TickCount, 10U, GetTextColor());
+
+    LosKernelScreenState.TimerLive = InterruptsLive != 0U ? 1U : 0U;
+    LosKernelScreenState.LastDisplayedTimerTick = TickCount;
+    EndScreenUpdate();
 }
 
 void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
@@ -1096,7 +1146,7 @@ void LosKernelInitializeScreen(const LOS_BOOT_CONTEXT *BootContext)
 
 static void WriteStatusLine(const char *Prefix, UINT32 PrefixColor, const char *Text)
 {
-    if (LosKernelScreenState.Ready == 0U)
+    if (LosKernelScreenState.Ready == 0U || TryBeginScreenUpdate() == 0U)
     {
         return;
     }
@@ -1105,6 +1155,7 @@ static void WriteStatusLine(const char *Prefix, UINT32 PrefixColor, const char *
     PutCharacter(' ');
     PutText(Text);
     PutCharacter('\n');
+    EndScreenUpdate();
 }
 
 void LosKernelStatusScreenWriteOk(const char *Text)

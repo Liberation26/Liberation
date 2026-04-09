@@ -1,6 +1,6 @@
-LOS 0.4.83
+LOS 0.4.84
 
-This update attacks the remaining painfully slow screen crawl in two places. First, the kernel status-screen log-region scroll now copies the framebuffer in bulk instead of pixel-by-pixel, so once the screen fills, upward scrolling is dramatically cheaper. Second, init and CAPSMGR now default to a concise bootstrap path instead of dumping full endpoint, capability, and canned shell-demo output during the first ring-3 proof run.
+This update is aimed directly at the slow kernel-screen crawl shown in the video capture. The kernel status screen now uses a smaller default font scale and tighter line spacing so the grid holds far more text before it needs to scroll. It also rate-limits live timer repaint work, stops the spinner once timer IRQs are proven live, and serialises framebuffer updates so timer overlays do not collide with log scrolling.
 
 This update pivots the shell toward actual command input. Internal commands execute inside the shell service, while external names resolve to command images under `\LIBERATION\COMMANDS`.
 
