@@ -1,3 +1,14 @@
+/*
+ * File Name: MemoryManagerBootstrapState.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 #include "MemoryManagerBootstrapInternal.h"
 
 static LOS_MEMORY_MANAGER_BOOTSTRAP_STATE LosMemoryManagerBootstrapGlobalState;
@@ -338,7 +349,12 @@ void LosMemoryManagerBootstrapReset(const LOS_BOOT_CONTEXT *BootContext)
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_MAP_PAGES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_UNMAP_PAGES) |
         (1ULL << LOS_MEMORY_MANAGER_OPERATION_PROTECT_PAGES) |
-        (1ULL << LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING);
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_QUERY_MEMORY_REGIONS) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_RESERVE_FRAMES) |
+        (1ULL << LOS_MEMORY_MANAGER_OPERATION_CLAIM_FRAMES);
     State->Info.ServiceImagePhysicalAddress = 0ULL;
     State->Info.ServiceImageSize = 0ULL;
     State->Info.ServiceAddressSpaceObjectPhysicalAddress = 0ULL;
