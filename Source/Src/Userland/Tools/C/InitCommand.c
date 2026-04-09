@@ -1,10 +1,10 @@
 /*
  * File Name: InitCommand.c
- * File Version: 0.4.8
+ * File Version: 0.4.9
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T11:02:18Z
- * Last Update Timestamp: 2026-04-09T18:35:00Z
+ * Last Update Timestamp: 2026-04-09T20:20:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS userland component.
  */
@@ -74,6 +74,7 @@ static UINT64 LosInitCommandCallShellService(const LOS_INIT_COMMAND_CONTEXT *Con
                                              const LOS_SHELL_SERVICE_REQUEST *Request,
                                              LOS_SHELL_SERVICE_RESPONSE *Response);
 static void LosInitCommandRunShellBootstrapSession(const LOS_INIT_COMMAND_CONTEXT *Context);
+static void LosInitCommandParkAfterBootstrap(void);
 
 
 static UINT64 LosInitCommandSendShellRequestTransport(const LOS_INIT_COMMAND_CONTEXT *Context,
@@ -290,6 +291,16 @@ static UINT64 LosInitCommandCallShellService(const LOS_INIT_COMMAND_CONTEXT *Con
     }
 
     return LosInitCommandSendShellRequestSharedMailbox(Request, Response);
+}
+
+static void LosInitCommandParkAfterBootstrap(void)
+{
+    LosInitCommandWriteText("[InitCmd] Memory manager is already online before init starts. CAPSMGR and SHELL have been bootstrapped; init will remain resident until a real session-manager and console-input path replaces this proof mode.\n");
+
+    for (;;)
+    {
+        __asm__ __volatile__("pause");
+    }
 }
 
 static void LosInitCommandRunShellBootstrapSession(const LOS_INIT_COMMAND_CONTEXT *Context)
@@ -1273,6 +1284,13 @@ void LosInitCommandMain(const LOS_INIT_COMMAND_CONTEXT *Context)
     {
         LosInitCommandDescribeCapabilities(&Context->Capabilities);
     }
-    LosInitCommandWriteText("[InitCmd] Returning to kernel.\n");
+
+    if (ExitStatus == LOS_INIT_COMMAND_STATUS_SUCCESS)
+    {
+        LosInitCommandParkAfterBootstrap();
+        return;
+    }
+
+    LosInitCommandWriteText("[InitCmd] Returning to kernel after bootstrap failure.\n");
     LosInitCommandReturnToKernel(ExitStatus);
 }

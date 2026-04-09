@@ -1,10 +1,10 @@
 /*
  * File Name: KernelScreen.c
- * File Version: 0.3.13
+ * File Version: 0.3.14
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T19:55:00Z
+ * Last Update Timestamp: 2026-04-09T20:20:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -65,8 +65,8 @@ typedef struct
 
 static LOS_KERNEL_SCREEN_STATE LosKernelScreenState;
 
-#define LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE 1U
-#define LOS_KERNEL_SCREEN_LINE_SPACING 2U
+#define LOS_KERNEL_SCREEN_DEFAULT_FONT_SCALE 2U
+#define LOS_KERNEL_SCREEN_LINE_SPACING 1U
 #define LOS_KERNEL_SCREEN_BASE_INDENT_COLUMNS 1U
 #define LOS_KERNEL_SCREEN_WRAP_INDENT_COLUMNS 8U
 #define LOS_KERNEL_SCREEN_RIGHT_MARGIN_COLUMNS 1U
