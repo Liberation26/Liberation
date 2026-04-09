@@ -20,7 +20,7 @@ The shell starts in a login-required state. Until a session is authenticated, th
 
 Login success is not based on launcher success anymore. The shell now waits for an explicit external login verdict carried by the login command ABI. Only the `AUTHENTICATED` result flips the shell into the normal `shell>` session. A denied result keeps the shell unauthenticated.
 
-During bootstrap, while the full exec-return path is still being wired, the runtime includes a compatibility adapter for `LOGIN.ELF` that validates the bootstrap credentials `root` / `liberation` and returns the same explicit login result the real external command path is expected to return later.
+During bootstrap, the shell now clears the screen, prompts for credentials itself, and runs the external `LOGIN.ELF` path using the user's input. Until a dedicated console-input service exists, that proof-mode input is polled directly from the bootstrap COM1 console while preserving the same login-command ABI and capability-policy checks.
 
 
 ## Login policy

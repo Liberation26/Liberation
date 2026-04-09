@@ -1,10 +1,10 @@
 /*
  * File Name: ShellMain.c
- * File Version: 0.4.21
+ * File Version: 0.4.22
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-08T15:20:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T21:05:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS service component.
  */
@@ -66,6 +66,170 @@ static BOOLEAN LosShellTextStartsWith(const char *Text, const char *Prefix)
     return 1;
 }
 
+#define LOS_SHELL_BOOTSTRAP_SERIAL_COM1_BASE 0x3F8U
+
+static void __attribute__((unused)) LosShellBootstrapOut8(UINT16 Port, UINT8 Value)
+{
+    __asm__ __volatile__("outb %0, %1" : : "a"(Value), "Nd"(Port));
+}
+
+static UINT8 LosShellBootstrapIn8(UINT16 Port)
+{
+    UINT8 Value;
+    __asm__ __volatile__("inb %1, %0" : "=a"(Value) : "Nd"(Port));
+    return Value;
+}
+
+static BOOLEAN LosShellBootstrapSerialCanRead(void)
+{
+    return (LosShellBootstrapIn8(LOS_SHELL_BOOTSTRAP_SERIAL_COM1_BASE + 5U) & 0x01U) != 0U ? 1 : 0;
+}
+
+static void LosShellServiceWriteCharacter(char Character)
+{
+    char Buffer[2];
+    Buffer[0] = Character;
+    Buffer[1] = 0;
+    LosShellServiceWriteText(Buffer);
+}
+
+static void LosShellServiceClearScreen(void)
+{
+    LosShellServiceWriteText("\x1B[2J\x1B[H");
+}
+
+static char LosShellBootstrapSerialReadCharacter(void)
+{
+    while (!LosShellBootstrapSerialCanRead())
+    {
+        __asm__ __volatile__("pause");
+    }
+    return (char)LosShellBootstrapIn8(LOS_SHELL_BOOTSTRAP_SERIAL_COM1_BASE + 0U);
+}
+
+static UINTN LosShellServiceReadBootstrapLine(char *Buffer, UINTN BufferLength, BOOLEAN EchoInput)
+{
+    UINTN Length = 0U;
+    char Character;
+
+    if (Buffer == 0 || BufferLength == 0U)
+    {
+        return 0U;
+    }
+
+    Buffer[0] = 0;
+    for (;;)
+    {
+        Character = LosShellBootstrapSerialReadCharacter();
+        if (Character == '\r' || Character == '\n')
+        {
+            LosShellServiceWriteText("\n");
+            break;
+        }
+        if (Character == '\b' || Character == 0x7FU)
+        {
+            if (Length != 0U)
+            {
+                --Length;
+                Buffer[Length] = 0;
+                LosShellServiceWriteText("\b \b");
+            }
+            continue;
+        }
+        if ((UINT8)Character < 0x20U || (UINT8)Character > 0x7EU)
+        {
+            continue;
+        }
+        if (Length + 1U >= BufferLength)
+        {
+            continue;
+        }
+
+        Buffer[Length] = Character;
+        ++Length;
+        Buffer[Length] = 0;
+        LosShellServiceWriteCharacter(EchoInput ? Character : '*');
+    }
+
+    return Length;
+}
+
+static void LosShellServiceBuildLoginCommand(const char *UserName, const char *Password, char *Command, UINTN CommandLength)
+{
+    LosShellServiceCopyText(Command, CommandLength, "login ");
+    LosShellServiceAppendText(Command, CommandLength, UserName != 0 ? UserName : "");
+    LosShellServiceAppendText(Command, CommandLength, " ");
+    LosShellServiceAppendText(Command, CommandLength, Password != 0 ? Password : "");
+}
+
+static void LosShellServiceRunBootstrapLogin(void)
+{
+    LOS_SHELL_SERVICE_STATE *State = LosShellServiceState();
+    char UserName[32];
+    char Password[32];
+    char Command[LOS_SHELL_SERVICE_INPUT_BUFFER_LENGTH];
+    char Output[LOS_SHELL_SERVICE_COMMAND_BUFFER_LENGTH];
+    UINT32 ResponseFlags;
+    UINT64 Status;
+
+    while (State->Authenticated == 0ULL)
+    {
+        LosShellServiceWriteText("USER: ");
+        LosShellServiceReadBootstrapLine(UserName, sizeof(UserName), 1);
+        LosShellServiceWriteText("PASSWORD: ");
+        LosShellServiceReadBootstrapLine(Password, sizeof(Password), 0);
+
+        if (UserName[0] == 0 || Password[0] == 0)
+        {
+            LosShellServiceWriteLine("login failed");
+            continue;
+        }
+
+        LosShellServiceBuildLoginCommand(UserName, Password, Command, sizeof(Command));
+        Status = LosShellServiceExecuteCommand(Command, Output, sizeof(Output), &ResponseFlags);
+        (void)ResponseFlags;
+        if (Output[0] != 0)
+        {
+            LosShellServiceWriteLine(Output);
+        }
+        if (Status == LOS_SHELL_SERVICE_STATUS_SUCCESS && State->Authenticated != 0ULL)
+        {
+            break;
+        }
+    }
+}
+
+static void LosShellServiceRunBootstrapInteractiveLoop(void)
+{
+    LOS_SHELL_SERVICE_STATE *State = LosShellServiceState();
+    char Output[LOS_SHELL_SERVICE_COMMAND_BUFFER_LENGTH];
+    UINT32 ResponseFlags;
+    UINT64 Status;
+
+    LosShellServiceClearScreen();
+    LosShellServiceWriteLine("Liberation Shell");
+    LosShellServiceWriteLine("Login is required.");
+    LosShellServiceRunBootstrapLogin();
+
+    for (;;)
+    {
+        LosShellServiceShowPrompt();
+        LosShellServiceReadBootstrapLine(State->InputBuffer, sizeof(State->InputBuffer), 1);
+        if (State->InputBuffer[0] == 0)
+        {
+            continue;
+        }
+
+        Status = LosShellServiceExecuteCommand(State->InputBuffer, Output, sizeof(Output), &ResponseFlags);
+        (void)Status;
+        (void)ResponseFlags;
+        if (Output[0] != 0)
+        {
+            LosShellServiceWriteLine(Output);
+        }
+    }
+}
+
 static void LosShellBuildExternalPath(const char *CommandName, char *Path, UINTN PathLength)
 {
     LosShellServiceCopyText(Path, PathLength, "\\LIBERATION\\COMMANDS\\");
@@ -86,7 +250,7 @@ static UINT64 LosShellHandleBuiltin(const char *Name, const char *Arguments, cha
     }
     if (LosShellTextEqual(Name, "version") || LosShellTextEqual(Name, "VERSION"))
     {
-        LosShellServiceCopyText(Output, OutputLength, "Liberation shell service version 0.4.21");
+        LosShellServiceCopyText(Output, OutputLength, "Liberation shell service version 0.4.92");
         return LOS_SHELL_SERVICE_STATUS_SUCCESS;
     }
     if (LosShellTextEqual(Name, "status") || LosShellTextEqual(Name, "STATUS"))
@@ -125,7 +289,8 @@ static UINT64 LosShellHandleBuiltin(const char *Name, const char *Arguments, cha
     }
     if (LosShellTextEqual(Name, "clear") || LosShellTextEqual(Name, "CLEAR"))
     {
-        LosShellServiceCopyText(Output, OutputLength, "clear requested");
+        LosShellServiceClearScreen();
+        LosShellServiceCopyText(Output, OutputLength, "");
         return LOS_SHELL_SERVICE_STATUS_SUCCESS;
     }
     return LOS_SHELL_SERVICE_STATUS_UNKNOWN_COMMAND;
@@ -386,7 +551,7 @@ UINT64 LosShellServiceDispatchMailbox(LOS_SHELL_SERVICE_MAILBOX *RequestMailbox,
     return Status;
 }
 
-static void LosShellServiceIssueSyntheticRequest(UINT64 Sequence, UINT32 Command, UINT64 Argument0, const char *Text)
+static void __attribute__((unused)) LosShellServiceIssueSyntheticRequest(UINT64 Sequence, UINT32 Command, UINT64 Argument0, const char *Text)
 {
     LOS_SHELL_SERVICE_STATE *State = LosShellServiceState();
     LosShellServiceCopyText((char *)&State->RequestMailbox.Payload.Request, sizeof(State->RequestMailbox.Payload.Request), "");
@@ -405,19 +570,7 @@ static void LosShellServiceIssueSyntheticRequest(UINT64 Sequence, UINT32 Command
 
 void LosShellServiceRunBootstrapSession(void)
 {
-    LOS_SHELL_SERVICE_STATE *State = LosShellServiceState();
-    UINTN Index;
-    static const char *Commands[] = { "help", "status", "login dave liberation", "echo shell ready" };
-    for (Index = 0U; Index < sizeof(Commands) / sizeof(Commands[0]); ++Index)
-    {
-        LosShellServiceShowPrompt();
-        LosShellServiceWriteLine(Commands[Index]);
-        LosShellServiceIssueSyntheticRequest((UINT64)(Index + 1U), LOS_SHELL_SERVICE_COMMAND_EXECUTE, 0ULL, Commands[Index]);
-        LosShellServiceDispatchMailbox(&State->RequestMailbox, &State->ResponseMailbox);
-        LosShellServiceWriteText("[Shell] response: ");
-        LosShellServiceWriteLine(State->ResponseMailbox.Payload.Response.Output);
-        State->ResponseMailbox.State = LOS_SHELL_SERVICE_MAILBOX_STATE_EMPTY;
-    }
+    LosShellServiceRunBootstrapInteractiveLoop();
 }
 
 void LosShellServiceEntry(void)

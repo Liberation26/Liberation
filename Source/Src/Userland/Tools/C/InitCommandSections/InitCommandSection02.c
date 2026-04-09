@@ -1,10 +1,10 @@
 /*
  * File Name: InitCommandSection02.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T21:05:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from InitCommand.c.
  */
@@ -54,7 +54,7 @@ static UINT64 LosInitCommandLoadAndRunShellService(const LOS_INIT_COMMAND_CONTEX
         LosInitCommandWriteText("[InitCmd] Shell service image staged from ");
         LosInitCommandWriteText(ShellImage.ServicePath);
         LosInitCommandWriteText(".\n");
-        LosInitCommandWriteText("[InitCmd] Init is now invoking the SHELL bootstrap entry and waiting for ONLINE state.\n");
+        LosInitCommandWriteText("[InitCmd] Init is now transferring the bootstrap console session to the SHELL bootstrap entry.\n");
     }
 
     LaunchStatus = LosUserLaunchServiceImage(&ShellImage);
@@ -69,7 +69,7 @@ static UINT64 LosInitCommandLoadAndRunShellService(const LOS_INIT_COMMAND_CONTEX
         LosInitCommandWriteText("[InitCmd] SHELL service online.\n");
         if (LosInitCommandIsVerbose(Context))
         {
-            LosInitCommandWriteText("[InitCmd] SHELL bootstrap entry returned control to init.\n");
+            LosInitCommandWriteText("[InitCmd] SHELL returned control to init after its bootstrap session.\n");
             LosInitCommandRunShellBootstrapSession(Context);
         }
         return LOS_INIT_COMMAND_STATUS_SUCCESS;
@@ -131,12 +131,7 @@ __attribute__((weak)) UINT64 LosUserReceiveEvent(UINT64 EndpointId, UINT64 *Even
 }
 
 typedef void (*LOS_INIT_COMMAND_BOOTSTRAP_ENTRY)(const LOS_CAPABILITIES_BOOTSTRAP_CONTEXT *Context);
-typedef struct _LOS_CAPABILITIES_SERVICE_STATE LOS_CAPABILITIES_SERVICE_STATE;
-extern UINT8 LosShellServiceImageStart[];
-extern UINT8 LosShellServiceImageSize[];
 extern void LosShellServiceBootstrapEntryWithContext(const LOS_CAPABILITIES_BOOTSTRAP_CONTEXT *Context);
-extern void *LosShellServiceState(void);
-__attribute__((weak)) const LOS_CAPABILITIES_BOOTSTRAP_CONTEXT *LosKernelGetBootstrapCapabilities(void);
 
 
 __attribute__((weak)) UINT64 LosUserLaunchServiceImage(const LOS_INIT_COMMAND_SERVICE_IMAGE *Image)

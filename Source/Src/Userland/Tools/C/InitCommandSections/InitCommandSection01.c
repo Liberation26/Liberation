@@ -1,10 +1,10 @@
 /*
  * File Name: InitCommandSection01.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T21:05:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from InitCommand.c.
  */
@@ -63,6 +63,17 @@ static UINT64 LosInitCommandCallShellService(const LOS_INIT_COMMAND_CONTEXT *Con
                                              LOS_SHELL_SERVICE_RESPONSE *Response);
 static void LosInitCommandRunShellBootstrapSession(const LOS_INIT_COMMAND_CONTEXT *Context);
 static void LosInitCommandParkAfterBootstrap(void);
+
+UINT64 LosUserSend(UINT64 EndpointId, const void *Message, UINT64 MessageSize);
+UINT64 LosUserReceive(UINT64 EndpointId, void *Message, UINT64 MessageCapacity);
+UINT64 LosUserSendEvent(UINT64 EndpointId, UINT64 EventCode, UINT64 EventValue);
+UINT64 LosUserReceiveEvent(UINT64 EndpointId, UINT64 *EventCode, UINT64 *EventValue);
+void LosUserWriteText(const char *Text);
+void LosUserWriteUnsigned(UINT64 Value);
+UINT64 LosUserLaunchServiceImage(const LOS_INIT_COMMAND_SERVICE_IMAGE *Image);
+const LOS_CAPABILITIES_BOOTSTRAP_CONTEXT *LosKernelGetBootstrapCapabilities(void);
+extern UINT8 LosShellServiceImageStart[];
+extern UINT8 LosShellServiceImageSize[];
 
 
 static UINT64 LosInitCommandSendShellRequestTransport(const LOS_INIT_COMMAND_CONTEXT *Context,
@@ -283,7 +294,7 @@ static UINT64 LosInitCommandCallShellService(const LOS_INIT_COMMAND_CONTEXT *Con
 
 static void LosInitCommandParkAfterBootstrap(void)
 {
-    LosInitCommandWriteText("[InitCmd] Memory manager is already online before init starts. CAPSMGR and SHELL have been bootstrapped; init will remain resident until a real session-manager and console-input path replaces this proof mode.\n");
+    LosInitCommandWriteText("[InitCmd] Memory manager is already online before init starts. CAPSMGR has been bootstrapped and the shell owns the active bootstrap console session; init will remain resident if control ever returns.\n");
 
     for (;;)
     {
@@ -293,90 +304,7 @@ static void LosInitCommandParkAfterBootstrap(void)
 
 static void LosInitCommandRunShellBootstrapSession(const LOS_INIT_COMMAND_CONTEXT *Context)
 {
-    LOS_SHELL_SERVICE_REQUEST Request;
-    LOS_SHELL_SERVICE_RESPONSE Response;
-    UINTN Index;
-    UINT64 Status;
-    static const char *Commands[] =
-    {
-        "version",
-        "pwd",
-        "echo init attached",
-        "run DEMO"
-    };
-
-    LosInitCommandWriteText("[InitCmd] Driving shell input through the shell service. Internal commands execute directly; unknown commands resolve as external ELFs.\n");
-
-    for (Index = 0U; Index < sizeof(Request); ++Index)
-    {
-        ((UINT8 *)&Request)[Index] = 0U;
-    }
-    for (Index = 0U; Index < sizeof(Response); ++Index)
-    {
-        ((UINT8 *)&Response)[Index] = 0U;
-    }
-
-    Request.Version = LOS_SHELL_SERVICE_VERSION;
-    Request.Command = LOS_SHELL_SERVICE_COMMAND_QUERY;
-    Request.Flags = LOS_SHELL_SERVICE_FLAG_CAPTURE_OUTPUT;
-    Request.Signature = LOS_SHELL_SERVICE_REQUEST_SIGNATURE;
-    Request.RequestId = 1ULL;
-    Request.Sequence = 1ULL;
-    Request.Argument0 = LOS_SHELL_SERVICE_QUERY_PROMPT;
-
-    Status = LosInitCommandCallShellService(Context, &Request, &Response);
-    if (Status == LOS_INIT_COMMAND_STATUS_SUCCESS || Status == LOS_SHELL_SERVICE_STATUS_SUCCESS)
-    {
-        LosInitCommandWriteText("[InitCmd] shell prompt: ");
-        LosInitCommandWriteText(Response.Output);
-        LosInitCommandWriteText("\n");
-    }
-    else
-    {
-        LosInitCommandWriteText("[InitCmd] shell prompt query failed.\n");
-    }
-
-    for (Index = 0U; Index < sizeof(Commands) / sizeof(Commands[0]); ++Index)
-    {
-        UINTN CommandIndex;
-
-        for (CommandIndex = 0U; CommandIndex < sizeof(Request); ++CommandIndex)
-        {
-            ((UINT8 *)&Request)[CommandIndex] = 0U;
-        }
-        for (CommandIndex = 0U; CommandIndex < sizeof(Response); ++CommandIndex)
-        {
-            ((UINT8 *)&Response)[CommandIndex] = 0U;
-        }
-
-        Request.Version = LOS_SHELL_SERVICE_VERSION;
-        Request.Command = LOS_SHELL_SERVICE_COMMAND_EXECUTE;
-        Request.Flags = LOS_SHELL_SERVICE_FLAG_CAPTURE_OUTPUT;
-        Request.Signature = LOS_SHELL_SERVICE_REQUEST_SIGNATURE;
-        Request.RequestId = (UINT64)(Index + 2U);
-        Request.Sequence = (UINT64)(Index + 2U);
-        for (CommandIndex = 0U;
-             CommandIndex + 1U < sizeof(Request.Text) && Commands[Index][CommandIndex] != 0;
-             ++CommandIndex)
-        {
-            Request.Text[CommandIndex] = Commands[Index][CommandIndex];
-        }
-
-        LosInitCommandWriteText("[InitCmd] shell> ");
-        LosInitCommandWriteText(Commands[Index]);
-        LosInitCommandWriteText("\n");
-        Status = LosInitCommandCallShellService(Context, &Request, &Response);
-        if (Status == LOS_INIT_COMMAND_STATUS_SUCCESS ||
-            Status == LOS_SHELL_SERVICE_STATUS_SUCCESS ||
-            Response.Status == LOS_SHELL_SERVICE_STATUS_SUCCESS)
-        {
-            LosInitCommandWriteText("[InitCmd] shell response: ");
-            LosInitCommandWriteText(Response.Output);
-            LosInitCommandWriteText("\n");
-        }
-        else
-        {
-            LosInitCommandWriteText("[InitCmd] shell command dispatch failed.\n");
-        }
-    }
+    (void)Context;
+    (void)LosInitCommandCallShellService;
+    LosInitCommandWriteText("[InitCmd] SHELL owns the bootstrap console session, clears the screen, runs LOGIN, and collects user input directly. Init will not drive synthetic shell commands anymore.\n");
 }
