@@ -1,10 +1,10 @@
 /*
  * File Name: MemoryManagerAddressSpaceDispatch.c
- * File Version: 0.3.11
+ * File Version: 0.3.12
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Last Update Timestamp: 2026-04-09T16:50:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS service component.
  */
@@ -97,103 +97,48 @@ static BOOLEAN PopulateRequestedStackResult(
     LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result);
 
 
-static inline void AddressSpaceServiceOut8(UINT16 Port, UINT8 Value)
+static inline __attribute__((unused)) void AddressSpaceServiceOut8(UINT16 Port, UINT8 Value)
 {
-    __asm__ __volatile__("outb %0, %1" : : "a"(Value), "Nd"(Port));
+    (void)Port;
+    (void)Value;
 }
 
-static inline UINT8 AddressSpaceServiceIn8(UINT16 Port)
+static inline __attribute__((unused)) UINT8 AddressSpaceServiceIn8(UINT16 Port)
 {
-    UINT8 Value;
-
-    __asm__ __volatile__("inb %1, %0" : "=a"(Value) : "Nd"(Port));
-    return Value;
+    (void)Port;
+    return 0U;
 }
 
 static void AddressSpaceServiceSerialWriteChar(char Character)
 {
-    while ((AddressSpaceServiceIn8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 5U) & 0x20U) == 0U)
-    {
-    }
-
-    AddressSpaceServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 0U, (UINT8)Character);
+    (void)Character;
 }
 
 static void AddressSpaceServiceSerialWriteText(const char *Text)
 {
-    UINTN Index;
-
-    if (Text == 0)
-    {
-        return;
-    }
-
-    for (Index = 0U; Text[Index] != '\0'; ++Index)
-    {
-        if (Text[Index] == '\n')
-        {
-            AddressSpaceServiceSerialWriteChar('\r');
-        }
-        AddressSpaceServiceSerialWriteChar(Text[Index]);
-    }
+    (void)Text;
 }
 
 static void AddressSpaceServiceSerialWriteHex64(UINT64 Value)
 {
-    UINTN Shift;
-
-    AddressSpaceServiceSerialWriteText("0x");
-    for (Shift = 16U; Shift > 0U; --Shift)
-    {
-        UINT8 Nibble;
-
-        Nibble = (UINT8)((Value >> ((Shift - 1U) * 4U)) & 0xFULL);
-        AddressSpaceServiceSerialWriteChar((char)(Nibble < 10U ? ('0' + Nibble) : ('A' + (Nibble - 10U))));
-    }
+    (void)Value;
 }
 
 static void AddressSpaceServiceSerialWriteUnsigned(UINT64 Value)
 {
-    char Buffer[32];
-    UINTN Index;
-
-    if (Value == 0ULL)
-    {
-        AddressSpaceServiceSerialWriteChar('0');
-        return;
-    }
-
-    Index = 0U;
-    while (Value != 0ULL && Index < (sizeof(Buffer) / sizeof(Buffer[0])))
-    {
-        Buffer[Index] = (char)('0' + (Value % 10ULL));
-        Value /= 10ULL;
-        ++Index;
-    }
-
-    while (Index > 0U)
-    {
-        --Index;
-        AddressSpaceServiceSerialWriteChar(Buffer[Index]);
-    }
+    (void)Value;
 }
 
 static void AddressSpaceServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
 {
-    AddressSpaceServiceSerialWriteText("[MemManager][diag] " );
-    AddressSpaceServiceSerialWriteText(Name != 0 ? Name : "value");
-    AddressSpaceServiceSerialWriteText("=");
-    AddressSpaceServiceSerialWriteHex64(Value);
-    AddressSpaceServiceSerialWriteText("\n");
+    (void)Name;
+    (void)Value;
 }
 
 static void AddressSpaceServiceSerialWriteNamedUnsigned(const char *Name, UINT64 Value)
 {
-    AddressSpaceServiceSerialWriteText("[MemManager][diag] " );
-    AddressSpaceServiceSerialWriteText(Name != 0 ? Name : "value");
-    AddressSpaceServiceSerialWriteText("=");
-    AddressSpaceServiceSerialWriteUnsigned(Value);
-    AddressSpaceServiceSerialWriteText("\n");
+    (void)Name;
+    (void)Value;
 }
 
 static BOOLEAN AddressSpaceServiceRangesOverlap(UINT64 LeftBase, UINT64 LeftLength, UINT64 RightBase, UINT64 RightLength)
