@@ -1,10 +1,10 @@
 /*
  * File Name: ShellRuntime.c
- * File Version: 0.4.35
+ * File Version: 0.4.36
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-08T15:00:00Z
- * Last Update Timestamp: 2026-04-09T18:15:00Z
+ * Last Update Timestamp: 2026-04-09T18:45:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS service component.
  */
@@ -61,7 +61,7 @@ static UINT64 LosShellRuntimeInvokeLoadedEntry(UINT64 EntryAddress,
                                                UINT64 StackAddress,
                                                UINT64 StackSize);
 static BOOLEAN LosShellRuntimeValidateElfImage(const void *Image, UINTN ImageSize, UINT64 *EntryAddress);
-static UINT64 LosShellRuntimeDispatchBootstrapImage(const LOS_USER_IMAGE_CALL *Call);
+static UINT64 __attribute__((unused)) LosShellRuntimeDispatchBootstrapImage(const LOS_USER_IMAGE_CALL *Call);
 static UINT64 LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call);
 static void LosShellRuntimeStageCompletion(UINT64 Status, UINT64 ResultValue);
 static void LosShellRuntimeCommitCompletionToShell(LOS_USER_IMAGE_CALL *Call);
@@ -566,7 +566,7 @@ static BOOLEAN LosShellRuntimeValidateElfImage(const void *Image, UINTN ImageSiz
     return 1;
 }
 
-static UINT64 LosShellRuntimeDispatchBootstrapImage(const LOS_USER_IMAGE_CALL *Call)
+static UINT64 __attribute__((unused)) LosShellRuntimeDispatchBootstrapImage(const LOS_USER_IMAGE_CALL *Call)
 {
     (void)Call;
     return LOS_USER_IMAGE_CALL_STATUS_NOT_FOUND;

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # File Name: BuildBoot.sh
-# File Version: 0.4.31
+# File Version: 0.4.32
 # Author: OpenAI
 # Email: dave66samaa@gmail.com
 # Creation Timestamp: 2026-04-07T10:15:30Z
-# Last Update Timestamp: 2026-04-09T16:05:00Z
+# Last Update Timestamp: 2026-04-09T18:45:00Z
 # Operating System Name: Liberation OS
 # Purpose: Automates Liberation OS build, packaging, runtime, or maintenance tasks.
 
@@ -30,6 +30,7 @@ CapabilitiesServiceHeaderDir="${SourceRoot}/Arch/X64/Services/Capabilities/H"
 CapabilitiesServiceLinkerScript="${SourceRoot}/Arch/X64/Services/Capabilities/Ld/CapabilitiesX64.ld"
 ShellServiceSourceDir="${SourceRoot}/Arch/X64/Services/Shell/C"
 ShellServiceHeaderDir="${SourceRoot}/Arch/X64/Services/Shell/H"
+ShellServiceAsmDir="${SourceRoot}/Arch/X64/Services/Shell/Asm"
 ShellServiceLinkerScript="${SourceRoot}/Arch/X64/Services/Shell/Ld/ShellX64.ld"
 LoginCommandSourceDir="${SourceRoot}/Userland/Commands/Login/C"
 LoginCommandHeaderDir="${SourceRoot}/Userland/Commands/Login/H"
