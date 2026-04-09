@@ -10,8 +10,10 @@
  */
 
 #include "ShellMain.h"
+#if defined(LOS_EMBED_USER_IMAGE_BOOTSTRAP)
 #include "LoginMain.h"
 #include "StringMain.h"
+#endif
 
 #if !defined(LOS_EMBED_USER_IMAGE_BOOTSTRAP)
 extern const UINT8 LosInstalledLoginImageStart[];
@@ -67,7 +69,7 @@ static UINT64 LosShellRuntimeInvokeLoadedEntry(UINT64 EntryAddress,
                                                UINT64 StackSize);
 static BOOLEAN LosShellRuntimeValidateElfImage(const void *Image, UINTN ImageSize, UINT64 *EntryAddress);
 static UINT64 __attribute__((unused)) LosShellRuntimeDispatchBootstrapImage(const LOS_USER_IMAGE_CALL *Call);
-static UINT64 LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call);
+static UINT64 __attribute__((unused)) LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call);
 static void LosShellRuntimeStageCompletion(UINT64 Status, UINT64 ResultValue);
 static void LosShellRuntimeCommitCompletionToShell(LOS_USER_IMAGE_CALL *Call);
 
@@ -624,7 +626,7 @@ static UINT64 __attribute__((unused)) LosShellRuntimeDispatchBootstrapImage(cons
 #endif
 }
 
-static UINT64 LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call)
+static UINT64 __attribute__((unused)) LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call)
 {
     UINTN BytesRead = 0U;
     UINT64 EntryAddress = 0ULL;
