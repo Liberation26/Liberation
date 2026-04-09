@@ -1,10 +1,10 @@
 /*
  * File Name: InitCommand.c
- * File Version: 0.4.7
+ * File Version: 0.4.8
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T11:02:18Z
- * Last Update Timestamp: 2026-04-08T17:35:00Z
+ * Last Update Timestamp: 2026-04-09T18:35:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS userland component.
  */
@@ -56,6 +56,7 @@ static UINT64 LosInitCommandValidateServiceImage(const LOS_INIT_COMMAND_SERVICE_
 static UINT64 LosInitCommandValidateSecureChannelPolicy(const LOS_SECURE_ENDPOINT_POLICY *Policy);
 static void LosInitCommandDescribeSecureChannelPolicy(const LOS_SECURE_ENDPOINT_POLICY *Policy);
 static BOOLEAN LosInitCommandTextEqual(const char *Left, const char *Right);
+static BOOLEAN LosInitCommandIsVerbose(const LOS_INIT_COMMAND_CONTEXT *Context);
 static const LOS_CAPABILITY_PROFILE_ASSIGNMENT *LosInitCommandFindAssignment(const LOS_CAPABILITIES_BOOTSTRAP_CONTEXT *Capabilities, UINT32 PrincipalType, const char *PrincipalName);
 static const LOS_CAPABILITY_GRANT_BLOCK *LosInitCommandFindProfileBlock(const LOS_CAPABILITIES_BOOTSTRAP_CONTEXT *Capabilities, const char *ProfileName);
 static BOOLEAN LosInitCommandProfileHasGrant(const LOS_CAPABILITY_GRANT_BLOCK *Block, const char *Namespace, const char *Name);
@@ -421,10 +422,13 @@ static UINT64 LosInitCommandLoadAndRunShellService(const LOS_INIT_COMMAND_CONTEX
     LosInitCommandSendBootstrapEvent(Context,
                                      LOS_INIT_COMMAND_EVENT_SERVICE_IMAGE_VALIDATED,
                                      ShellImage.RequestId);
-    LosInitCommandWriteText("[InitCmd] Shell service image staged from ");
-    LosInitCommandWriteText(ShellImage.ServicePath);
-    LosInitCommandWriteText(".\n");
-    LosInitCommandWriteText("[InitCmd] Init is now invoking the SHELL bootstrap entry and waiting for ONLINE state.\n");
+    if (LosInitCommandIsVerbose(Context))
+    {
+        LosInitCommandWriteText("[InitCmd] Shell service image staged from ");
+        LosInitCommandWriteText(ShellImage.ServicePath);
+        LosInitCommandWriteText(".\n");
+        LosInitCommandWriteText("[InitCmd] Init is now invoking the SHELL bootstrap entry and waiting for ONLINE state.\n");
+    }
 
     LaunchStatus = LosUserLaunchServiceImage(&ShellImage);
     if (LaunchStatus == LOS_INIT_COMMAND_STATUS_SUCCESS)
@@ -435,8 +439,12 @@ static UINT64 LosInitCommandLoadAndRunShellService(const LOS_INIT_COMMAND_CONTEX
         LosInitCommandSendBootstrapEvent(Context,
                                          LOS_INIT_COMMAND_EVENT_SERVICE_ONLINE,
                                          ShellImage.RequestId);
-        LosInitCommandWriteText("[InitCmd] SHELL bootstrap entry returned control to init.\n");
-        LosInitCommandRunShellBootstrapSession(Context);
+        LosInitCommandWriteText("[InitCmd] SHELL service online.\n");
+        if (LosInitCommandIsVerbose(Context))
+        {
+            LosInitCommandWriteText("[InitCmd] SHELL bootstrap entry returned control to init.\n");
+            LosInitCommandRunShellBootstrapSession(Context);
+        }
         return LOS_INIT_COMMAND_STATUS_SUCCESS;
     }
 
@@ -549,6 +557,17 @@ static void LosInitCommandWriteText(const char *Text)
 static void LosInitCommandWriteUnsigned(UINT64 Value)
 {
     LosUserWriteUnsigned(Value);
+}
+
+static BOOLEAN LosInitCommandIsVerbose(const LOS_INIT_COMMAND_CONTEXT *Context)
+{
+    if (Context == 0)
+    {
+        return 0;
+    }
+
+    return (Context->Version >= LOS_INIT_COMMAND_VERSION &&
+            (Context->Flags & LOS_INIT_COMMAND_FLAG_VERBOSE) != 0U) ? 1 : 0;
 }
 
 static BOOLEAN LosInitCommandTextEqual(const char *Left, const char *Right)
@@ -1053,9 +1072,16 @@ static UINT64 LosInitCommandLoadAndRunService(const LOS_INIT_COMMAND_CONTEXT *Co
     LosInitCommandSendBootstrapEvent(Context,
                                      LOS_INIT_COMMAND_EVENT_SERVICE_IMAGE_VALIDATED,
                                      Context->ServiceRequest.RequestId);
-    LosInitCommandWriteText("[InitCmd] Validated embedded CAPSMGR image supplied by kernel.\n");
-    LosInitCommandWriteText("[InitCmd] Bootstrap capability policy authorised CAPSMGR launch.\n");
-    LosInitCommandWriteText("[InitCmd] Init is now invoking the CAPSMGR bootstrap entry and waiting for ONLINE state.\n");
+    if (LosInitCommandIsVerbose(Context))
+    {
+        LosInitCommandWriteText("[InitCmd] Validated embedded CAPSMGR image supplied by kernel.\n");
+        LosInitCommandWriteText("[InitCmd] Bootstrap capability policy authorised CAPSMGR launch.\n");
+        LosInitCommandWriteText("[InitCmd] Init is now invoking the CAPSMGR bootstrap entry and waiting for ONLINE state.\n");
+    }
+    else
+    {
+        LosInitCommandWriteText("[InitCmd] Launching CAPSMGR bootstrap.\n");
+    }
 
     LaunchStatus = LosUserLaunchServiceImage(&Context->ServiceRequest.ServiceImage);
     if (LaunchStatus == LOS_INIT_COMMAND_STATUS_SUCCESS)
@@ -1068,7 +1094,7 @@ static UINT64 LosInitCommandLoadAndRunService(const LOS_INIT_COMMAND_CONTEXT *Co
         LosInitCommandSendBootstrapEvent(Context,
                                          LOS_INIT_COMMAND_EVENT_SERVICE_ONLINE,
                                          Context->ServiceRequest.RequestId);
-        LosInitCommandWriteText("[InitCmd] CAPSMGR bootstrap entry returned control to init.\n");
+        LosInitCommandWriteText("[InitCmd] CAPSMGR service online.\n");
         ShellLaunchStatus = LosInitCommandLoadAndRunShellService(Context);
         if (ShellLaunchStatus != LOS_INIT_COMMAND_STATUS_SUCCESS)
         {
@@ -1114,12 +1140,15 @@ void LosInitCommandMain(const LOS_INIT_COMMAND_CONTEXT *Context)
         return;
     }
 
-    LosInitCommandDescribeEndpoint("send", &Context->Send);
-    LosInitCommandDescribeEndpoint("receive", &Context->Receive);
-    LosInitCommandDescribeEndpoint("send-event", &Context->SendEvent);
-    LosInitCommandDescribeEndpoint("receive-event", &Context->ReceiveEvent);
-    LosInitCommandDescribeServiceRequest(&Context->ServiceRequest);
-    LosInitCommandDescribeSecureChannelPolicy(&Context->ServiceRequest.SecureChannelPolicy);
+    if (Verbose != 0U)
+    {
+        LosInitCommandDescribeEndpoint("send", &Context->Send);
+        LosInitCommandDescribeEndpoint("receive", &Context->Receive);
+        LosInitCommandDescribeEndpoint("send-event", &Context->SendEvent);
+        LosInitCommandDescribeEndpoint("receive-event", &Context->ReceiveEvent);
+        LosInitCommandDescribeServiceRequest(&Context->ServiceRequest);
+        LosInitCommandDescribeSecureChannelPolicy(&Context->ServiceRequest.SecureChannelPolicy);
+    }
 
     Hello.Version = LOS_INIT_COMMAND_VERSION;
     Hello.Kind = LOS_INIT_COMMAND_MESSAGE_KIND_BOOTSTRAP_HELLO;
@@ -1240,7 +1269,10 @@ void LosInitCommandMain(const LOS_INIT_COMMAND_CONTEXT *Context)
         LosInitCommandWriteText("\n");
     }
 
-    LosInitCommandDescribeCapabilities(&Context->Capabilities);
+    if (Verbose != 0U)
+    {
+        LosInitCommandDescribeCapabilities(&Context->Capabilities);
+    }
     LosInitCommandWriteText("[InitCmd] Returning to kernel.\n");
     LosInitCommandReturnToKernel(ExitStatus);
 }

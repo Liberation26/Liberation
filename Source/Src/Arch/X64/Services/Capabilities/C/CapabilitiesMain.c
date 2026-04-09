@@ -1,10 +1,10 @@
 /*
  * File Name: CapabilitiesMain.c
- * File Version: 0.3.25
+ * File Version: 0.3.26
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T11:02:18Z
- * Last Update Timestamp: 2026-04-08T12:10:00Z
+ * Last Update Timestamp: 2026-04-09T18:35:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS service component.
  */
@@ -27,82 +27,6 @@ static void LosCapabilitiesDumpRecord(const LOS_CAPABILITIES_SERVICE_RECORD *Rec
     LosCapabilitiesServiceWriteText(" flags=");
     LosCapabilitiesServiceWriteUnsigned((UINT64)Record->Flags);
     LosCapabilitiesServiceWriteText("\n");
-}
-
-static void LosCapabilitiesDumpBootstrapBlocks(const LOS_CAPABILITIES_BOOTSTRAP_CONTEXT *Context)
-{
-    UINT32 BlockIndex;
-    UINT32 AssignmentIndex;
-    UINT32 EventIndex;
-
-    if (Context == 0)
-    {
-        return;
-    }
-
-    LosCapabilitiesServiceWriteText("[Caps] Bootstrap blocks=");
-    LosCapabilitiesServiceWriteUnsigned((UINT64)Context->BlockCount);
-    LosCapabilitiesServiceWriteText(" assignments=");
-    LosCapabilitiesServiceWriteUnsigned((UINT64)Context->AssignmentCount);
-    LosCapabilitiesServiceWriteText(" events=");
-    LosCapabilitiesServiceWriteUnsigned((UINT64)Context->EventCount);
-    LosCapabilitiesServiceWriteText("\n");
-
-    for (BlockIndex = 0U; BlockIndex < Context->BlockCount && BlockIndex < LOS_CAPABILITIES_BOOTSTRAP_CONTEXT_MAX_BLOCKS; ++BlockIndex)
-    {
-        const LOS_CAPABILITY_GRANT_BLOCK *Block;
-        UINT32 GrantIndex;
-
-        Block = &Context->Blocks[BlockIndex];
-        LosCapabilitiesServiceWriteText("[Caps] Block profile=");
-        LosCapabilitiesServiceWriteText(Block->ProfileName);
-        LosCapabilitiesServiceWriteText(" grants=");
-        LosCapabilitiesServiceWriteUnsigned((UINT64)Block->GrantCount);
-        LosCapabilitiesServiceWriteText("\n");
-        for (GrantIndex = 0U; GrantIndex < Block->GrantCount && GrantIndex < LOS_CAPABILITIES_BOOTSTRAP_CONTEXT_MAX_GRANTS_PER_BLOCK; ++GrantIndex)
-        {
-            const LOS_CAPABILITY_GRANT_ENTRY *Grant;
-
-            Grant = &Block->Grants[GrantIndex];
-            LosCapabilitiesServiceWriteText("[Caps] grant ");
-            LosCapabilitiesServiceWriteText(Grant->Namespace);
-            LosCapabilitiesServiceWriteText(".");
-            LosCapabilitiesServiceWriteText(Grant->Name);
-            LosCapabilitiesServiceWriteText(" grantId=");
-            LosCapabilitiesServiceWriteUnsigned(Grant->GrantId);
-            LosCapabilitiesServiceWriteText(" auth=");
-            LosCapabilitiesServiceWriteText(Grant->AuthoriserName);
-            LosCapabilitiesServiceWriteText("\n");
-        }
-    }
-
-    for (AssignmentIndex = 0U; AssignmentIndex < Context->AssignmentCount && AssignmentIndex < LOS_CAPABILITIES_BOOTSTRAP_CONTEXT_MAX_ASSIGNMENTS; ++AssignmentIndex)
-    {
-        const LOS_CAPABILITY_PROFILE_ASSIGNMENT *Assignment;
-
-        Assignment = &Context->Assignments[AssignmentIndex];
-        LosCapabilitiesServiceWriteText("[Caps] assignment ");
-        LosCapabilitiesServiceWriteText(Assignment->PrincipalName);
-        LosCapabilitiesServiceWriteText(" -> ");
-        LosCapabilitiesServiceWriteText(Assignment->ProfileName);
-        LosCapabilitiesServiceWriteText(" auth=");
-        LosCapabilitiesServiceWriteText(Assignment->AuthoriserName);
-        LosCapabilitiesServiceWriteText("\n");
-    }
-
-    for (EventIndex = 0U; EventIndex < Context->EventCount && EventIndex < LOS_CAPABILITIES_BOOTSTRAP_CONTEXT_MAX_EVENTS; ++EventIndex)
-    {
-        const LOS_CAPABILITY_GRANT_EVENT *Event;
-
-        Event = &Context->Events[EventIndex];
-        LosCapabilitiesServiceWriteText("[Caps] event type=");
-        LosCapabilitiesServiceWriteUnsigned((UINT64)Event->EventType);
-        LosCapabilitiesServiceWriteText(" grantId=");
-        LosCapabilitiesServiceWriteUnsigned(Event->GrantId);
-        LosCapabilitiesServiceWriteText(" actor=");
-        LosCapabilitiesServiceWriteText(Event->ActorName);
-        LosCapabilitiesServiceWriteText("\n");
-    }
 }
 
 void LosCapabilitiesServiceRunSelfTest(void)
@@ -237,7 +161,7 @@ BOOLEAN LosCapabilitiesServiceBringOnline(const LOS_CAPABILITIES_BOOTSTRAP_CONTE
     {
         if (LosCapabilitiesServiceImportBootstrapContext(Context))
         {
-            LosCapabilitiesDumpBootstrapBlocks(Context);
+            LosCapabilitiesServiceWriteText("[Caps] Bootstrap context imported.\n");
         }
         else
         {

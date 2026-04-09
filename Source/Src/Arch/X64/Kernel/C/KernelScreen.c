@@ -1,3 +1,14 @@
+/*
+ * File Name: KernelScreen.c
+ * File Version: 0.3.12
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-09T18:35:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 #include "KernelMain.h"
 #include "VirtualMemory.h"
 
@@ -68,6 +79,8 @@ static void DrawStaticScreenDecorations(void);
 static void DrawTimerOverlayFrame(void);
 static void ResetLogCursor(void);
 static void ScrollLogRegionUp(void);
+static void CopyPixelsForward(UINT32 *Destination, const UINT32 *Source, UINTN PixelCount);
+static void FillPixels(UINT32 *Destination, UINT32 Color, UINTN PixelCount);
 
 static UINT64 GetRequiredFrameBufferBytes(UINT32 PixelsPerScanLine, UINT32 Height)
 {
@@ -101,6 +114,52 @@ static char ToUpperAscii(char Character)
         return (char)(Character - ('a' - 'A'));
     }
     return Character;
+}
+
+static void CopyPixelsForward(UINT32 *Destination, const UINT32 *Source, UINTN PixelCount)
+{
+    UINTN PairCount;
+    UINTN Index;
+
+    if (Destination == 0 || Source == 0 || PixelCount == 0U)
+    {
+        return;
+    }
+
+    PairCount = PixelCount / 2U;
+    for (Index = 0U; Index < PairCount; ++Index)
+    {
+        ((UINT64 *)Destination)[Index] = ((const UINT64 *)Source)[Index];
+    }
+
+    if ((PixelCount & 1U) != 0U)
+    {
+        Destination[PixelCount - 1U] = Source[PixelCount - 1U];
+    }
+}
+
+static void FillPixels(UINT32 *Destination, UINT32 Color, UINTN PixelCount)
+{
+    UINT64 PackedColor;
+    UINTN PairCount;
+    UINTN Index;
+
+    if (Destination == 0 || PixelCount == 0U)
+    {
+        return;
+    }
+
+    PackedColor = ((UINT64)Color << 32) | (UINT64)Color;
+    PairCount = PixelCount / 2U;
+    for (Index = 0U; Index < PairCount; ++Index)
+    {
+        ((UINT64 *)Destination)[Index] = PackedColor;
+    }
+
+    if ((PixelCount & 1U) != 0U)
+    {
+        Destination[PixelCount - 1U] = Color;
+    }
 }
 
 static UINT8 GetGlyphRow(char Character, UINT32 Row)
@@ -298,8 +357,10 @@ static void ScrollLogRegionUp(void)
     UINT32 StartY;
     UINT32 EndY;
     UINT32 RowPixelHeight;
-    UINT32 ScanLine;
-    UINT32 Column;
+    UINTN VisiblePixelCount;
+    UINTN ClearPixelCount;
+    UINT32 *Destination;
+    const UINT32 *Source;
 
     if (LosKernelScreenState.Ready == 0U ||
         LosKernelScreenState.FrameBuffer == 0 ||
@@ -322,30 +383,13 @@ static void ScrollLogRegionUp(void)
         return;
     }
 
-    for (ScanLine = StartY; ScanLine < (EndY - RowPixelHeight); ++ScanLine)
-    {
-        UINT32 DestinationIndex;
-        UINT32 SourceIndex;
+    VisiblePixelCount = (UINTN)(EndY - StartY - RowPixelHeight) * (UINTN)LosKernelScreenState.PixelsPerScanLine;
+    ClearPixelCount = (UINTN)RowPixelHeight * (UINTN)LosKernelScreenState.PixelsPerScanLine;
+    Destination = LosKernelScreenState.FrameBuffer + ((UINTN)StartY * (UINTN)LosKernelScreenState.PixelsPerScanLine);
+    Source = Destination + ClearPixelCount;
 
-        DestinationIndex = ScanLine * LosKernelScreenState.PixelsPerScanLine;
-        SourceIndex = (ScanLine + RowPixelHeight) * LosKernelScreenState.PixelsPerScanLine;
-        for (Column = 0U; Column < LosKernelScreenState.PixelsPerScanLine; ++Column)
-        {
-            LosKernelScreenState.FrameBuffer[DestinationIndex + Column] =
-                LosKernelScreenState.FrameBuffer[SourceIndex + Column];
-        }
-    }
-
-    for (ScanLine = EndY - RowPixelHeight; ScanLine < EndY; ++ScanLine)
-    {
-        UINT32 DestinationIndex;
-
-        DestinationIndex = ScanLine * LosKernelScreenState.PixelsPerScanLine;
-        for (Column = 0U; Column < LosKernelScreenState.PixelsPerScanLine; ++Column)
-        {
-            LosKernelScreenState.FrameBuffer[DestinationIndex + Column] = 0x00000000U;
-        }
-    }
+    CopyPixelsForward(Destination, Source, VisiblePixelCount);
+    FillPixels(Destination + VisiblePixelCount, 0x00000000U, ClearPixelCount);
 }
 
 static void AdvanceLine(void)

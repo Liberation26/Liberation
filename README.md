@@ -1,6 +1,6 @@
-LOS 0.4.82
+LOS 0.4.83
 
-This update keeps the fast first-user-task ladder from 0.4.81, but stops the lifecycle manager from spawning endless transient diagnostic processes after the first successful ring-3 proof return. It also reduces direct-claim stack-pool noise so that stack-pool confirmation is logged only on first use instead of on every later task allocation.
+This update attacks the remaining painfully slow screen crawl in two places. First, the kernel status-screen log-region scroll now copies the framebuffer in bulk instead of pixel-by-pixel, so once the screen fills, upward scrolling is dramatically cheaper. Second, init and CAPSMGR now default to a concise bootstrap path instead of dumping full endpoint, capability, and canned shell-demo output during the first ring-3 proof run.
 
 This update pivots the shell toward actual command input. Internal commands execute inside the shell service, while external names resolve to command images under `\LIBERATION\COMMANDS`.
 
