@@ -4,7 +4,7 @@
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:38:05Z
- * Last Update Timestamp: 2026-04-09T13:20:00Z
+ * Last Update Timestamp: 2026-04-09T14:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -80,13 +80,19 @@ static BOOLEAN IsMemoryManagerSchedulerTransportReady(void)
 
 static BOOLEAN SchedulerMayUseMemoryManagerBackedThreadStacks(void)
 {
-    /*
-     * The hosted bootstrap path can still lose AllocateFrames replies after
-     * transient process-root activation. Keep scheduler-owned thread stacks on
-     * the bootstrap fallback pool until the memory manager is running through
-     * the normal scheduled-service path rather than the hosted bootstrap pump.
-     */
-    return 0;
+    const LOS_MEMORY_MANAGER_BOOTSTRAP_INFO *Info;
+    const UINT64 RequiredFlags = LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_TRANSPORT_READY |
+                                 LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_ONLINE |
+                                 LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_SERVICE_CONTEXT_SWITCHED |
+                                 LOS_MEMORY_MANAGER_BOOTSTRAP_FLAG_ATTACH_COMPLETE;
+
+    Info = LosGetMemoryManagerBootstrapInfo();
+    if (Info == 0)
+    {
+        return 0;
+    }
+
+    return ((Info->Flags & RequiredFlags) == RequiredFlags) ? 1 : 0;
 }
 
 static BOOLEAN ReserveDirectClaimKernelThreadStackPool(void)
@@ -1273,11 +1279,6 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
     Task->BootstrapStackSlot = LOS_KERNEL_SCHEDULER_INVALID_STACK_SLOT;
     Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_NONE;
 
-    if (AllocateDirectClaimKernelThreadStack(Task) != 0U)
-    {
-        return 1;
-    }
-
     if (LosKernelSchedulerIsOnline() != 0U &&
         IsMemoryManagerSchedulerTransportReady() != 0U &&
         SchedulerMayUseMemoryManagerBackedThreadStacks() != 0U)
@@ -1298,6 +1299,7 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
             {
                 InitializeTaskStackContext(Task, StackBase, ClaimResult.BaseAddress);
                 Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_MEMORY_MANAGER;
+                LosKernelTraceOk("Kernel scheduler using memory-manager-backed thread stack.");
                 return 1;
             }
 
@@ -1322,10 +1324,15 @@ static BOOLEAN AllocateKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *Task)
         }
     }
 
+    if (AllocateDirectClaimKernelThreadStack(Task) != 0U)
+    {
+        return 1;
+    }
+
     if (LosKernelSchedulerIsOnline() != 0U &&
         IsMemoryManagerSchedulerTransportReady() != 0U)
     {
-        LosKernelTrace("Kernel scheduler keeping hosted transient thread stack on bootstrap fallback until AllocateFrames replies are stable.");
+        LosKernelTrace("Kernel scheduler falling back to the reserved stack pool after a memory-manager-backed stack claim failure.");
     }
 
     return AllocateBootstrapKernelThreadStack(Task);
