@@ -13,10 +13,12 @@
 #include "LoginMain.h"
 #include "StringMain.h"
 
+#if !defined(LOS_EMBED_USER_IMAGE_BOOTSTRAP)
 extern const UINT8 LosInstalledLoginImageStart[];
 extern const UINT8 LosInstalledLoginImageEnd[];
 extern const UINT8 LosInstalledStringImageStart[];
 extern const UINT8 LosInstalledStringImageEnd[];
+#endif
 
 typedef struct
 {
@@ -25,11 +27,13 @@ typedef struct
     const UINT8 *End;
 } LOS_SHELL_RUNTIME_INSTALLED_USER_IMAGE;
 
+#if !defined(LOS_EMBED_USER_IMAGE_BOOTSTRAP)
 static const LOS_SHELL_RUNTIME_INSTALLED_USER_IMAGE LosShellRuntimeInstalledUserImages[] =
 {
     { "\\LIBERATION\\COMMANDS\\LOGIN.ELF", LosInstalledLoginImageStart, LosInstalledLoginImageEnd },
     { "\\LIBERATION\\LIBRARIES\\STRING.ELF", LosInstalledStringImageStart, LosInstalledStringImageEnd }
 };
+#endif
 
 
 static LOS_SHELL_SERVICE_STATE LosShellGlobalState;
@@ -49,6 +53,7 @@ static UINT64 LosShellRuntimeCallResultShadow = 0ULL;
 static void LosShellRuntimeWriteDebugText(const char *Text);
 static void LosShellRuntimeWriteDebugUnsigned(const char *Prefix, UINT64 Value, const char *Suffix);
 static void LosShellRuntimeZeroMemory(void *Buffer, UINTN Length);
+static void LosShellRuntimeCopyMemory(void *Destination, const void *Source, UINTN Length);
 static UINT64 LosShellRuntimeAlignDown64(UINT64 Value, UINT64 Alignment);
 static UINT64 LosShellRuntimeAlignUp64(UINT64 Value, UINT64 Alignment);
 static UINT64 LosShellRuntimeMaterializeLoadedImage(const void *Image,
@@ -175,6 +180,10 @@ static BOOLEAN LosShellRuntimeTextEndsWith(const char *Text, const char *Suffix)
 
 static const LOS_SHELL_RUNTIME_INSTALLED_USER_IMAGE *LosShellRuntimeFindInstalledUserImage(const char *Path)
 {
+#if defined(LOS_EMBED_USER_IMAGE_BOOTSTRAP)
+    (void)Path;
+    return 0;
+#else
     UINTN Index;
     if (Path == 0)
     {
@@ -188,12 +197,22 @@ static const LOS_SHELL_RUNTIME_INSTALLED_USER_IMAGE *LosShellRuntimeFindInstalle
         }
     }
     return 0;
+#endif
 }
 
 __attribute__((weak)) UINT32 LosCapabilitiesServiceSubmitAccessRequest(const LOS_CAPABILITIES_ACCESS_REQUEST *Request,
                                                                 LOS_CAPABILITIES_ACCESS_RESULT *Result);
 __attribute__((weak)) UINT32 LosCapabilitiesServiceCheckAccess(const LOS_CAPABILITIES_ACCESS_REQUEST *Request,
                                                       LOS_CAPABILITIES_ACCESS_RESULT *Result);
+__attribute__((weak)) UINT64 LosMemoryManagerCompleteUserAddressSpaceCall(const LOS_USER_IMAGE_ISOLATED_SPACE *IsolatedSpace,
+                                                                          UINT64 *CompletionStatus,
+                                                                          UINT64 *CompletionResult)
+{
+    (void)IsolatedSpace;
+    (void)CompletionStatus;
+    (void)CompletionResult;
+    return LOS_USER_IMAGE_CALL_STATUS_UNSUPPORTED;
+}
 __attribute__((weak)) void LosUserWriteText(const char *Text) { (void)Text; }
 __attribute__((weak)) UINT64 LosUserReadImageFile(const char *Path, void *Buffer, UINTN BufferLength, UINTN *BytesRead)
 {
@@ -330,6 +349,19 @@ static void LosShellRuntimeZeroMemory(void *Buffer, UINTN Length)
     for (Index = 0U; Index < Length; ++Index)
     {
         ((UINT8 *)Buffer)[Index] = 0U;
+    }
+}
+
+static void LosShellRuntimeCopyMemory(void *Destination, const void *Source, UINTN Length)
+{
+    UINTN Index;
+    if (Destination == 0 || Source == 0)
+    {
+        return;
+    }
+    for (Index = 0U; Index < Length; ++Index)
+    {
+        ((UINT8 *)Destination)[Index] = ((const UINT8 *)Source)[Index];
     }
 }
 
@@ -568,8 +600,28 @@ static BOOLEAN LosShellRuntimeValidateElfImage(const void *Image, UINTN ImageSiz
 
 static UINT64 __attribute__((unused)) LosShellRuntimeDispatchBootstrapImage(const LOS_USER_IMAGE_CALL *Call)
 {
+#if defined(LOS_EMBED_USER_IMAGE_BOOTSTRAP)
+    if (Call == 0 ||
+        Call->Version != LOS_USER_IMAGE_CALL_VERSION ||
+        Call->Signature != LOS_USER_IMAGE_CALL_SIGNATURE ||
+        Call->Path[0] == 0)
+    {
+        return LOS_USER_IMAGE_CALL_STATUS_INVALID_PARAMETER;
+    }
+
+    if (LosShellRuntimeTextEqual(Call->Path, "\\LIBERATION\\COMMANDS\\LOGIN.ELF"))
+    {
+        return LosLoginCommandBootstrapInvoke(Call);
+    }
+    if (LosShellRuntimeTextEqual(Call->Path, "\\LIBERATION\\LIBRARIES\\STRING.ELF"))
+    {
+        return LosStringLibraryBootstrapInvoke(Call);
+    }
+    return LOS_USER_IMAGE_CALL_STATUS_NOT_FOUND;
+#else
     (void)Call;
     return LOS_USER_IMAGE_CALL_STATUS_NOT_FOUND;
+#endif
 }
 
 static UINT64 LosShellRuntimeTryDiskBackedImage(const LOS_USER_IMAGE_CALL *Call)
@@ -693,7 +745,7 @@ UINT64 LosShellRuntimeInvokeUserImageCall(LOS_USER_IMAGE_CALL *Call)
         return LOS_USER_IMAGE_CALL_STATUS_INVALID_PARAMETER;
     }
 
-    LosShellRuntimeLastCall = *Call;
+    LosShellRuntimeCopyMemory(&LosShellRuntimeLastCall, Call, sizeof(LosShellRuntimeLastCall));
     LosShellRuntimeStageCompletion(LOS_USER_IMAGE_CALL_STATUS_TRANSITION_FAILED, 0ULL);
     Status = LosUserLoadAndCallImage(Call);
     if (Status != LOS_USER_IMAGE_CALL_STATUS_SUCCESS)
@@ -710,7 +762,11 @@ __attribute__((weak)) UINT64 LosUserLoadAndCallImage(const LOS_USER_IMAGE_CALL *
     {
         return LOS_USER_IMAGE_CALL_STATUS_INVALID_PARAMETER;
     }
+#if defined(LOS_EMBED_USER_IMAGE_BOOTSTRAP)
+    return LosShellRuntimeDispatchBootstrapImage(Call);
+#else
     return LosShellRuntimeTryDiskBackedImage(Call);
+#endif
 }
 
 static void LosShellRuntimeInitializeImageCall(LOS_USER_IMAGE_CALL *Call,

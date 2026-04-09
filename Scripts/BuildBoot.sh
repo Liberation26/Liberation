@@ -194,7 +194,7 @@ echo "[Liberation] Building shell service ELF image..."
 ShellServiceObjects=()
 for SourceFile in "${ShellServiceSourceDir}"/*.c; do
     BaseName="$(basename "${SourceFile}" .c)-ShellService"
-    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -I"${BootHeaderDir}"         -I"${ShellServiceHeaderDir}"         -I"${PublicIncludeDir}"         -I"${LoginCommandHeaderDir}"         -I"${StringLibraryHeaderDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -DLOS_EMBED_USER_IMAGE_BOOTSTRAP         -I"${BootHeaderDir}"         -I"${ShellServiceHeaderDir}"         -I"${PublicIncludeDir}"         -I"${LoginCommandHeaderDir}"         -I"${StringLibraryHeaderDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
     ShellServiceObjects+=("${BuildDir}/${BaseName}.o")
 done
 
