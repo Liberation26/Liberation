@@ -1,8 +1,20 @@
+/*
+ * File Name: MemoryManagerMain.h
+ * File Version: 0.3.25
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-08T12:10:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements a Liberation OS service component.
+ */
+
 #ifndef LOS_MEMORY_MANAGER_SERVICE_MAIN_H
 #define LOS_MEMORY_MANAGER_SERVICE_MAIN_H
 
 #include "Efi.h"
 #include "MemoryManagerServiceAbi.h"
+#include "CapabilitiesServiceAbi.h"
 #include "MemoryManagerHeap.h"
 
 #define LOS_MEMORY_MANAGER_MAX_INTERNAL_MEMORY_DESCRIPTORS 8192U
@@ -138,6 +150,7 @@ void LosMemoryManagerServicePoll(void);
 LOS_MEMORY_MANAGER_SERVICE_STATE *LosMemoryManagerServiceState(void);
 BOOLEAN LosMemoryManagerServiceBuildMemoryView(LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT64 *Detail);
 void LosMemoryManagerServiceQueryMemoryRegions(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response);
+void LosMemoryManagerServiceAllocateFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_MEMORY_MANAGER_ALLOCATE_FRAMES_REQUEST *Request, LOS_MEMORY_MANAGER_ALLOCATE_FRAMES_RESULT *Result);
 void LosMemoryManagerServiceReserveFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_X64_RESERVE_FRAMES_REQUEST *Request, LOS_X64_RESERVE_FRAMES_RESULT *Result);
 void LosMemoryManagerServiceClaimFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_X64_CLAIM_FRAMES_REQUEST *Request, LOS_X64_CLAIM_FRAMES_RESULT *Result);
 void LosMemoryManagerServiceFreeFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, const LOS_X64_FREE_FRAMES_REQUEST *Request, LOS_X64_FREE_FRAMES_RESULT *Result);
@@ -150,6 +163,12 @@ BOOLEAN LosMemoryManagerServiceClaimTrackedFrames(
     UINT32 Usage,
     UINT64 *BaseAddress);
 BOOLEAN LosMemoryManagerServiceFreeTrackedFrames(LOS_MEMORY_MANAGER_SERVICE_STATE *State, UINT64 PhysicalAddress, UINT64 PageCount);
-
+BOOLEAN LosMemoryManagerServiceAuthorizeRequest(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request,
+                                               const char *Namespace,
+                                               const char *Name,
+                                               UINT64 *MatchingGrantId);
+void LosMemoryManagerPopulateAccessDeniedResponse(UINT32 Operation, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response);
+UINT32 LosCapabilitiesServiceSubmitAccessRequest(const LOS_CAPABILITIES_ACCESS_REQUEST *Request,
+                                                  LOS_CAPABILITIES_ACCESS_RESULT *Result);
 
 #endif

@@ -1,3 +1,14 @@
+/*
+ * File Name: MemoryManagerMainInternal.h
+ * File Version: 0.3.27
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-08T12:50:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements a Liberation OS service component.
+ */
+
 #ifndef LOS_MEMORY_MANAGER_SERVICE_MAIN_INTERNAL_H
 #define LOS_MEMORY_MANAGER_SERVICE_MAIN_INTERNAL_H
 
@@ -102,5 +113,17 @@ void LosMemoryManagerPopulateBootstrapAttachResponse(
     LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response);
 void LosMemoryManagerPostEvent(UINT32 EventType, UINT32 Status, UINT64 Value0, UINT64 Value1);
 void LosMemoryManagerRunServiceStep(void);
+BOOLEAN LosMemoryManagerServiceAuthorizeRequest(const LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request,
+                                               const char *Namespace,
+                                               const char *Name,
+                                               UINT64 *MatchingGrantId);
+void LosMemoryManagerPopulateAccessDeniedResponse(UINT32 Operation, LOS_MEMORY_MANAGER_RESPONSE_MESSAGE *Response);
+UINT32 LosCapabilitiesServiceBindTransport(LOS_CAPABILITIES_TRANSPORT_BINDING *Binding);
+UINT32 LosCapabilitiesServiceConnectTransport(const LOS_CAPABILITIES_TRANSPORT_CONNECT_REQUEST *Request,
+                                              LOS_CAPABILITIES_TRANSPORT_CONNECT_RESULT *Result,
+                                              LOS_CAPABILITIES_TRANSPORT_BINDING *Binding);
+UINT32 LosCapabilitiesServiceSubmitBoundAccessRequest(const LOS_CAPABILITIES_TRANSPORT_BINDING *Binding,
+                                                      const LOS_CAPABILITIES_ACCESS_REQUEST *Request,
+                                                      LOS_CAPABILITIES_ACCESS_RESULT *Result);
 
 #endif

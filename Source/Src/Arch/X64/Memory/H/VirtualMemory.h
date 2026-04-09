@@ -1,3 +1,14 @@
+/*
+ * File Name: VirtualMemory.h
+ * File Version: 0.3.22
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-08T11:10:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements low-level functionality for Liberation OS.
+ */
+
 #ifndef LOS_X64_VIRTUAL_MEMORY_H
 #define LOS_X64_VIRTUAL_MEMORY_H
 
@@ -23,6 +34,7 @@
 #define LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES 4U
 #define LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT 5U
 #define LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND 6U
+#define LOS_X64_MEMORY_OPERATION_STATUS_ACCESS_DENIED 7U
 
 #define LOS_X64_CLAIM_FRAMES_FLAG_BELOW_4G 0x00000001U
 #define LOS_X64_CLAIM_FRAMES_FLAG_CONTIGUOUS 0x00000002U

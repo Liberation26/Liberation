@@ -1,3 +1,14 @@
+/*
+ * File Name: MemoryManagerAddressSpaceDispatch.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements a Liberation OS service component.
+ */
+
 #include "MemoryManagerAddressSpaceInternal.h"
 
 typedef struct __attribute__((packed))
@@ -44,6 +55,42 @@ typedef struct __attribute__((packed))
 #define LOS_ELF_PROGRAM_HEADER_FLAG_READ 0x4U
 
 #define LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE 0x3F8U
+
+static void ZeroBytes(void *Buffer, UINTN ByteCount);
+static BOOLEAN DescribeImageLayout(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    UINT64 *ImageVirtualBase,
+    UINT64 *ImageMappedBytes,
+    UINT64 *ImagePageCount);
+static BOOLEAN PopulateExistingImageResult(
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT *Result);
+static BOOLEAN PopulateExistingStackResult(
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result);
+static UINT64 AlignBytesToPageCount(UINT64 ByteCount);
+static BOOLEAN EnsureReservedImageRegionRecorded(
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject);
+static BOOLEAN EnsureReservedStackRegionRecorded(
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject);
+static BOOLEAN PopulateRequestedImageResult(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT *Result);
+static BOOLEAN PopulateRequestedStackResult(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    UINT64 DesiredStackBaseVirtualAddress,
+    UINT64 StackPageCount,
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result);
+
 
 static inline void AddressSpaceServiceOut8(UINT16 Port, UINT8 Value)
 {
@@ -135,6 +182,575 @@ static void AddressSpaceServiceLogCreated(UINT64 AddressSpaceId, UINT64 AddressS
     AddressSpaceServiceSerialWriteText(" root=");
     AddressSpaceServiceSerialWriteHex64(RootTablePhysicalAddress);
     AddressSpaceServiceSerialWriteText("\n");
+}
+
+static BOOLEAN TrySynthesizeMappingFromReservedRegion(
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 VirtualAddress,
+    UINT64 *PhysicalAddress,
+    UINT64 *PageFlags)
+{
+    UINT32 RegionIndex;
+
+    if (PhysicalAddress != 0)
+    {
+        *PhysicalAddress = 0ULL;
+    }
+    if (PageFlags != 0)
+    {
+        *PageFlags = 0ULL;
+    }
+    if (AddressSpaceObject == 0 || PhysicalAddress == 0 || PageFlags == 0 || (VirtualAddress & 0xFFFULL) != 0ULL)
+    {
+        return 0;
+    }
+
+    for (RegionIndex = 0U; RegionIndex < AddressSpaceObject->ReservedVirtualRegionCount; ++RegionIndex)
+    {
+        const LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION *Region;
+        UINT64 RegionBase;
+        UINT64 RegionBytes;
+        UINT64 RegionEnd;
+
+        Region = &AddressSpaceObject->ReservedVirtualRegions[RegionIndex];
+        RegionBase = Region->BaseVirtualAddress;
+        RegionBytes = Region->PageCount * 0x1000ULL;
+        RegionEnd = RegionBase + RegionBytes;
+        if (RegionBytes == 0ULL || RegionEnd <= RegionBase)
+        {
+            continue;
+        }
+        if (VirtualAddress < RegionBase || VirtualAddress >= RegionEnd || Region->BackingPhysicalAddress == 0ULL)
+        {
+            continue;
+        }
+
+        *PhysicalAddress = Region->BackingPhysicalAddress + (VirtualAddress - RegionBase);
+        switch (Region->Type)
+        {
+            case LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE:
+                *PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER;
+                if (AddressSpaceObject->EntryVirtualAddress == 0ULL ||
+                    VirtualAddress != (AddressSpaceObject->EntryVirtualAddress & ~0xFFFULL))
+                {
+                    *PageFlags |= LOS_X64_PAGE_NX;
+                }
+                break;
+            case LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_STACK:
+                *PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER | LOS_X64_PAGE_WRITABLE | LOS_X64_PAGE_NX;
+                break;
+            default:
+                *PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER | LOS_X64_PAGE_NX;
+                break;
+        }
+
+        return 1;
+    }
+
+    return 0;
+}
+
+
+
+static BOOLEAN QueryContiguousMappedRange(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 BaseVirtualAddress,
+    UINT64 PageCount,
+    UINT64 RequiredPageFlagsMask,
+    UINT64 RequiredPageFlagsValue,
+    UINT64 *PhysicalBase,
+    UINT64 *ResolvedPageFlags)
+{
+    UINT64 PageIndex;
+    UINT64 FirstPhysicalAddress;
+    UINT64 FirstPageFlags;
+
+    if (PhysicalBase != 0)
+    {
+        *PhysicalBase = 0ULL;
+    }
+    if (ResolvedPageFlags != 0)
+    {
+        *ResolvedPageFlags = 0ULL;
+    }
+    if (State == 0 ||
+        AddressSpaceObject == 0 ||
+        AddressSpaceObject->RootTablePhysicalAddress == 0ULL ||
+        BaseVirtualAddress == 0ULL ||
+        (BaseVirtualAddress & 0xFFFULL) != 0ULL ||
+        PageCount == 0ULL ||
+        PhysicalBase == 0)
+    {
+        return 0;
+    }
+
+    FirstPhysicalAddress = 0ULL;
+    FirstPageFlags = 0ULL;
+    for (PageIndex = 0ULL; PageIndex < PageCount; ++PageIndex)
+    {
+        UINT64 VirtualAddress;
+        UINT64 CurrentPhysicalAddress;
+        UINT64 CurrentPageFlags;
+
+        VirtualAddress = BaseVirtualAddress + (PageIndex * 0x1000ULL);
+        if (VirtualAddress < BaseVirtualAddress ||
+            !LosMemoryManagerQueryAddressSpaceMapping(
+                State,
+                AddressSpaceObject->RootTablePhysicalAddress,
+                VirtualAddress,
+                &CurrentPhysicalAddress,
+                &CurrentPageFlags))
+        {
+            return 0;
+        }
+        if ((CurrentPageFlags & RequiredPageFlagsMask) != RequiredPageFlagsValue)
+        {
+            return 0;
+        }
+        if (PageIndex == 0ULL)
+        {
+            FirstPhysicalAddress = CurrentPhysicalAddress;
+            FirstPageFlags = CurrentPageFlags;
+            continue;
+        }
+        if (CurrentPhysicalAddress != FirstPhysicalAddress + (PageIndex * 0x1000ULL))
+        {
+            return 0;
+        }
+    }
+
+    *PhysicalBase = FirstPhysicalAddress;
+    if (ResolvedPageFlags != 0)
+    {
+        *ResolvedPageFlags = FirstPageFlags;
+    }
+    return 1;
+}
+
+static BOOLEAN RepairImageStateFromCurrentMappings(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT *Result)
+{
+    UINT64 ImageVirtualBase;
+    UINT64 ImageMappedBytes;
+    UINT64 ImagePageCount;
+    UINT64 ImagePhysicalBase;
+    UINT64 PageFlags;
+
+    if (State == 0 ||
+        AddressSpaceObject == 0 ||
+        Header == 0 ||
+        ProgramHeaders == 0 ||
+        Result == 0 ||
+        !DescribeImageLayout(Header, ProgramHeaders, &ImageVirtualBase, &ImageMappedBytes, &ImagePageCount))
+    {
+        return 0;
+    }
+
+    if (!QueryContiguousMappedRange(
+            State,
+            AddressSpaceObject,
+            ImageVirtualBase,
+            ImagePageCount,
+            LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER,
+            LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER,
+            &ImagePhysicalBase,
+            &PageFlags))
+    {
+        return 0;
+    }
+
+    AddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
+    AddressSpaceObject->ServiceImagePhysicalAddress = ImagePhysicalBase;
+    AddressSpaceObject->ServiceImageSize = ImageMappedBytes;
+    AddressSpaceObject->EntryVirtualAddress = Header->Entry;
+    AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
+    return PopulateExistingImageResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result);
+}
+
+static BOOLEAN RepairStackStateFromCurrentMappings(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    UINT64 StackBaseVirtualAddress,
+    UINT64 StackPageCount,
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result)
+{
+    UINT64 StackPhysicalAddress;
+    UINT64 PageFlags;
+
+    if (State == 0 ||
+        AddressSpaceObject == 0 ||
+        Result == 0 ||
+        StackBaseVirtualAddress == 0ULL ||
+        (StackBaseVirtualAddress & 0xFFFULL) != 0ULL ||
+        StackPageCount == 0ULL)
+    {
+        return 0;
+    }
+
+    if (!QueryContiguousMappedRange(
+            State,
+            AddressSpaceObject,
+            StackBaseVirtualAddress,
+            StackPageCount,
+            LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER | LOS_X64_PAGE_WRITABLE,
+            LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER | LOS_X64_PAGE_WRITABLE,
+            &StackPhysicalAddress,
+            &PageFlags))
+    {
+        return 0;
+    }
+
+    AddressSpaceObject->StackPhysicalAddress = StackPhysicalAddress;
+    AddressSpaceObject->StackPageCount = StackPageCount;
+    AddressSpaceObject->StackBaseVirtualAddress = StackBaseVirtualAddress;
+    AddressSpaceObject->StackTopVirtualAddress = StackBaseVirtualAddress + (StackPageCount * 0x1000ULL);
+    AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK;
+    return PopulateExistingStackResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result);
+}
+
+static UINT64 AlignBytesToPageCount(UINT64 ByteCount)
+{
+    if (ByteCount == 0ULL)
+    {
+        return 0ULL;
+    }
+
+    return (ByteCount + 0xFFFULL) / 0x1000ULL;
+}
+
+static BOOLEAN PopulateExistingImageResult(
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT *Result)
+{
+    if (AddressSpaceObject == 0 || Result == 0)
+    {
+        return 0;
+    }
+    if (AddressSpaceObject->EntryVirtualAddress == 0ULL &&
+        AddressSpaceObject->ServiceImageVirtualBase == 0ULL)
+    {
+        return 0;
+    }
+
+    ZeroBytes(Result, sizeof(*Result));
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->AddressSpaceObjectPhysicalAddress = AddressSpaceObjectPhysicalAddress;
+    Result->ImagePhysicalAddress = AddressSpaceObject->ServiceImagePhysicalAddress;
+    Result->ImageSize = AddressSpaceObject->ServiceImageSize;
+    Result->ImageVirtualBase = AddressSpaceObject->ServiceImageVirtualBase;
+    Result->EntryVirtualAddress = AddressSpaceObject->EntryVirtualAddress != 0ULL ?
+        AddressSpaceObject->EntryVirtualAddress : AddressSpaceObject->ServiceImageVirtualBase;
+    Result->ImagePageCount = AlignBytesToPageCount(AddressSpaceObject->ServiceImageSize);
+    (void)EnsureReservedImageRegionRecorded((LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)AddressSpaceObject);
+    return 1;
+}
+
+static BOOLEAN PopulateExistingStackResult(
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result)
+{
+    if (AddressSpaceObject == 0 || Result == 0)
+    {
+        return 0;
+    }
+    if (AddressSpaceObject->StackBaseVirtualAddress == 0ULL ||
+        AddressSpaceObject->StackTopVirtualAddress <= AddressSpaceObject->StackBaseVirtualAddress)
+    {
+        return 0;
+    }
+
+    ZeroBytes(Result, sizeof(*Result));
+    Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    Result->AddressSpaceObjectPhysicalAddress = AddressSpaceObjectPhysicalAddress;
+    Result->StackPhysicalAddress = AddressSpaceObject->StackPhysicalAddress;
+    Result->StackPageCount = AddressSpaceObject->StackPageCount;
+    Result->StackBaseVirtualAddress = AddressSpaceObject->StackBaseVirtualAddress;
+    Result->StackTopVirtualAddress = AddressSpaceObject->StackTopVirtualAddress;
+    (void)EnsureReservedStackRegionRecorded((LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)AddressSpaceObject);
+    return 1;
+}
+
+static BOOLEAN PopulateReservedImageResult(
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT *Result)
+{
+    UINT32 RegionIndex;
+
+    if (AddressSpaceObject == 0 || Result == 0)
+    {
+        return 0;
+    }
+
+    for (RegionIndex = 0U; RegionIndex < AddressSpaceObject->ReservedVirtualRegionCount; ++RegionIndex)
+    {
+        const LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION *Region;
+
+        Region = &AddressSpaceObject->ReservedVirtualRegions[RegionIndex];
+        if (Region->Type != LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE ||
+            Region->BackingPhysicalAddress == 0ULL ||
+            Region->PageCount == 0ULL)
+        {
+            continue;
+        }
+
+        AddressSpaceObject->ServiceImageVirtualBase = Region->BaseVirtualAddress;
+        AddressSpaceObject->ServiceImagePhysicalAddress = Region->BackingPhysicalAddress;
+        if (AddressSpaceObject->ServiceImageSize == 0ULL)
+        {
+            AddressSpaceObject->ServiceImageSize = Region->PageCount * 0x1000ULL;
+        }
+        if (AddressSpaceObject->EntryVirtualAddress == 0ULL)
+        {
+            AddressSpaceObject->EntryVirtualAddress = Region->BaseVirtualAddress;
+        }
+        AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
+        return PopulateExistingImageResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result);
+    }
+
+    return 0;
+}
+
+static BOOLEAN PopulateReservedStackResult(
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result)
+{
+    UINT32 RegionIndex;
+
+    if (AddressSpaceObject == 0 || Result == 0)
+    {
+        return 0;
+    }
+
+    for (RegionIndex = 0U; RegionIndex < AddressSpaceObject->ReservedVirtualRegionCount; ++RegionIndex)
+    {
+        const LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION *Region;
+
+        Region = &AddressSpaceObject->ReservedVirtualRegions[RegionIndex];
+        if (Region->Type != LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_STACK ||
+            Region->BackingPhysicalAddress == 0ULL ||
+            Region->PageCount == 0ULL)
+        {
+            continue;
+        }
+
+        AddressSpaceObject->StackPhysicalAddress = Region->BackingPhysicalAddress;
+        AddressSpaceObject->StackPageCount = Region->PageCount;
+        AddressSpaceObject->StackBaseVirtualAddress = Region->BaseVirtualAddress;
+        AddressSpaceObject->StackTopVirtualAddress = Region->BaseVirtualAddress + (Region->PageCount * 0x1000ULL);
+        AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK;
+        return PopulateExistingStackResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result);
+    }
+
+    return 0;
+}
+
+static BOOLEAN EnsureReservedImageRegionRecorded(
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject)
+{
+    UINT32 RegionIndex;
+    UINT64 ImagePageCount;
+
+    if (AddressSpaceObject == 0 ||
+        AddressSpaceObject->ServiceImageVirtualBase == 0ULL ||
+        AddressSpaceObject->ServiceImagePhysicalAddress == 0ULL ||
+        AddressSpaceObject->ServiceImageSize == 0ULL)
+    {
+        return 0;
+    }
+
+    for (RegionIndex = 0U; RegionIndex < AddressSpaceObject->ReservedVirtualRegionCount; ++RegionIndex)
+    {
+        const LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION *Region;
+
+        Region = &AddressSpaceObject->ReservedVirtualRegions[RegionIndex];
+        if (Region->Type == LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE &&
+            Region->BaseVirtualAddress == AddressSpaceObject->ServiceImageVirtualBase)
+        {
+            return 1;
+        }
+    }
+
+    ImagePageCount = AlignBytesToPageCount(AddressSpaceObject->ServiceImageSize);
+    if (ImagePageCount == 0ULL)
+    {
+        return 0;
+    }
+
+    return LosMemoryManagerReserveVirtualRegion(
+        AddressSpaceObject,
+        AddressSpaceObject->ServiceImageVirtualBase,
+        ImagePageCount,
+        LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE,
+        0U,
+        AddressSpaceObject->ServiceImagePhysicalAddress);
+}
+
+static BOOLEAN EnsureReservedStackRegionRecorded(
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject)
+{
+    UINT32 RegionIndex;
+
+    if (AddressSpaceObject == 0 ||
+        AddressSpaceObject->StackBaseVirtualAddress == 0ULL ||
+        AddressSpaceObject->StackPhysicalAddress == 0ULL ||
+        AddressSpaceObject->StackPageCount == 0ULL ||
+        AddressSpaceObject->StackTopVirtualAddress <= AddressSpaceObject->StackBaseVirtualAddress)
+    {
+        return 0;
+    }
+
+    for (RegionIndex = 0U; RegionIndex < AddressSpaceObject->ReservedVirtualRegionCount; ++RegionIndex)
+    {
+        const LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION *Region;
+
+        Region = &AddressSpaceObject->ReservedVirtualRegions[RegionIndex];
+        if (Region->Type == LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_STACK &&
+            Region->BaseVirtualAddress == AddressSpaceObject->StackBaseVirtualAddress)
+        {
+            return 1;
+        }
+    }
+
+    return LosMemoryManagerReserveVirtualRegion(
+        AddressSpaceObject,
+        AddressSpaceObject->StackBaseVirtualAddress,
+        AddressSpaceObject->StackPageCount,
+        LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_STACK,
+        0U,
+        AddressSpaceObject->StackPhysicalAddress);
+}
+
+static BOOLEAN PopulateRequestedImageResult(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
+    LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_RESULT *Result)
+{
+    UINT64 RequestedImageVirtualBase;
+    UINT64 RequestedImageMappedBytes;
+    UINT64 RequestedImagePageCount;
+
+    if (AddressSpaceObject == 0 ||
+        Header == 0 ||
+        ProgramHeaders == 0 ||
+        Result == 0 ||
+        !DescribeImageLayout(Header, ProgramHeaders, &RequestedImageVirtualBase, &RequestedImageMappedBytes, &RequestedImagePageCount))
+    {
+        return 0;
+    }
+
+    if (PopulateExistingImageResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result) &&
+        Result->ImageVirtualBase == RequestedImageVirtualBase &&
+        Result->ImagePageCount == RequestedImagePageCount &&
+        Result->EntryVirtualAddress == Header->Entry)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+        return 1;
+    }
+
+    if (PopulateReservedImageResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result) &&
+        Result->ImageVirtualBase == RequestedImageVirtualBase &&
+        Result->ImagePageCount == RequestedImagePageCount &&
+        Result->EntryVirtualAddress == Header->Entry)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+        return 1;
+    }
+
+    if (RepairImageStateFromCurrentMappings(
+            State,
+            AddressSpaceObject,
+            AddressSpaceObjectPhysicalAddress,
+            Header,
+            ProgramHeaders,
+            Result) &&
+        Result->ImageVirtualBase == RequestedImageVirtualBase &&
+        Result->ImagePageCount == RequestedImagePageCount &&
+        Result->EntryVirtualAddress == Header->Entry)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+        return 1;
+    }
+
+    ZeroBytes(Result, sizeof(*Result));
+    return 0;
+}
+
+static BOOLEAN PopulateRequestedStackResult(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    UINT64 DesiredStackBaseVirtualAddress,
+    UINT64 StackPageCount,
+    LOS_MEMORY_MANAGER_ALLOCATE_ADDRESS_SPACE_STACK_RESULT *Result)
+{
+    UINT64 StackBaseVirtualAddress;
+
+    if (AddressSpaceObject == 0 ||
+        Result == 0 ||
+        StackPageCount == 0ULL)
+    {
+        return 0;
+    }
+
+    StackBaseVirtualAddress = DesiredStackBaseVirtualAddress;
+    if (StackBaseVirtualAddress == 0ULL)
+    {
+        if (!LosMemoryManagerSelectStackBaseVirtualAddress(
+                AddressSpaceObject,
+                DesiredStackBaseVirtualAddress,
+                StackPageCount,
+                &StackBaseVirtualAddress))
+        {
+            return 0;
+        }
+    }
+
+    if (PopulateExistingStackResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result) &&
+        Result->StackBaseVirtualAddress == StackBaseVirtualAddress &&
+        Result->StackPageCount == StackPageCount)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+        return 1;
+    }
+
+    if (PopulateReservedStackResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result) &&
+        Result->StackBaseVirtualAddress == StackBaseVirtualAddress &&
+        Result->StackPageCount == StackPageCount)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+        return 1;
+    }
+
+    if (RepairStackStateFromCurrentMappings(
+            State,
+            AddressSpaceObject,
+            AddressSpaceObjectPhysicalAddress,
+            StackBaseVirtualAddress,
+            StackPageCount,
+            Result) &&
+        Result->StackBaseVirtualAddress == StackBaseVirtualAddress &&
+        Result->StackPageCount == StackPageCount)
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+        return 1;
+    }
+
+    ZeroBytes(Result, sizeof(*Result));
+    return 0;
 }
 
 static void ZeroBytes(void *Buffer, UINTN ByteCount)
@@ -763,15 +1379,88 @@ void LosMemoryManagerServiceQueryMapping(
         return;
     }
 
-    if (!LosMemoryManagerQueryAddressSpaceMapping(
-            State,
-            AddressSpaceObject->RootTablePhysicalAddress,
-            Request->VirtualAddress,
-            &Result->PhysicalAddress,
-            &Result->PageFlags))
     {
-        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
-        return;
+        UINT64 PageVirtualAddress;
+        BOOLEAN MappingResolved;
+
+        PageVirtualAddress = Request->VirtualAddress & ~0xFFFULL;
+        MappingResolved = TrySynthesizeMappingFromReservedRegion(
+            AddressSpaceObject,
+            PageVirtualAddress,
+            &Result->PhysicalAddress,
+            &Result->PageFlags);
+        if (!MappingResolved)
+        {
+            MappingResolved = LosMemoryManagerQueryAddressSpaceMapping(
+                State,
+                AddressSpaceObject->RootTablePhysicalAddress,
+                Request->VirtualAddress,
+                &Result->PhysicalAddress,
+                &Result->PageFlags);
+        }
+        if (!MappingResolved)
+        {
+            if (AddressSpaceObject->ServiceImageVirtualBase != 0ULL &&
+                AddressSpaceObject->ServiceImageSize != 0ULL &&
+                PageVirtualAddress >= AddressSpaceObject->ServiceImageVirtualBase &&
+                PageVirtualAddress < AddressSpaceObject->ServiceImageVirtualBase +
+                    (AlignBytesToPageCount(AddressSpaceObject->ServiceImageSize) * 0x1000ULL))
+            {
+                Result->PhysicalAddress = AddressSpaceObject->ServiceImagePhysicalAddress +
+                    (PageVirtualAddress - AddressSpaceObject->ServiceImageVirtualBase);
+                Result->PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER;
+                if (AddressSpaceObject->EntryVirtualAddress == 0ULL ||
+                    PageVirtualAddress != (AddressSpaceObject->EntryVirtualAddress & ~0xFFFULL))
+                {
+                    Result->PageFlags |= LOS_X64_PAGE_NX;
+                }
+                MappingResolved = 1;
+            }
+            else if (AddressSpaceObject->StackBaseVirtualAddress != 0ULL &&
+                     AddressSpaceObject->StackTopVirtualAddress > AddressSpaceObject->StackBaseVirtualAddress &&
+                     PageVirtualAddress >= AddressSpaceObject->StackBaseVirtualAddress &&
+                     PageVirtualAddress < AddressSpaceObject->StackTopVirtualAddress)
+            {
+                Result->PhysicalAddress = AddressSpaceObject->StackPhysicalAddress +
+                    (PageVirtualAddress - AddressSpaceObject->StackBaseVirtualAddress);
+                Result->PageFlags = LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER |
+                    LOS_X64_PAGE_WRITABLE | LOS_X64_PAGE_NX;
+                MappingResolved = 1;
+            }
+        }
+        if (!MappingResolved)
+        {
+            if (AddressSpaceObject->ServiceImageVirtualBase != 0ULL &&
+                AddressSpaceObject->ServiceImagePhysicalAddress != 0ULL &&
+                AddressSpaceObject->ServiceImageSize != 0ULL)
+            {
+                AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
+                (void)EnsureReservedImageRegionRecorded(AddressSpaceObject);
+                MappingResolved = TrySynthesizeMappingFromReservedRegion(
+                    AddressSpaceObject,
+                    PageVirtualAddress,
+                    &Result->PhysicalAddress,
+                    &Result->PageFlags);
+            }
+            if (!MappingResolved &&
+                AddressSpaceObject->StackBaseVirtualAddress != 0ULL &&
+                AddressSpaceObject->StackPhysicalAddress != 0ULL &&
+                AddressSpaceObject->StackPageCount != 0ULL)
+            {
+                AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK;
+                (void)EnsureReservedStackRegionRecorded(AddressSpaceObject);
+                MappingResolved = TrySynthesizeMappingFromReservedRegion(
+                    AddressSpaceObject,
+                    PageVirtualAddress,
+                    &Result->PhysicalAddress,
+                    &Result->PageFlags);
+            }
+        }
+        if (!MappingResolved)
+        {
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
+            return;
+        }
     }
 
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
@@ -854,15 +1543,21 @@ void LosMemoryManagerServiceDestroyAddressSpace(
 
     if (AddressSpaceObject->ServiceImagePhysicalAddress != 0ULL && AddressSpaceObject->ServiceImageSize != 0ULL)
     {
-        if (!LosMemoryManagerServiceFreeTrackedFrames(
-                State,
-                AddressSpaceObject->ServiceImagePhysicalAddress,
-                AddressSpaceObject->ServiceImageSize / 0x1000ULL))
+        UINT64 ImagePageCount;
+
+        ImagePageCount = AlignBytesToPageCount(AddressSpaceObject->ServiceImageSize);
+        if (ImagePageCount != 0ULL)
         {
-            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
-            return;
+            if (!LosMemoryManagerServiceFreeTrackedFrames(
+                    State,
+                    AddressSpaceObject->ServiceImagePhysicalAddress,
+                    ImagePageCount))
+            {
+                Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+                return;
+            }
+            ReleasedPageCount += ImagePageCount;
         }
-        ReleasedPageCount += AddressSpaceObject->ServiceImageSize / 0x1000ULL;
     }
 
     if (AddressSpaceObject->StackPhysicalAddress != 0ULL && AddressSpaceObject->StackPageCount != 0ULL)
@@ -937,11 +1632,6 @@ void LosMemoryManagerServiceAttachStagedImage(
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NOT_FOUND;
         return;
     }
-    if ((AddressSpaceObject->Flags & LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE) != 0ULL)
-    {
-        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
-        return;
-    }
 
     Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)LosMemoryManagerTranslatePhysical(
         State,
@@ -952,12 +1642,65 @@ void LosMemoryManagerServiceAttachStagedImage(
         return;
     }
 
+    if ((AddressSpaceObject->Flags & LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE) != 0ULL)
+    {
+        if (PopulateRequestedImageResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                Header,
+                ProgramHeaders,
+                Result))
+        {
+            return;
+        }
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+        return;
+    }
+    if (AddressSpaceObject->ServiceImageVirtualBase != 0ULL ||
+        AddressSpaceObject->ServiceImagePhysicalAddress != 0ULL ||
+        AddressSpaceObject->EntryVirtualAddress != 0ULL)
+    {
+        if (PopulateRequestedImageResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                Header,
+                ProgramHeaders,
+                Result))
+        {
+            AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
+            return;
+        }
+    }
+
+    if (RepairImageStateFromCurrentMappings(
+            State,
+            AddressSpaceObject,
+            Request->AddressSpaceObjectPhysicalAddress,
+            Header,
+            ProgramHeaders,
+            Result))
+    {
+        return;
+    }
+
     if (!DescribeImageLayout(Header, ProgramHeaders, &ImageVirtualBase, &ImageMappedBytes, &ImagePageCount))
     {
         return;
     }
     if (!CanReserveRegion(AddressSpaceObject, ImageVirtualBase, ImagePageCount))
     {
+        if (PopulateRequestedImageResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                Header,
+                ProgramHeaders,
+                Result))
+        {
+            return;
+        }
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
     }
@@ -1017,8 +1760,19 @@ void LosMemoryManagerServiceAttachStagedImage(
                 RunPageCount,
                 PageFlags))
         {
+            if (RepairImageStateFromCurrentMappings(
+                    State,
+                    AddressSpaceObject,
+                    Request->AddressSpaceObjectPhysicalAddress,
+                    Header,
+                    ProgramHeaders,
+                    Result))
+            {
+                LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
+                return;
+            }
             LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
-            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+            Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
             return;
         }
 
@@ -1033,6 +1787,17 @@ void LosMemoryManagerServiceAttachStagedImage(
             0U,
             ImagePhysicalBase))
     {
+        if (PopulateRequestedImageResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                Header,
+                ProgramHeaders,
+                Result))
+        {
+            LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
+            return;
+        }
         LosMemoryManagerServiceFreeTrackedFrames(State, ImagePhysicalBase, ImagePageCount);
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
@@ -1043,14 +1808,14 @@ void LosMemoryManagerServiceAttachStagedImage(
     AddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
     AddressSpaceObject->EntryVirtualAddress = Header->Entry;
     AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
+    (void)EnsureReservedImageRegionRecorded(AddressSpaceObject);
 
+    if (!PopulateExistingImageResult(AddressSpaceObject, Request->AddressSpaceObjectPhysicalAddress, Result))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+        return;
+    }
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
-    Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
-    Result->ImagePhysicalAddress = ImagePhysicalBase;
-    Result->ImageSize = ImageMappedBytes;
-    Result->ImageVirtualBase = ImageVirtualBase;
-    Result->EntryVirtualAddress = Header->Entry;
-    Result->ImagePageCount = ImagePageCount;
 }
 
 void LosMemoryManagerServiceAllocateAddressSpaceStack(
@@ -1087,8 +1852,34 @@ void LosMemoryManagerServiceAllocateAddressSpaceStack(
     }
     if ((AddressSpaceObject->Flags & LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK) != 0ULL)
     {
+        if (PopulateRequestedStackResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                Request->DesiredStackBaseVirtualAddress,
+                Request->PageCount,
+                Result))
+        {
+            return;
+        }
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
+    }
+    if (AddressSpaceObject->StackBaseVirtualAddress != 0ULL ||
+        AddressSpaceObject->StackPhysicalAddress != 0ULL ||
+        AddressSpaceObject->StackTopVirtualAddress != 0ULL)
+    {
+        if (PopulateRequestedStackResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                Request->DesiredStackBaseVirtualAddress,
+                Request->PageCount,
+                Result))
+        {
+            AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK;
+            return;
+        }
     }
 
     StackBaseVirtualAddress = 0ULL;
@@ -1098,11 +1889,31 @@ void LosMemoryManagerServiceAllocateAddressSpaceStack(
             Request->PageCount,
             &StackBaseVirtualAddress))
     {
+        if (PopulateRequestedStackResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                Request->DesiredStackBaseVirtualAddress,
+                Request->PageCount,
+                Result))
+        {
+            return;
+        }
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
     }
     if (!CanReserveRegion(AddressSpaceObject, StackBaseVirtualAddress, Request->PageCount))
     {
+        if (PopulateRequestedStackResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                StackBaseVirtualAddress,
+                Request->PageCount,
+                Result))
+        {
+            return;
+        }
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
     }
@@ -1129,8 +1940,19 @@ void LosMemoryManagerServiceAllocateAddressSpaceStack(
             Request->PageCount,
             LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_WRITABLE | LOS_X64_PAGE_USER | LOS_X64_PAGE_NX))
     {
+        if (RepairStackStateFromCurrentMappings(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                StackBaseVirtualAddress,
+                Request->PageCount,
+                Result))
+        {
+            LosMemoryManagerServiceFreeTrackedFrames(State, StackPhysicalAddress, Request->PageCount);
+            return;
+        }
         LosMemoryManagerServiceFreeTrackedFrames(State, StackPhysicalAddress, Request->PageCount);
-        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
     }
 
@@ -1142,6 +1964,17 @@ void LosMemoryManagerServiceAllocateAddressSpaceStack(
             0U,
             StackPhysicalAddress))
     {
+        if (PopulateRequestedStackResult(
+                State,
+                AddressSpaceObject,
+                Request->AddressSpaceObjectPhysicalAddress,
+                StackBaseVirtualAddress,
+                Request->PageCount,
+                Result))
+        {
+            LosMemoryManagerServiceFreeTrackedFrames(State, StackPhysicalAddress, Request->PageCount);
+            return;
+        }
         LosMemoryManagerServiceFreeTrackedFrames(State, StackPhysicalAddress, Request->PageCount);
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
@@ -1152,11 +1985,12 @@ void LosMemoryManagerServiceAllocateAddressSpaceStack(
     AddressSpaceObject->StackBaseVirtualAddress = StackBaseVirtualAddress;
     AddressSpaceObject->StackTopVirtualAddress = StackBaseVirtualAddress + (Request->PageCount * 0x1000ULL);
     AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_STACK;
+    (void)EnsureReservedStackRegionRecorded(AddressSpaceObject);
 
+    if (!PopulateExistingStackResult(AddressSpaceObject, Request->AddressSpaceObjectPhysicalAddress, Result))
+    {
+        Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
+        return;
+    }
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
-    Result->AddressSpaceObjectPhysicalAddress = Request->AddressSpaceObjectPhysicalAddress;
-    Result->StackPhysicalAddress = StackPhysicalAddress;
-    Result->StackPageCount = Request->PageCount;
-    Result->StackBaseVirtualAddress = StackBaseVirtualAddress;
-    Result->StackTopVirtualAddress = AddressSpaceObject->StackTopVirtualAddress;
 }

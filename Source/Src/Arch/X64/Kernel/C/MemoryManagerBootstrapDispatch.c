@@ -1,3 +1,14 @@
+/*
+ * File Name: MemoryManagerBootstrapDispatch.c
+ * File Version: 0.3.22
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-08T11:10:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 #include "MemoryManagerBootstrapInternal.h"
 
 #define LOS_MEMORY_MANAGER_BOOTSTRAP_LOCAL_STACK_BASE 0x0000000000800000ULL
@@ -53,6 +64,50 @@ typedef struct __attribute__((packed))
 
 static void ZeroMemory(void *Buffer, UINTN ByteCount);
 static void CopyBytes(void *Destination, const void *Source, UINTN ByteCount);
+static void CopyText(char *Destination, UINTN Capacity, const char *Source);
+static void PopulateCallerIdentity(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request);
+
+static void CopyText(char *Destination, UINTN Capacity, const char *Source)
+{
+    UINTN Index;
+
+    if (Destination == 0 || Capacity == 0U)
+    {
+        return;
+    }
+
+    for (Index = 0U; Index < Capacity; ++Index)
+    {
+        Destination[Index] = 0;
+    }
+
+    if (Source == 0)
+    {
+        return;
+    }
+
+    for (Index = 0U; Index + 1U < Capacity && Source[Index] != 0; ++Index)
+    {
+        Destination[Index] = Source[Index];
+    }
+}
+
+static void PopulateCallerIdentity(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Request)
+{
+    if (Request == 0)
+    {
+        return;
+    }
+
+    if (Request->CallerPrincipalType != 0U)
+    {
+        return;
+    }
+
+    Request->CallerPrincipalType = LOS_CAPABILITIES_PRINCIPAL_TYPE_TASK;
+    Request->CallerPrincipalId = 0ULL;
+    CopyText(Request->CallerPrincipalName, LOS_CAPABILITIES_PRINCIPAL_NAME_LENGTH, "kernel");
+}
 
 static const char *OperationName(UINT32 Operation)
 {
@@ -1564,15 +1619,8 @@ static BOOLEAN RequestRequiresRealServiceReply(UINT32 Operation)
 
 static BOOLEAN RequestMayUseBootstrapFallback(UINT32 Operation)
 {
-    switch (Operation)
-    {
-        case LOS_MEMORY_MANAGER_OPERATION_QUERY_MAPPING:
-        case LOS_MEMORY_MANAGER_OPERATION_ATTACH_STAGED_IMAGE:
-        case LOS_MEMORY_MANAGER_OPERATION_ALLOCATE_ADDRESS_SPACE_STACK:
-            return 1;
-        default:
-            return 0;
-    }
+    LOS_UNUSED_PARAMETER(Operation);
+    return 0;
 }
 
 static UINT32 HostedServiceStepBudgetForOperation(UINT32 Operation)
@@ -1739,6 +1787,7 @@ static void SendRequestAndAwaitResponse(LOS_MEMORY_MANAGER_REQUEST_MESSAGE *Requ
     UINT64 InterruptFlags;
 
     InitializeResponse(Request, Response);
+    PopulateCallerIdentity(Request);
 
     TraceKernelToMemoryManagerRequest(Request);
     InterruptFlags = SaveInterruptFlagsAndDisable();
