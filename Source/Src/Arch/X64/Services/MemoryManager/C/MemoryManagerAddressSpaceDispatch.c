@@ -724,7 +724,10 @@ static BOOLEAN PopulateExistingImageResult(
         return 0;
     }
 
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] populate-existing-enter\n");
+    AddressSpaceServiceSerialWriteNamedHex("populate-existing-result", (UINT64)(UINTN)Result);
     ZeroBytes(Result, sizeof(*Result));
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] populate-existing-zeroed\n");
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
     Result->AddressSpaceObjectPhysicalAddress = AddressSpaceObjectPhysicalAddress;
     Result->ImagePhysicalAddress = AddressSpaceObject->ServiceImagePhysicalAddress;
@@ -733,7 +736,9 @@ static BOOLEAN PopulateExistingImageResult(
     Result->EntryVirtualAddress = AddressSpaceObject->EntryVirtualAddress != 0ULL ?
         AddressSpaceObject->EntryVirtualAddress : AddressSpaceObject->ServiceImageVirtualBase;
     Result->ImagePageCount = AlignBytesToPageCount(AddressSpaceObject->ServiceImageSize);
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] populate-existing-pre-ensure\n");
     (void)EnsureReservedImageRegionRecorded((LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *)AddressSpaceObject);
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] populate-existing-exit\n");
     return 1;
 }
 
@@ -845,6 +850,15 @@ static BOOLEAN EnsureReservedImageRegionRecorded(
     UINT32 RegionIndex;
     UINT64 ImagePageCount;
 
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] ensure-image-region-enter\n");
+    if (AddressSpaceObject != 0)
+    {
+        AddressSpaceServiceSerialWriteNamedUnsigned("ensure-image-region-count", AddressSpaceObject->ReservedVirtualRegionCount);
+        AddressSpaceServiceSerialWriteNamedHex("ensure-image-region-base", AddressSpaceObject->ServiceImageVirtualBase);
+        AddressSpaceServiceSerialWriteNamedHex("ensure-image-region-phys", AddressSpaceObject->ServiceImagePhysicalAddress);
+        AddressSpaceServiceSerialWriteNamedHex("ensure-image-region-size", AddressSpaceObject->ServiceImageSize);
+    }
+
     if (AddressSpaceObject == 0 ||
         AddressSpaceObject->ServiceImageVirtualBase == 0ULL ||
         AddressSpaceObject->ServiceImagePhysicalAddress == 0ULL ||
@@ -861,6 +875,7 @@ static BOOLEAN EnsureReservedImageRegionRecorded(
         if (Region->Type == LOS_MEMORY_MANAGER_RESERVED_VIRTUAL_REGION_TYPE_IMAGE &&
             Region->BaseVirtualAddress == AddressSpaceObject->ServiceImageVirtualBase)
         {
+            AddressSpaceServiceSerialWriteText("[MemManager][diag] ensure-image-region-found-existing\n");
             return 1;
         }
     }
@@ -871,6 +886,7 @@ static BOOLEAN EnsureReservedImageRegionRecorded(
         return 0;
     }
 
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] ensure-image-region-reserving\n");
     return LosMemoryManagerReserveVirtualRegion(
         AddressSpaceObject,
         AddressSpaceObject->ServiceImageVirtualBase,
@@ -2193,20 +2209,29 @@ void LosMemoryManagerServiceAttachStagedImage(
         return;
     }
 
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-post-reserve-returned\n");
+    AddressSpaceServiceVerifyAttachImageState(State, Request, AddressSpaceObject, 0xA310ULL, PageIndex, ImageVirtualBase, ImagePhysicalBase, ImagePageCount);
+    AddressSpaceServiceSerialWriteNamedHex("attach-commit-service-image-phys", ImagePhysicalBase);
     AddressSpaceObject->ServiceImagePhysicalAddress = ImagePhysicalBase;
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-commit-service-image-phys-done\n");
     AddressSpaceObject->ServiceImageSize = ImageMappedBytes;
     AddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
     AddressSpaceObject->EntryVirtualAddress = Header->Entry;
     AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-pre-ensure-recorded\n");
     (void)EnsureReservedImageRegionRecorded(AddressSpaceObject);
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-post-ensure-recorded\n");
 
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-pre-populate-existing\n");
     if (!PopulateExistingImageResult(AddressSpaceObject, Request->AddressSpaceObjectPhysicalAddress, Result))
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
         return;
     }
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-post-populate-existing\n");
     LosMemoryManagerDiagnosticsClearAttachImageContext();
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
+    AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-return-success\n");
 }
 
 void LosMemoryManagerServiceAllocateAddressSpaceStack(

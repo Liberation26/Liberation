@@ -413,6 +413,9 @@ BOOLEAN LosMemoryManagerReserveVirtualRegion(
         LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-exit-count=");
         LosMemoryManagerServiceSerialWriteUnsigned(AddressSpaceObject->ReservedVirtualRegionCount);
         LosMemoryManagerServiceSerialWriteText("\n");
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] reserve-return-address=");
+        LosMemoryManagerServiceSerialWriteHex64((UINT64)(UINTN)__builtin_return_address(0));
+        LosMemoryManagerServiceSerialWriteText("\n");
     }
     return 1;
 }
