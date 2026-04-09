@@ -430,7 +430,7 @@ static UINT64 *TranslateSchedulerPageTable(UINT64 PhysicalAddress)
     return (UINT64 *)LosX64GetDirectMapVirtualAddress(PhysicalAddress, 0x1000ULL);
 }
 
-static BOOLEAN SchedulerQueryLeafPageEntry(UINT64 RootTablePhysicalAddress, UINT64 VirtualAddress, UINT64 *Entry)
+static __attribute__((unused)) BOOLEAN SchedulerQueryLeafPageEntry(UINT64 RootTablePhysicalAddress, UINT64 VirtualAddress, UINT64 *Entry)
 {
     UINT64 *PageMapLevel4;
     UINT64 CurrentEntry;
@@ -502,7 +502,7 @@ static BOOLEAN SchedulerQueryLeafPageEntry(UINT64 RootTablePhysicalAddress, UINT
     return 1U;
 }
 
-static BOOLEAN QueryAddressSpaceMappingFromRecordedMetadata(
+static __attribute__((unused)) BOOLEAN QueryAddressSpaceMappingFromRecordedMetadata(
     LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
     UINT64 VirtualAddress,
     UINT64 *PhysicalAddress,

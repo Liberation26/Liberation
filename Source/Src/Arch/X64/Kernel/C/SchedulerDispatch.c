@@ -12,7 +12,14 @@
 #include "SchedulerInternal.h"
 #include "InterruptsInternal.h"
 
+#if defined(__GNUC__)
+__attribute__((weak)) const LOS_BOOT_CONTEXT *LosKernelGetBootContext(void)
+{
+    return 0;
+}
+#else
 const LOS_BOOT_CONTEXT *LosKernelGetBootContext(void);
+#endif
 
 static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void);
 static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId);
