@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerDispatchSection02.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T22:20:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerDispatch.c.
  */
@@ -164,8 +164,6 @@ BOOLEAN LosKernelSchedulerHandleUserModeInterrupt(UINT64 Vector, UINT64 ErrorCod
     LOS_KERNEL_SCHEDULER_TASK *Task;
     LOS_KERNEL_SCHEDULER_PROCESS *Process;
 
-    (void)ErrorCode;
-
     State = LosKernelSchedulerState();
     Task = GetCurrentTaskMutable();
     if (State == 0 || Task == 0 ||
@@ -175,49 +173,89 @@ BOOLEAN LosKernelSchedulerHandleUserModeInterrupt(UINT64 Vector, UINT64 ErrorCod
         return 0U;
     }
 
-    Process = FindProcessByIdMutable(Task->ProcessId);
-    Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED;
-    Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED;
-    Task->ReadySinceTick = 0ULL;
-    Task->NextWakeTick = 0ULL;
-    Task->WakeDispatchPending = 0U;
-    Task->ResumeBoostTicks = 0U;
-    Task->RemainingQuantumTicks = 0U;
-    Task->CleanupPending = 1U;
-    Task->ExitStatus = Vector;
-    Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
-    if (Process != 0)
-    {
-        Process->ExitStatus = Vector;
-        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
-    }
-    State->TerminatedTaskCount += 1ULL;
-    if (State->UserTransitionCompleteCount == 0ULL)
-    {
-        State->UserTransitionCompleteCount += 1ULL;
-    }
-    State->ReschedulePending = 1U;
-
     if (Vector == LOS_X64_USER_TRANSITION_VECTOR)
     {
-        LosKernelTraceOk("Init command executed in ring 3 and trapped back into the kernel.");
+        Process = FindProcessByIdMutable(Task->ProcessId);
+        Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED;
+        Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED;
+        Task->ReadySinceTick = 0ULL;
+        Task->NextWakeTick = 0ULL;
+        Task->WakeDispatchPending = 0U;
+        Task->ResumeBoostTicks = 0U;
+        Task->RemainingQuantumTicks = 0U;
+        Task->CleanupPending = 1U;
+        Task->ExitStatus = Vector;
+        Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+        if (Process != 0)
+        {
+            Process->ExitStatus = Vector;
+            Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+        }
+        State->TerminatedTaskCount += 1ULL;
+        if (State->UserTransitionCompleteCount == 0ULL)
+        {
+            State->UserTransitionCompleteCount += 1ULL;
+        }
+        State->ReschedulePending = 1U;
+
+        LosKernelTraceOk("First user task executed in ring 3 and returned through vector 128.");
+        LosKernelTraceUnsigned("First user task return vector: ", Vector);
+        LosKernelTraceHex64("First user task return rip: ", InstructionPointer);
+        LosKernelTraceHex64("First user task return rsp: ", StackPointer);
+        LosKernelTraceHex64("First user task return cs: ", Task->UserCodeSegmentSelector);
+        LosKernelTraceHex64("First user task return ss: ", Task->UserStackSegmentSelector);
         LosKernelReportKnownDrives();
+        if (Process != 0)
+        {
+            LosKernelSchedulerTraceProcess("Completed first user task process", Process);
+        }
+        LosKernelSchedulerTraceTask("Completed first user task task", Task);
+        return 1U;
     }
-    else
+
+    if (Vector < LOS_X64_EXCEPTION_VECTOR_COUNT)
     {
-        LosKernelTraceFail("First user-mode task faulted while running in ring 3.");
+        Process = FindProcessByIdMutable(Task->ProcessId);
+        Task->State = LOS_KERNEL_SCHEDULER_TASK_STATE_TERMINATED;
+        Task->LastBlockReason = LOS_KERNEL_SCHEDULER_BLOCK_REASON_TERMINATED;
+        Task->ReadySinceTick = 0ULL;
+        Task->NextWakeTick = 0ULL;
+        Task->WakeDispatchPending = 0U;
+        Task->ResumeBoostTicks = 0U;
+        Task->RemainingQuantumTicks = 0U;
+        Task->CleanupPending = 1U;
+        Task->ExitStatus = Vector;
+        Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+        if (Process != 0)
+        {
+            Process->ExitStatus = Vector;
+            Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE;
+        }
+        State->TerminatedTaskCount += 1ULL;
+        if (State->UserTransitionCompleteCount == 0ULL)
+        {
+            State->UserTransitionCompleteCount += 1ULL;
+        }
+        State->ReschedulePending = 1U;
+
+        LosKernelTraceFail("First user task faulted while running in ring 3.");
+        LosKernelTraceUnsigned("First user task fault vector: ", Vector);
+        LosKernelTraceHex64("First user task fault error: ", ErrorCode);
+        LosKernelTraceHex64("First user task fault rip: ", InstructionPointer);
+        LosKernelTraceHex64("First user task fault rsp: ", StackPointer);
+        LosKernelTraceHex64("First user task fault expected entry: ", Task->UserInstructionPointer);
+        LosKernelTraceHex64("First user task fault expected user rsp: ", Task->UserStackPointer);
+        LosKernelTraceHex64("First user task fault user cs: ", Task->UserCodeSegmentSelector);
+        LosKernelTraceHex64("First user task fault user ss: ", Task->UserStackSegmentSelector);
+        if (Process != 0)
+        {
+            LosKernelSchedulerTraceProcess("Faulted first user task process", Process);
+        }
+        LosKernelSchedulerTraceTask("Faulted first user task task", Task);
+        return 1U;
     }
-    LosKernelTraceUnsigned("Scheduler drive-command return vector: ", Vector);
-    LosKernelTraceHex64("Scheduler drive-command return rip: ", InstructionPointer);
-    LosKernelTraceHex64("Scheduler drive-command return rsp: ", StackPointer);
-    LosKernelTraceHex64("Scheduler drive-command return cs: ", Task->UserCodeSegmentSelector);
-    LosKernelTraceHex64("Scheduler drive-command return ss: ", Task->UserStackSegmentSelector);
-    if (Process != 0)
-    {
-        LosKernelSchedulerTraceProcess("Returned init command process", Process);
-    }
-    LosKernelSchedulerTraceTask("Returned init command task", Task);
-    return 1U;
+
+    return 0U;
 }
 
 void LosKernelSchedulerUserTransitionKernelEntry(void)
@@ -227,14 +265,14 @@ void LosKernelSchedulerUserTransitionKernelEntry(void)
     Task = LosKernelSchedulerGetCurrentTask();
     if (Task != 0)
     {
-        LosKernelSchedulerTraceTask("Scheduler drive-command kernel-entry task", Task);
+        LosKernelSchedulerTraceTask("Scheduler first-user-task kernel-entry task", Task);
     }
 
     CompleteCurrentUserTransitionTask(LOS_X64_USER_TRANSITION_VECTOR,
-                                      "Drive command returned through the kernel-entry bridge after the first CPL3 dispatch.");
+                                      "First user task returned through the kernel-entry bridge after the first CPL3 dispatch.");
     LosKernelSchedulerSwitchContext(&GetCurrentTaskMutable()->ExecutionContext,
                                     &LosKernelSchedulerState()->SchedulerContext);
-    LosKernelTraceFail("Kernel scheduler drive-command kernel-entry path resumed unexpectedly.");
+    LosKernelTraceFail("Kernel scheduler first-user-task kernel-entry path resumed unexpectedly.");
     LosKernelHaltForever();
 }
 
