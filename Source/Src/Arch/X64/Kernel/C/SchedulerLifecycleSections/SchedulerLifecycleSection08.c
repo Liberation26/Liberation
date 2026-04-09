@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection08.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T23:15:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -197,7 +197,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
     LOS_KERNEL_SCHEDULER_STATE *State;
     LOS_KERNEL_SCHEDULER_PROCESS *Process;
     LOS_KERNEL_SCHEDULER_TASK *Task;
-    UINT64 ChainStackPointer;
+    UINT64 BridgeStackPointer;
     UINT64 CriticalSectionFlags;
     BOOLEAN Ready;
 
@@ -231,7 +231,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
         return 1;
     }
 
-    ChainStackPointer = GetUserTransitionChainStackPointer(Task);
+    BridgeStackPointer = Task->ExecutionContext.StackPointer;
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
@@ -242,7 +242,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
         Task->UserTransitionKernelEntryVirtualAddress == 0ULL ||
         Process->UserTransitionBridgeVirtualAddress == 0ULL ||
         Task->UserTransitionBridgeVirtualAddress == 0ULL ||
-        ChainStackPointer == 0ULL)
+        BridgeStackPointer == 0ULL)
     {
         return 0;
     }
@@ -256,30 +256,17 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
         Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY &&
         Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY &&
         Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
-        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
-        Process->UserTransitionFrameStackPointer != 0ULL &&
-        Task->UserTransitionFrameStackPointer != 0ULL &&
-        Process->UserTransitionKernelEntryVirtualAddress != 0ULL &&
-        Task->UserTransitionKernelEntryVirtualAddress != 0ULL &&
-        Process->UserTransitionBridgeVirtualAddress != 0ULL &&
-        Task->UserTransitionBridgeVirtualAddress != 0ULL)
+        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
     {
-        ChainStackPointer = GetUserTransitionChainStackPointer(Task);
-        if (ChainStackPointer != 0ULL)
+        BridgeStackPointer = Task->ExecutionContext.StackPointer;
+        if (BridgeStackPointer != 0ULL)
         {
-            WriteStackReturnAddress(ChainStackPointer, Task->UserTransitionBridgeVirtualAddress);
-            WriteStackReturnAddress(ChainStackPointer + 8ULL, Task->UserTransitionKernelEntryVirtualAddress);
-            if (ReadStackReturnAddress(ChainStackPointer) == Task->UserTransitionBridgeVirtualAddress &&
-                ReadStackReturnAddress(ChainStackPointer + 8ULL) == Task->UserTransitionKernelEntryVirtualAddress)
-            {
-                Task->ExecutionContext.StackPointer = ChainStackPointer;
-                Process->UserTransitionChainStackPointer = ChainStackPointer;
-                Task->UserTransitionChainStackPointer = ChainStackPointer;
-                Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY;
-                Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY;
-                State->UserTransitionChainReadyCount += 1ULL;
-                Ready = 1U;
-            }
+            Process->UserTransitionChainStackPointer = BridgeStackPointer;
+            Task->UserTransitionChainStackPointer = BridgeStackPointer;
+            Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY;
+            Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY;
+            State->UserTransitionChainReadyCount += 1ULL;
+            Ready = 1U;
         }
     }
     LeaveSchedulerCriticalSection(CriticalSectionFlags);
@@ -335,12 +322,10 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldContractReady(void)
         return 1;
     }
 
-    ContractSignature = ComputeUserTransitionContractSignature(Process, Task);
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
-        Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
-        ContractSignature == 0ULL)
+        Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
     {
         return 0;
     }
@@ -354,18 +339,37 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldContractReady(void)
         Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY &&
         Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY &&
         Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
-        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
+        Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
+        Task->ExecutionContext.StackPointer != 0ULL &&
+        Task->UserInstructionPointer != 0ULL &&
+        Task->UserStackPointer != 0ULL &&
+        Task->UserCodeSegmentSelector != 0ULL &&
+        Task->UserStackSegmentSelector != 0ULL &&
+        Task->UserRflags != 0ULL)
     {
-        ContractSignature = ComputeUserTransitionContractSignature(Process, Task);
-        if (ContractSignature != 0ULL)
+        ContractSignature = 0x555452414E534954ULL;
+        ContractSignature ^= Process->ProcessId;
+        ContractSignature ^= (Task->TaskId << 17U);
+        ContractSignature ^= Task->ExecutionContext.StackPointer;
+        ContractSignature ^= Task->UserInstructionPointer;
+        ContractSignature ^= Task->UserStackPointer;
+        ContractSignature ^= Task->UserCodeSegmentSelector;
+        ContractSignature ^= Task->UserStackSegmentSelector;
+        ContractSignature ^= Task->UserRflags;
+        ContractSignature ^= Task->UserTransitionFrameStackPointer;
+        ContractSignature ^= Task->UserTransitionKernelEntryVirtualAddress;
+        ContractSignature ^= Task->UserTransitionBridgeVirtualAddress;
+        if (ContractSignature == 0ULL)
         {
-            Process->UserTransitionContractSignature = ContractSignature;
-            Task->UserTransitionContractSignature = ContractSignature;
-            Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CONTRACT_READY;
-            Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CONTRACT_READY;
-            State->UserTransitionContractReadyCount += 1ULL;
-            Ready = 1U;
+            ContractSignature = 0x434F4E5452414354ULL;
         }
+
+        Process->UserTransitionContractSignature = ContractSignature;
+        Task->UserTransitionContractSignature = ContractSignature;
+        Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CONTRACT_READY;
+        Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CONTRACT_READY;
+        State->UserTransitionContractReadyCount += 1ULL;
+        Ready = 1U;
     }
     LeaveSchedulerCriticalSection(CriticalSectionFlags);
 
