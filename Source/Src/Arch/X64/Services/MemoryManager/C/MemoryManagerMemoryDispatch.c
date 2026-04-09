@@ -11,6 +11,39 @@
 
 #include "MemoryManagerMemoryInternal.h"
 
+static const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *LosMemoryManagerFindFrameEntryContainingRange(
+    const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *Array,
+    UINTN Count,
+    UINT64 BaseAddress,
+    UINT64 Length)
+{
+    UINTN Index;
+    UINT64 EndAddress;
+
+    if (Array == 0 || Length == 0ULL || !LosMemoryManagerTryGetRangeEnd(BaseAddress, Length, &EndAddress))
+    {
+        return 0;
+    }
+
+    for (Index = 0U; Index < Count; ++Index)
+    {
+        const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *Entry;
+        UINT64 EntryEnd;
+
+        Entry = &Array[Index];
+        if (!LosMemoryManagerTryGetRangeEnd(Entry->BaseAddress, Entry->PageCount * 4096ULL, &EntryEnd))
+        {
+            continue;
+        }
+        if (BaseAddress >= Entry->BaseAddress && EndAddress <= EntryEnd)
+        {
+            return Entry;
+        }
+    }
+
+    return 0;
+}
+
 BOOLEAN LosMemoryManagerServiceClaimTrackedFrames(
     LOS_MEMORY_MANAGER_SERVICE_STATE *State,
     UINT64 PageCount,
@@ -80,6 +113,34 @@ BOOLEAN LosMemoryManagerServiceClaimTrackedFrames(
             &ChosenBaseAddress))
     {
         return 0;
+    }
+
+    if (Usage == LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_SERVICE_IMAGE)
+    {
+        const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *ChosenEntry;
+
+        ChosenEntry = LosMemoryManagerFindFrameEntryContainingRange(
+            View->PageFrameDatabase,
+            View->PageFrameDatabaseEntryCount,
+            ChosenBaseAddress,
+            RequiredBytes);
+        LosMemoryManagerServiceSerialWriteNamedHex("claim-selected-base", ChosenBaseAddress);
+        LosMemoryManagerServiceSerialWriteNamedUnsigned("claim-selected-pages", PageCount);
+        if (ChosenEntry == 0)
+        {
+            LosMemoryManagerServiceSerialWriteText("[MemManager][diag] claim-selected-entry=missing\n");
+            LosMemoryManagerHardFail("claim-selected-range-missing", ChosenBaseAddress, RequiredBytes, Usage);
+        }
+        LosMemoryManagerServiceSerialWriteNamedHex("claim-selected-entry-base", ChosenEntry->BaseAddress);
+        LosMemoryManagerServiceSerialWriteNamedUnsigned("claim-selected-entry-pages", ChosenEntry->PageCount);
+        LosMemoryManagerServiceSerialWriteNamedUnsigned("claim-selected-entry-state", ChosenEntry->State);
+        LosMemoryManagerServiceSerialWriteNamedUnsigned("claim-selected-entry-usage", ChosenEntry->Usage);
+        LosMemoryManagerServiceSerialWriteNamedUnsigned("claim-selected-entry-owner", ChosenEntry->Owner);
+        LosMemoryManagerServiceSerialWriteNamedUnsigned("claim-selected-entry-source", ChosenEntry->Source);
+        if (ChosenEntry->State != LOS_MEMORY_MANAGER_PAGE_FRAME_STATE_FREE)
+        {
+            LosMemoryManagerHardFail("claim-selected-range-not-free", ChosenBaseAddress, RequiredBytes, ChosenEntry->State);
+        }
     }
 
     EffectiveOwner = Owner == LOS_X64_PHYSICAL_FRAME_RESERVED_NONE ? LOS_X64_MEMORY_REGION_OWNER_CLAIMED : Owner;

@@ -211,6 +211,94 @@ static BOOLEAN AddressSpaceServiceRangesOverlap(UINT64 LeftBase, UINT64 LeftLeng
     return !(LeftEnd <= RightBase || RightEnd <= LeftBase);
 }
 
+static const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *AddressSpaceServiceFindFrameEntryContainingPhysicalAddress(
+    const LOS_MEMORY_MANAGER_MEMORY_VIEW *View,
+    UINT64 PhysicalAddress)
+{
+    UINTN Index;
+
+    if (View == 0)
+    {
+        return 0;
+    }
+
+    for (Index = 0U; Index < View->PageFrameDatabaseEntryCount; ++Index)
+    {
+        const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *Entry;
+        UINT64 EntryEnd;
+
+        Entry = &View->PageFrameDatabase[Index];
+        if (!LosMemoryManagerTryGetRangeEnd(Entry->BaseAddress, Entry->PageCount * 4096ULL, &EntryEnd))
+        {
+            continue;
+        }
+        if (PhysicalAddress >= Entry->BaseAddress && PhysicalAddress < EntryEnd)
+        {
+            return Entry;
+        }
+    }
+
+    return 0;
+}
+
+static void AddressSpaceServiceLogFrameEntryForPhysicalAddress(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    const char *Label,
+    UINT64 PhysicalAddress)
+{
+    const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *Entry;
+
+    if (State == 0)
+    {
+        return;
+    }
+
+    Entry = AddressSpaceServiceFindFrameEntryContainingPhysicalAddress(&State->MemoryView, PhysicalAddress);
+    LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+    LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+    LosMemoryManagerServiceSerialWriteText("-phys=");
+    LosMemoryManagerServiceSerialWriteHex64(PhysicalAddress);
+    LosMemoryManagerServiceSerialWriteText("\n");
+    if (Entry == 0)
+    {
+        LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+        LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+        LosMemoryManagerServiceSerialWriteText("-entry=missing\n");
+        return;
+    }
+
+    LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+    LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+    LosMemoryManagerServiceSerialWriteText("-base=");
+    LosMemoryManagerServiceSerialWriteHex64(Entry->BaseAddress);
+    LosMemoryManagerServiceSerialWriteText("\n");
+    LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+    LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+    LosMemoryManagerServiceSerialWriteText("-pages=");
+    LosMemoryManagerServiceSerialWriteUnsigned(Entry->PageCount);
+    LosMemoryManagerServiceSerialWriteText("\n");
+    LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+    LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+    LosMemoryManagerServiceSerialWriteText("-state=");
+    LosMemoryManagerServiceSerialWriteUnsigned(Entry->State);
+    LosMemoryManagerServiceSerialWriteText("\n");
+    LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+    LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+    LosMemoryManagerServiceSerialWriteText("-usage=");
+    LosMemoryManagerServiceSerialWriteUnsigned(Entry->Usage);
+    LosMemoryManagerServiceSerialWriteText("\n");
+    LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+    LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+    LosMemoryManagerServiceSerialWriteText("-owner=");
+    LosMemoryManagerServiceSerialWriteUnsigned(Entry->Owner);
+    LosMemoryManagerServiceSerialWriteText("\n");
+    LosMemoryManagerServiceSerialWriteText("[MemManager][diag] ");
+    LosMemoryManagerServiceSerialWriteText(Label != 0 ? Label : "frame-entry");
+    LosMemoryManagerServiceSerialWriteText("-source=");
+    LosMemoryManagerServiceSerialWriteUnsigned(Entry->Source);
+    LosMemoryManagerServiceSerialWriteText("\n");
+}
+
 static void AddressSpaceServiceVerifyAttachImageState(
     LOS_MEMORY_MANAGER_SERVICE_STATE *State,
     const LOS_MEMORY_MANAGER_ATTACH_STAGED_IMAGE_REQUEST *Request,
@@ -243,10 +331,15 @@ static void AddressSpaceServiceVerifyAttachImageState(
         AddressSpaceServiceSerialWriteNamedHex("attach-object-phys", Request->AddressSpaceObjectPhysicalAddress);
         AddressSpaceServiceSerialWriteNamedHex("attach-object-expected", ExpectedPointerValue);
         AddressSpaceServiceSerialWriteNamedHex("attach-object-actual", ActualPointerValue);
+        AddressSpaceServiceSerialWriteNamedHex("attach-root-phys", AddressSpaceObject != 0 ? AddressSpaceObject->RootTablePhysicalAddress : 0ULL);
         AddressSpaceServiceSerialWriteNamedUnsigned("attach-page-index", PageIndex);
         AddressSpaceServiceSerialWriteNamedHex("attach-run-virt", RunVirtualAddress);
         AddressSpaceServiceSerialWriteNamedHex("attach-run-phys", RunPhysicalAddress);
         AddressSpaceServiceSerialWriteNamedUnsigned("attach-run-pages", RunPageCount);
+        if (AddressSpaceObject != 0)
+        {
+            AddressSpaceServiceLogFrameEntryForPhysicalAddress(State, "attach-root-entry", AddressSpaceObject->RootTablePhysicalAddress);
+        }
     }
 
     if (ExpectedAddressSpaceObject == 0 || AddressSpaceObject != ExpectedAddressSpaceObject)
@@ -1936,7 +2029,16 @@ void LosMemoryManagerServiceAttachStagedImage(
         return;
     }
 
-    if (AddressSpaceServiceRangesOverlap(ImagePhysicalBase, ImageMappedBytes, AddressSpaceObject->RootTablePhysicalAddress, 0x1000ULL) ||
+    AddressSpaceServiceSerialWriteNamedHex("attach-claimed-image-phys", ImagePhysicalBase);
+    AddressSpaceServiceSerialWriteNamedHex("attach-claimed-image-bytes", ImageMappedBytes);
+    AddressSpaceServiceSerialWriteNamedHex("attach-target-root-phys", AddressSpaceObject->RootTablePhysicalAddress);
+    AddressSpaceServiceSerialWriteNamedHex("attach-target-object-page", Request->AddressSpaceObjectPhysicalAddress & ~0xFFFULL);
+    AddressSpaceServiceLogFrameEntryForPhysicalAddress(State, "attach-claimed-image-entry", ImagePhysicalBase);
+    AddressSpaceServiceLogFrameEntryForPhysicalAddress(State, "attach-target-object-entry", Request->AddressSpaceObjectPhysicalAddress & ~0xFFFULL);
+    AddressSpaceServiceLogFrameEntryForPhysicalAddress(State, "attach-target-root-entry-pre-overlap", AddressSpaceObject->RootTablePhysicalAddress);
+    if (ImagePhysicalBase == (AddressSpaceObject->RootTablePhysicalAddress & ~0xFFFULL) ||
+        ImagePhysicalBase == (Request->AddressSpaceObjectPhysicalAddress & ~0xFFFULL) ||
+        AddressSpaceServiceRangesOverlap(ImagePhysicalBase, ImageMappedBytes, AddressSpaceObject->RootTablePhysicalAddress, 0x1000ULL) ||
         AddressSpaceServiceRangesOverlap(ImagePhysicalBase, ImageMappedBytes, Request->AddressSpaceObjectPhysicalAddress & ~0xFFFULL, 0x1000ULL))
     {
         AddressSpaceServiceSerialWriteText("[MemManager][diag] staged image overlapped target address-space live structures.\n");
