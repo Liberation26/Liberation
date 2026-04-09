@@ -265,6 +265,105 @@ static void AddressSpaceServiceVerifyAttachImageState(
     }
 }
 
+static const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *AddressSpaceServiceFindFrameEntryForPhysicalRange(
+    const LOS_MEMORY_MANAGER_MEMORY_VIEW *View,
+    UINT64 BaseAddress,
+    UINT64 Length)
+{
+    UINTN Index;
+    UINT64 EndAddress;
+
+    if (View == 0 || Length == 0ULL || !LosMemoryManagerTryGetRangeEnd(BaseAddress, Length, &EndAddress))
+    {
+        return 0;
+    }
+
+    for (Index = 0U; Index < View->PageFrameDatabaseEntryCount; ++Index)
+    {
+        const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *Entry;
+        UINT64 EntryEnd;
+
+        Entry = &View->PageFrameDatabase[Index];
+        if (!LosMemoryManagerTryGetRangeEnd(Entry->BaseAddress, Entry->PageCount * 4096ULL, &EntryEnd))
+        {
+            continue;
+        }
+        if (BaseAddress >= Entry->BaseAddress && EndAddress <= EntryEnd)
+        {
+            return Entry;
+        }
+    }
+
+    return 0;
+}
+
+static void AddressSpaceServiceEnsureRangeTrackedReserved(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    UINT64 BaseAddress,
+    UINT64 PageCount,
+    UINT32 Usage,
+    const char *Label)
+{
+    const LOS_MEMORY_MANAGER_PAGE_FRAME_DATABASE_ENTRY *Entry;
+
+    if (State == 0 || PageCount == 0ULL)
+    {
+        return;
+    }
+
+    Entry = AddressSpaceServiceFindFrameEntryForPhysicalRange(&State->MemoryView, BaseAddress, PageCount * 4096ULL);
+    if (Entry == 0)
+    {
+        AddressSpaceServiceSerialWriteText("[MemManager][diag] live physical range missing from page-frame database.\n");
+        AddressSpaceServiceSerialWriteText("[MemManager][diag] missing-live-range=");
+        AddressSpaceServiceSerialWriteText(Label);
+        AddressSpaceServiceSerialWriteText("\n");
+        AddressSpaceServiceSerialWriteNamedHex("missing-live-range-base", BaseAddress);
+        AddressSpaceServiceSerialWriteNamedUnsigned("missing-live-range-pages", PageCount);
+        LosMemoryManagerHardFail("live-range-not-in-frame-database", BaseAddress, PageCount, Usage);
+    }
+
+    if (Entry->State == LOS_MEMORY_MANAGER_PAGE_FRAME_STATE_FREE)
+    {
+        AddressSpaceServiceSerialWriteText("[MemManager][diag] live physical range was unexpectedly free; reserving it now.\n");
+        AddressSpaceServiceSerialWriteText("[MemManager][diag] repair-live-range=");
+        AddressSpaceServiceSerialWriteText(Label);
+        AddressSpaceServiceSerialWriteText("\n");
+        AddressSpaceServiceSerialWriteNamedHex("repair-live-range-base", BaseAddress);
+        AddressSpaceServiceSerialWriteNamedUnsigned("repair-live-range-pages", PageCount);
+        if (!LosMemoryManagerInsertDynamicAllocation(&State->MemoryView, BaseAddress, PageCount, Usage, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
+            !LosMemoryManagerRebuildCurrentPageFrameDatabase(&State->MemoryView))
+        {
+            LosMemoryManagerHardFail("failed-to-repair-live-range-tracking", BaseAddress, PageCount, Usage);
+        }
+    }
+}
+
+static void AddressSpaceServiceEnsureAddressSpaceAssetsTracked(
+    LOS_MEMORY_MANAGER_SERVICE_STATE *State,
+    UINT64 AddressSpaceObjectPhysicalAddress,
+    const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject)
+{
+    if (State == 0 || AddressSpaceObject == 0)
+    {
+        return;
+    }
+
+    AddressSpaceServiceEnsureRangeTrackedReserved(
+        State,
+        AddressSpaceObjectPhysicalAddress & ~0xFFFULL,
+        1ULL,
+        LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_ADDRESS_SPACE_OBJECT,
+        "address-space-object-page");
+
+    AddressSpaceServiceEnsureRangeTrackedReserved(
+        State,
+        AddressSpaceObject->RootTablePhysicalAddress,
+        1ULL,
+        LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_PAGE_TABLE,
+        "address-space-root-page");
+}
+
 static void AddressSpaceServiceLogCreated(UINT64 AddressSpaceId, UINT64 AddressSpaceObjectPhysicalAddress, UINT64 RootTablePhysicalAddress)
 {
     AddressSpaceServiceSerialWriteText("[MemManager] Address space created id=");
@@ -1748,6 +1847,7 @@ void LosMemoryManagerServiceAttachStagedImage(
     }
 
     AddressSpaceServiceVerifyAttachImageState(State, Request, AddressSpaceObject, 0xA100ULL, 0ULL, 0ULL, 0ULL, 0ULL);
+    AddressSpaceServiceEnsureAddressSpaceAssetsTracked(State, Request->AddressSpaceObjectPhysicalAddress, AddressSpaceObject);
 
     Header = (const LOS_MEMORY_MANAGER_ELF64_HEADER *)LosMemoryManagerTranslatePhysical(
         State,
@@ -1834,6 +1934,17 @@ void LosMemoryManagerServiceAttachStagedImage(
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_NO_RESOURCES;
         return;
+    }
+
+    if (AddressSpaceServiceRangesOverlap(ImagePhysicalBase, ImageMappedBytes, AddressSpaceObject->RootTablePhysicalAddress, 0x1000ULL) ||
+        AddressSpaceServiceRangesOverlap(ImagePhysicalBase, ImageMappedBytes, Request->AddressSpaceObjectPhysicalAddress & ~0xFFFULL, 0x1000ULL))
+    {
+        AddressSpaceServiceSerialWriteText("[MemManager][diag] staged image overlapped target address-space live structures.\n");
+        AddressSpaceServiceSerialWriteNamedHex("claimed-image-phys", ImagePhysicalBase);
+        AddressSpaceServiceSerialWriteNamedHex("claimed-image-bytes", ImageMappedBytes);
+        AddressSpaceServiceSerialWriteNamedHex("target-address-space-object-page", Request->AddressSpaceObjectPhysicalAddress & ~0xFFFULL);
+        AddressSpaceServiceSerialWriteNamedHex("target-address-space-root-page", AddressSpaceObject->RootTablePhysicalAddress);
+        LosMemoryManagerHardFail("attach-image-overlaps-target-address-space", ImagePhysicalBase, Request->AddressSpaceObjectPhysicalAddress, AddressSpaceObject->RootTablePhysicalAddress);
     }
 
     for (PageIndex = 0ULL; PageIndex < ImagePageCount; )
