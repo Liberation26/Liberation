@@ -1,3 +1,9 @@
+## 0.4.82
+
+- Kept the faster first-user-task ladder from 0.4.81, but stopped the lifecycle manager from spawning endless transient diagnostic processes after the first successful ring-3 proof return.
+- That transient-process churn was what kept allocating fresh direct-claim stacks, which is why the console kept filling with repeated `Kernel scheduler using direct-claim stack pool.` lines after `Init command executed in ring 3 and trapped back into the kernel.`
+- Direct-claim stack-pool confirmation is now emitted only on first use, so ordinary later task allocation no longer floods the screen with the same success line.
+
 ## 0.4.81
 
 - Reduced the lifecycle-manager cadence from 250 ticks to 25 ticks so the first-user-task ladder no longer pauses for multiple seconds between each preparation stage. At 100 Hz this cuts each step from 2.5 seconds to 0.25 seconds, so `Interrupts enabled` to `seal-ready`/`handoff-ready` no longer feels stalled.

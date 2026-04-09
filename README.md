@@ -1,6 +1,6 @@
-LOS 0.4.81
+LOS 0.4.82
 
-This update reduces the scheduler lifecycle wait between first-user-task preparation stages and moves the staged live-dispatch frame/chain much deeper into the kernel stack to target the remaining post-`marked live` reset loop.
+This update keeps the fast first-user-task ladder from 0.4.81, but stops the lifecycle manager from spawning endless transient diagnostic processes after the first successful ring-3 proof return. It also reduces direct-claim stack-pool noise so that stack-pool confirmation is logged only on first use instead of on every later task allocation.
 
 This update pivots the shell toward actual command input. Internal commands execute inside the shell service, while external names resolve to command images under `\LIBERATION\COMMANDS`.
 

@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycle.c
- * File Version: 0.3.12
+ * File Version: 0.3.13
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:38:05Z
- * Last Update Timestamp: 2026-04-09T13:20:00Z
+ * Last Update Timestamp: 2026-04-09T18:15:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -1252,7 +1252,10 @@ static BOOLEAN AllocateDirectClaimKernelThreadStack(LOS_KERNEL_SCHEDULER_TASK *T
         Task->BootstrapStackSlot = Index;
         InitializeTaskStackContext(Task, StackBase, StackPhysicalAddress);
         Task->StackAllocationSource = LOS_KERNEL_SCHEDULER_STACK_SOURCE_DIRECT_CLAIM;
-        LosKernelTraceOk("Kernel scheduler using direct-claim stack pool.");
+        if (State->DirectClaimStackSlotsInUse == 1U)
+        {
+            LosKernelTraceOk("Kernel scheduler using direct-claim stack pool.");
+        }
         return 1;
     }
 

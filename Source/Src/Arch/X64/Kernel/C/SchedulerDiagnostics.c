@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerDiagnostics.c
- * File Version: 0.3.11
+ * File Version: 0.3.12
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Last Update Timestamp: 2026-04-09T18:15:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -584,6 +584,18 @@ void LosKernelSchedulerLifecycleThread(void *Context)
         if (LosKernelSchedulerState()->UserTransitionLiveCount != 0ULL &&
             LosKernelSchedulerState()->UserTransitionCompleteCount == 0ULL)
         {
+            LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS);
+            continue;
+        }
+
+        if (LosKernelSchedulerState()->UserTransitionCompleteCount != 0ULL)
+        {
+            /*
+             * The transient-process churn below is only a scheduler stress path.
+             * Once the first real ring-3 proof has returned successfully, keep
+             * the lifecycle manager quiet so the console does not flood and the
+             * system can remain parked in the stable post-proof state.
+             */
             LosKernelSchedulerSleepCurrent(LOS_KERNEL_SCHEDULER_LIFECYCLE_PERIOD_TICKS);
             continue;
         }
