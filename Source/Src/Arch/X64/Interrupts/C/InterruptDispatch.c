@@ -1,10 +1,10 @@
 /*
  * File Name: InterruptDispatch.c
- * File Version: 0.3.11
+ * File Version: 0.3.12
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T21:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
@@ -27,6 +27,7 @@
 
 static volatile UINT64 LosX64TimerTickCount = 0ULL;
 static volatile UINT64 LosX64TimerInterruptObserved = 0ULL;
+static volatile UINT64 LosX64TimerFirstHeartbeatReported = 0ULL;
 
 static inline void Out8(UINT16 Port, UINT8 Value)
 {
@@ -123,6 +124,7 @@ void LosX64InitializeTimer(void)
     LOS_KERNEL_ENTER();
     LosX64TimerTickCount = 0ULL;
     LosX64TimerInterruptObserved = 0ULL;
+    LosX64TimerFirstHeartbeatReported = 0ULL;
     RemapPic();
     ConfigurePit();
 
@@ -182,9 +184,14 @@ void LosX64HandleInterrupt(
         {
             LosKernelScreenUpdateTimer(LosX64TimerTickCount, LOS_X64_TIMER_TARGET_HZ, 1U);
         }
+        if (LosX64TimerFirstHeartbeatReported == 0ULL)
+        {
+            LosX64TimerFirstHeartbeatReported = 1ULL;
+            LosKernelTraceOk("First timer IRQ observed.");
+        }
         if ((LosX64TimerTickCount % (UINT64)LOS_X64_TIMER_TARGET_HZ) == 0ULL)
         {
-            LosKernelSerialWriteText("[Kernel] Timer heartbeat ticks=");
+            LosKernelSerialWriteText("[OK] [Kernel] Timer heartbeat ticks=");
             LosKernelSerialWriteUnsigned(LosX64TimerTickCount);
             LosKernelSerialWriteText(" hz=");
             LosKernelSerialWriteUnsigned(LOS_X64_TIMER_TARGET_HZ);

@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerDiagnosticsSection02.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-09T21:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerDiagnostics.c.
  */
@@ -15,7 +15,7 @@ void LosKernelSchedulerIdleThread(void *Context)
 
     for (;;)
     {
-        __asm__ __volatile__("hlt" : : : "memory");
+        __asm__ __volatile__("sti; hlt" : : : "memory");
         if (LosKernelSchedulerState()->ReschedulePending != 0U)
         {
             LosKernelSchedulerYieldCurrent();
