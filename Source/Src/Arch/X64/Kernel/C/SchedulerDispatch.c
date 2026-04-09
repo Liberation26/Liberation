@@ -12,6 +12,8 @@
 #include "SchedulerInternal.h"
 #include "InterruptsInternal.h"
 
+const LOS_BOOT_CONTEXT *LosKernelGetBootContext(void);
+
 static LOS_KERNEL_SCHEDULER_TASK *GetCurrentTaskMutable(void);
 static LOS_KERNEL_SCHEDULER_PROCESS *FindProcessByIdMutable(UINT64 ProcessId);
 
@@ -492,8 +494,8 @@ UINT64 LosKernelSchedulerPrepareUserTransitionIret(void)
     LosKernelTraceHex64("Scheduler first-user-task iret frame rsp: ", Task->UserTransitionFrameStackPointer);
     LosKernelTraceHex64("Scheduler first-user-task user rip: ", Task->UserInstructionPointer);
     LosKernelTraceHex64("Scheduler first-user-task user rsp: ", Task->UserStackPointer);
-    LosKernelTraceHex64("Scheduler first-user-task user cs: ", Task->UserCodeSelector);
-    LosKernelTraceHex64("Scheduler first-user-task user ss: ", Task->UserStackSelector);
+    LosKernelTraceHex64("Scheduler first-user-task user cs: ", Task->UserCodeSegmentSelector);
+    LosKernelTraceHex64("Scheduler first-user-task user ss: ", Task->UserStackSegmentSelector);
     LosKernelSetInterruptStackTop(Task->StackTopVirtualAddress);
     return Task->UserTransitionFrameStackPointer;
 }
@@ -550,8 +552,8 @@ BOOLEAN LosKernelSchedulerHandleUserModeInterrupt(UINT64 Vector, UINT64 ErrorCod
     LosKernelTraceUnsigned("Scheduler drive-command return vector: ", Vector);
     LosKernelTraceHex64("Scheduler drive-command return rip: ", InstructionPointer);
     LosKernelTraceHex64("Scheduler drive-command return rsp: ", StackPointer);
-    LosKernelTraceHex64("Scheduler drive-command return cs: ", Task->UserCodeSelector);
-    LosKernelTraceHex64("Scheduler drive-command return ss: ", Task->UserStackSelector);
+    LosKernelTraceHex64("Scheduler drive-command return cs: ", Task->UserCodeSegmentSelector);
+    LosKernelTraceHex64("Scheduler drive-command return ss: ", Task->UserStackSegmentSelector);
     if (Process != 0)
     {
         LosKernelSchedulerTraceProcess("Returned init command process", Process);
