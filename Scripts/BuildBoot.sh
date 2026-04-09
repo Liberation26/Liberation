@@ -373,7 +373,28 @@ done
 echo "[Liberation] Building kernel-callable shell bootstrap entry..."
 for SourceFile in "${ShellServiceSourceDir}"/*.c; do
     BaseName="$(basename "${SourceFile}" .c)-ShellBootstrapKernel"
-    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -I"${BootHeaderDir}"         -I"${ShellServiceHeaderDir}"         -I"${PublicIncludeDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -DLOS_EMBED_USER_IMAGE_BOOTSTRAP         -I"${BootHeaderDir}"         -I"${ShellServiceHeaderDir}"         -I"${PublicIncludeDir}"         -I"${LoginCommandHeaderDir}"         -I"${StringLibraryHeaderDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    KernelObjects+=("${BuildDir}/${BaseName}.o")
+done
+
+for SourceFile in "${LoginCommandSourceDir}"/*.c; do
+    BaseName="$(basename "${SourceFile}" .c)-LoginCommandBootstrapKernel"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -DLOS_EMBED_USER_IMAGE_BOOTSTRAP         -I"${BootHeaderDir}"         -I"${ShellServiceHeaderDir}"         -I"${LoginCommandHeaderDir}"         -I"${PublicIncludeDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    KernelObjects+=("${BuildDir}/${BaseName}.o")
+done
+
+for SourceFile in "${StringLibrarySourceDir}"/*.c; do
+    BaseName="$(basename "${SourceFile}" .c)-StringLibraryBootstrapKernel"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -DLOS_EMBED_USER_IMAGE_BOOTSTRAP         -I"${BootHeaderDir}"         -I"${ShellServiceHeaderDir}"         -I"${StringLibraryHeaderDir}"         -I"${PublicIncludeDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    KernelObjects+=("${BuildDir}/${BaseName}.o")
+done
+
+for SourceFile in "${ShellServiceAsmDir}"/*.S; do
+    if [ ! -e "${SourceFile}" ]; then
+        continue
+    fi
+    BaseName="$(basename "${SourceFile}" .S)-ShellBootstrapKernel"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -mno-red-zone         -mcmodel=large         -Wall -Wextra -Wpedantic         -O0 -g0         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
     KernelObjects+=("${BuildDir}/${BaseName}.o")
 done
 
