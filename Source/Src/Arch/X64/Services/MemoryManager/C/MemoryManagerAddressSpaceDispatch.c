@@ -63,6 +63,11 @@ static BOOLEAN DescribeImageLayout(
     UINT64 *ImageVirtualBase,
     UINT64 *ImageMappedBytes,
     UINT64 *ImagePageCount);
+static BOOLEAN ResolveImageEntryVirtualAddress(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    UINT64 ImageVirtualBase,
+    UINT64 ImageMappedBytes,
+    UINT64 *EntryVirtualAddress);
 static BOOLEAN PopulateExistingImageResult(
     const LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT *AddressSpaceObject,
     UINT64 AddressSpaceObjectPhysicalAddress,
@@ -625,6 +630,7 @@ static BOOLEAN RepairImageStateFromCurrentMappings(
     UINT64 ImagePageCount;
     UINT64 ImagePhysicalBase;
     UINT64 PageFlags;
+    UINT64 EntryVirtualAddress;
 
     if (State == 0 ||
         AddressSpaceObject == 0 ||
@@ -644,7 +650,8 @@ static BOOLEAN RepairImageStateFromCurrentMappings(
             LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER,
             LOS_X64_PAGE_PRESENT | LOS_X64_PAGE_USER,
             &ImagePhysicalBase,
-            &PageFlags))
+            &PageFlags) ||
+        !ResolveImageEntryVirtualAddress(Header, ImageVirtualBase, ImageMappedBytes, &EntryVirtualAddress))
     {
         return 0;
     }
@@ -652,7 +659,7 @@ static BOOLEAN RepairImageStateFromCurrentMappings(
     AddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
     AddressSpaceObject->ServiceImagePhysicalAddress = ImagePhysicalBase;
     AddressSpaceObject->ServiceImageSize = ImageMappedBytes;
-    AddressSpaceObject->EntryVirtualAddress = Header->Entry;
+    AddressSpaceObject->EntryVirtualAddress = EntryVirtualAddress;
     AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
     return PopulateExistingImageResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result);
 }
@@ -942,12 +949,14 @@ static BOOLEAN PopulateRequestedImageResult(
     UINT64 RequestedImageVirtualBase;
     UINT64 RequestedImageMappedBytes;
     UINT64 RequestedImagePageCount;
+    UINT64 RequestedEntryVirtualAddress;
 
     if (AddressSpaceObject == 0 ||
         Header == 0 ||
         ProgramHeaders == 0 ||
         Result == 0 ||
-        !DescribeImageLayout(Header, ProgramHeaders, &RequestedImageVirtualBase, &RequestedImageMappedBytes, &RequestedImagePageCount))
+        !DescribeImageLayout(Header, ProgramHeaders, &RequestedImageVirtualBase, &RequestedImageMappedBytes, &RequestedImagePageCount) ||
+        !ResolveImageEntryVirtualAddress(Header, RequestedImageVirtualBase, RequestedImageMappedBytes, &RequestedEntryVirtualAddress))
     {
         return 0;
     }
@@ -955,7 +964,7 @@ static BOOLEAN PopulateRequestedImageResult(
     if (PopulateExistingImageResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result) &&
         Result->ImageVirtualBase == RequestedImageVirtualBase &&
         Result->ImagePageCount == RequestedImagePageCount &&
-        Result->EntryVirtualAddress == Header->Entry)
+        Result->EntryVirtualAddress == RequestedEntryVirtualAddress)
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
         return 1;
@@ -964,7 +973,7 @@ static BOOLEAN PopulateRequestedImageResult(
     if (PopulateReservedImageResult(AddressSpaceObject, AddressSpaceObjectPhysicalAddress, Result) &&
         Result->ImageVirtualBase == RequestedImageVirtualBase &&
         Result->ImagePageCount == RequestedImagePageCount &&
-        Result->EntryVirtualAddress == Header->Entry)
+        Result->EntryVirtualAddress == RequestedEntryVirtualAddress)
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
         return 1;
@@ -979,7 +988,7 @@ static BOOLEAN PopulateRequestedImageResult(
             Result) &&
         Result->ImageVirtualBase == RequestedImageVirtualBase &&
         Result->ImagePageCount == RequestedImagePageCount &&
-        Result->EntryVirtualAddress == Header->Entry)
+        Result->EntryVirtualAddress == RequestedEntryVirtualAddress)
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
         return 1;
@@ -1272,6 +1281,53 @@ static BOOLEAN DescribeImageLayout(
     *ImageMappedBytes = HighestVirtualEnd - LowestVirtualBase;
     *ImagePageCount = *ImageMappedBytes / 0x1000ULL;
     return *ImagePageCount != 0ULL;
+}
+
+static BOOLEAN ResolveImageEntryVirtualAddress(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    UINT64 ImageVirtualBase,
+    UINT64 ImageMappedBytes,
+    UINT64 *EntryVirtualAddress)
+{
+    UINT64 ImageVirtualEnd;
+    UINT64 CandidateEntry;
+
+    if (EntryVirtualAddress != 0)
+    {
+        *EntryVirtualAddress = 0ULL;
+    }
+    if (Header == 0 ||
+        EntryVirtualAddress == 0 ||
+        ImageVirtualBase == 0ULL ||
+        ImageMappedBytes == 0ULL)
+    {
+        return 0;
+    }
+
+    ImageVirtualEnd = ImageVirtualBase + ImageMappedBytes;
+    if (ImageVirtualEnd <= ImageVirtualBase)
+    {
+        return 0;
+    }
+
+    CandidateEntry = Header->Entry;
+    if (CandidateEntry >= ImageVirtualBase && CandidateEntry < ImageVirtualEnd)
+    {
+        *EntryVirtualAddress = CandidateEntry;
+        return 1;
+    }
+
+    if (CandidateEntry < ImageMappedBytes)
+    {
+        CandidateEntry += ImageVirtualBase;
+        if (CandidateEntry >= ImageVirtualBase && CandidateEntry < ImageVirtualEnd)
+        {
+            *EntryVirtualAddress = CandidateEntry;
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 static UINT64 ProgramHeaderPageFlags(UINT32 ProgramHeaderFlags)
@@ -1930,6 +1986,7 @@ void LosMemoryManagerServiceAttachStagedImage(
     UINT64 ImageMappedBytes;
     UINT64 ImagePageCount;
     UINT64 ImagePhysicalBase;
+    UINT64 EntryVirtualAddress;
     UINT64 PageIndex;
 
     if (Result == 0)
@@ -2011,7 +2068,8 @@ void LosMemoryManagerServiceAttachStagedImage(
         return;
     }
 
-    if (!DescribeImageLayout(Header, ProgramHeaders, &ImageVirtualBase, &ImageMappedBytes, &ImagePageCount))
+    if (!DescribeImageLayout(Header, ProgramHeaders, &ImageVirtualBase, &ImageMappedBytes, &ImagePageCount) ||
+        !ResolveImageEntryVirtualAddress(Header, ImageVirtualBase, ImageMappedBytes, &EntryVirtualAddress))
     {
         return;
     }
@@ -2216,7 +2274,7 @@ void LosMemoryManagerServiceAttachStagedImage(
     AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-commit-service-image-phys-done\n");
     AddressSpaceObject->ServiceImageSize = ImageMappedBytes;
     AddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
-    AddressSpaceObject->EntryVirtualAddress = Header->Entry;
+    AddressSpaceObject->EntryVirtualAddress = EntryVirtualAddress;
     AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
     AddressSpaceServiceSerialWriteText("[MemManager][diag] attach-pre-ensure-recorded\n");
     (void)EnsureReservedImageRegionRecorded(AddressSpaceObject);

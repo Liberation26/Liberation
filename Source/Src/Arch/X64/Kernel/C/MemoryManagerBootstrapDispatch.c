@@ -813,6 +813,53 @@ static UINT64 ProgramHeaderPageFlagsLocal(UINT32 ProgramHeaderFlags)
     return PageFlags;
 }
 
+static BOOLEAN ResolveImageEntryVirtualAddressLocal(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    UINT64 ImageVirtualBase,
+    UINT64 ImageMappedBytes,
+    UINT64 *EntryVirtualAddress)
+{
+    UINT64 ImageVirtualEnd;
+    UINT64 CandidateEntry;
+
+    if (EntryVirtualAddress != 0)
+    {
+        *EntryVirtualAddress = 0ULL;
+    }
+    if (Header == 0 ||
+        EntryVirtualAddress == 0 ||
+        ImageVirtualBase == 0ULL ||
+        ImageMappedBytes == 0ULL)
+    {
+        return 0;
+    }
+
+    ImageVirtualEnd = ImageVirtualBase + ImageMappedBytes;
+    if (ImageVirtualEnd <= ImageVirtualBase)
+    {
+        return 0;
+    }
+
+    CandidateEntry = Header->Entry;
+    if (CandidateEntry >= ImageVirtualBase && CandidateEntry < ImageVirtualEnd)
+    {
+        *EntryVirtualAddress = CandidateEntry;
+        return 1;
+    }
+
+    if (CandidateEntry < ImageMappedBytes)
+    {
+        CandidateEntry += ImageVirtualBase;
+        if (CandidateEntry >= ImageVirtualBase && CandidateEntry < ImageVirtualEnd)
+        {
+            *EntryVirtualAddress = CandidateEntry;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static UINT64 ComputeImagePageFlagsLocal(
     const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
     const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
@@ -963,6 +1010,7 @@ static void DispatchLocalAttachStagedImage(
     UINT64 ImageMappedBytes;
     UINT64 ImagePageCount;
     UINT64 ImagePhysicalBase;
+    UINT64 EntryVirtualAddress;
     UINT64 PageIndex;
 
     if (Status != 0)
@@ -1022,6 +1070,7 @@ static void DispatchLocalAttachStagedImage(
     }
 
     if (!DescribeImageLayoutLocal(Header, ProgramHeaders, &ImageVirtualBase, &ImageMappedBytes, &ImagePageCount) ||
+        !ResolveImageEntryVirtualAddressLocal(Header, ImageVirtualBase, ImageMappedBytes, &EntryVirtualAddress) ||
         !CanReserveRegionLocal(AddressSpaceObject, ImageVirtualBase, ImagePageCount))
     {
         Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_CONFLICT;
@@ -1123,14 +1172,14 @@ static void DispatchLocalAttachStagedImage(
     AddressSpaceObject->ServiceImagePhysicalAddress = ImagePhysicalBase;
     AddressSpaceObject->ServiceImageSize = ImageMappedBytes;
     AddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
-    AddressSpaceObject->EntryVirtualAddress = Header->Entry;
+    AddressSpaceObject->EntryVirtualAddress = EntryVirtualAddress;
     AddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
 
     Result->Status = LOS_X64_MEMORY_OPERATION_STATUS_SUCCESS;
     Result->ImagePhysicalAddress = ImagePhysicalBase;
     Result->ImageSize = ImageMappedBytes;
     Result->ImageVirtualBase = ImageVirtualBase;
-    Result->EntryVirtualAddress = Header->Entry;
+    Result->EntryVirtualAddress = EntryVirtualAddress;
     Result->ImagePageCount = ImagePageCount;
     if (Status != 0)
     {

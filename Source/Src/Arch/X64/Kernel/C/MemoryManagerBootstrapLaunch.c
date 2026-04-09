@@ -364,6 +364,53 @@ static BOOLEAN DescribeServiceImageLayout(
     return *ImagePageCount != 0ULL;
 }
 
+static BOOLEAN ResolveServiceEntryVirtualAddress(
+    const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
+    UINT64 ImageVirtualBase,
+    UINT64 ImageMappedBytes,
+    UINT64 *EntryVirtualAddress)
+{
+    UINT64 ImageVirtualEnd;
+    UINT64 CandidateEntry;
+
+    if (EntryVirtualAddress != 0)
+    {
+        *EntryVirtualAddress = 0ULL;
+    }
+    if (Header == 0 ||
+        EntryVirtualAddress == 0 ||
+        ImageVirtualBase == 0ULL ||
+        ImageMappedBytes == 0ULL)
+    {
+        return 0;
+    }
+
+    ImageVirtualEnd = ImageVirtualBase + ImageMappedBytes;
+    if (ImageVirtualEnd <= ImageVirtualBase)
+    {
+        return 0;
+    }
+
+    CandidateEntry = Header->Entry;
+    if (CandidateEntry >= ImageVirtualBase && CandidateEntry < ImageVirtualEnd)
+    {
+        *EntryVirtualAddress = CandidateEntry;
+        return 1;
+    }
+
+    if (CandidateEntry < ImageMappedBytes)
+    {
+        CandidateEntry += ImageVirtualBase;
+        if (CandidateEntry >= ImageVirtualBase && CandidateEntry < ImageVirtualEnd)
+        {
+            *EntryVirtualAddress = CandidateEntry;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static UINT64 ComputeServiceImagePageFlags(
     const LOS_MEMORY_MANAGER_ELF64_HEADER *Header,
     const LOS_MEMORY_MANAGER_ELF64_PROGRAM_HEADER *ProgramHeaders,
@@ -673,6 +720,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     UINT64 ImageMappedBytes;
     UINT64 ImagePageCount;
     UINT64 ImagePhysicalBase;
+    UINT64 ServiceEntryVirtualAddress;
     UINT64 ServiceStackBaseVirtualAddress;
 
     State = LosMemoryManagerBootstrapState();
@@ -719,7 +767,8 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
             &ImageVirtualBase,
             &ImageMappedBytes,
             &ImagePageCount,
-            &ImagePhysicalBase))
+            &ImagePhysicalBase) ||
+        !ResolveServiceEntryVirtualAddress(Header, ImageVirtualBase, ImageMappedBytes, &ServiceEntryVirtualAddress))
     {
         return 0;
     }
@@ -746,7 +795,7 @@ static BOOLEAN MapServiceImageIntoOwnAddressSpace(void)
     State->ServiceAddressSpaceObject->ServiceImageSize = ImageMappedBytes;
     State->LaunchBlock->ServiceImageSize = ImageMappedBytes;
     State->ServiceAddressSpaceObject->ServiceImageVirtualBase = ImageVirtualBase;
-    State->ServiceAddressSpaceObject->EntryVirtualAddress = Header->Entry;
+    State->ServiceAddressSpaceObject->EntryVirtualAddress = ServiceEntryVirtualAddress;
     State->ServiceAddressSpaceObject->Flags |= LOS_MEMORY_MANAGER_ADDRESS_SPACE_FLAG_HAS_IMAGE;
     if (!MapServiceStackIntoAddressSpace(
             ServiceRootPhysicalAddress,

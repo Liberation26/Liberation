@@ -96,6 +96,40 @@ static UINT64 LosMemoryManagerUserExecAlignUp(UINT64 Value, UINT64 Alignment)
     return (Value + Alignment - 1ULL) & ~(Alignment - 1ULL);
 }
 
+static UINT64 LosMemoryManagerUserExecResolveEntry(UINT64 RawEntry,
+                                                   UINT64 ImageBase,
+                                                   UINT64 ImageSize)
+{
+    UINT64 ImageEnd;
+
+    if (ImageBase == 0ULL || ImageSize == 0ULL)
+    {
+        return 0ULL;
+    }
+
+    ImageEnd = ImageBase + ImageSize;
+    if (ImageEnd <= ImageBase)
+    {
+        return 0ULL;
+    }
+
+    if (RawEntry >= ImageBase && RawEntry < ImageEnd)
+    {
+        return RawEntry;
+    }
+
+    if (RawEntry < ImageSize)
+    {
+        RawEntry += ImageBase;
+        if (RawEntry >= ImageBase && RawEntry < ImageEnd)
+        {
+            return RawEntry;
+        }
+    }
+
+    return 0ULL;
+}
+
 static UINT64 LosMemoryManagerUserExecFindFreeSlot(void)
 {
     UINT64 Index;
@@ -227,6 +261,7 @@ UINT64 LosUserExecuteIsolatedImage(const LOS_USER_IMAGE_EXECUTION_CONTEXT *Conte
     UINT64 SlotIndex;
     UINT64 LowestVirtualAddress = ~0ULL;
     UINT64 HighestVirtualAddress = 0ULL;
+    UINT64 UserEntryVirtualAddress;
     UINT16 ProgramIndex;
 
     if (Context == 0 || IsolatedSpace == 0 || Ring3Context == 0)
@@ -289,6 +324,14 @@ UINT64 LosUserExecuteIsolatedImage(const LOS_USER_IMAGE_EXECUTION_CONTEXT *Conte
     if (HighestVirtualAddress - LowestVirtualAddress > LOS_MEMORY_MANAGER_USER_IMAGE_SLOT_SIZE)
     {
         return LOS_USER_IMAGE_CALL_STATUS_TRUNCATED;
+    }
+
+    UserEntryVirtualAddress = LosMemoryManagerUserExecResolveEntry(Header->Entry,
+                                                                   LowestVirtualAddress,
+                                                                   HighestVirtualAddress - LowestVirtualAddress);
+    if (UserEntryVirtualAddress == 0ULL)
+    {
+        return LOS_USER_IMAGE_CALL_STATUS_LAUNCH_FAILED;
     }
 
     LosMemoryManagerUserExecZero(&LosMemoryManagerUserImageSlots[SlotIndex][0], LOS_MEMORY_MANAGER_USER_IMAGE_SLOT_SIZE);
@@ -359,7 +402,7 @@ UINT64 LosUserExecuteIsolatedImage(const LOS_USER_IMAGE_EXECUTION_CONTEXT *Conte
         (UINT64)(UINTN)&LosMemoryManagerUserPagingSlots[SlotIndex][0];
     LosMemoryManagerUserSpaceSlots[SlotIndex].UserImageBaseVirtualAddress = LowestVirtualAddress;
     LosMemoryManagerUserSpaceSlots[SlotIndex].UserImageSize = HighestVirtualAddress - LowestVirtualAddress;
-    LosMemoryManagerUserSpaceSlots[SlotIndex].UserEntryVirtualAddress = Header->Entry;
+    LosMemoryManagerUserSpaceSlots[SlotIndex].UserEntryVirtualAddress = UserEntryVirtualAddress;
     LosMemoryManagerUserSpaceSlots[SlotIndex].UserStackBaseVirtualAddress = LOS_MEMORY_MANAGER_USER_STACK_TOP - LOS_MEMORY_MANAGER_USER_STACK_SLOT_SIZE;
     LosMemoryManagerUserSpaceSlots[SlotIndex].UserStackSize = LOS_MEMORY_MANAGER_USER_STACK_SLOT_SIZE;
     LosMemoryManagerUserSpaceSlots[SlotIndex].UserStackPointer = LOS_MEMORY_MANAGER_USER_STACK_TOP - 16ULL;
