@@ -1,10 +1,10 @@
 /*
  * File Name: MemoryManagerDiagnostics.c
- * File Version: 0.3.11
+ * File Version: 0.3.12
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-07T12:35:00Z
+ * Last Update Timestamp: 2026-04-09T15:25:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements a Liberation OS service component.
  */
@@ -35,6 +35,44 @@ static inline UINT8 ServiceIn8(UINT16 Port)
     return Value;
 }
 
+static void LosMemoryManagerServiceSerialWriteRawChar(char Character)
+{
+    while ((ServiceIn8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 5U) & 0x20U) == 0U)
+    {
+    }
+
+    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 0U, (UINT8)Character);
+}
+
+static void LosMemoryManagerHardFailWriteText(const char *Text)
+{
+    UINTN Index;
+
+    if (Text == 0)
+    {
+        return;
+    }
+
+    for (Index = 0U; Text[Index] != '\0'; ++Index)
+    {
+        LosMemoryManagerServiceSerialWriteRawChar(Text[Index]);
+    }
+}
+
+static void LosMemoryManagerHardFailWriteHex64(UINT64 Value)
+{
+    UINTN Shift;
+
+    LosMemoryManagerHardFailWriteText("0x");
+    for (Shift = 16U; Shift > 0U; --Shift)
+    {
+        UINT8 Nibble;
+
+        Nibble = (UINT8)((Value >> ((Shift - 1U) * 4U)) & 0xFULL);
+        LosMemoryManagerServiceSerialWriteRawChar((char)(Nibble < 10U ? ('0' + Nibble) : ('A' + (Nibble - 10U))));
+    }
+}
+
 void LosMemoryManagerServiceSerialInit(void)
 {
     ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 1U, 0x00U);
@@ -46,193 +84,57 @@ void LosMemoryManagerServiceSerialInit(void)
     ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 4U, 0x0BU);
 }
 
-static char LosMemoryManagerSerialLineBuffer[1024];
-static UINTN LosMemoryManagerSerialLineLength;
-
-static void LosMemoryManagerServiceSerialWriteRawChar(char Character)
-{
-    while ((ServiceIn8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 5U) & 0x20U) == 0U)
-    {
-    }
-
-    ServiceOut8(LOS_MEMORY_MANAGER_SERVICE_SERIAL_COM1_BASE + 0U, (UINT8)Character);
-}
-
-static BOOLEAN LosMemoryManagerShouldEmitSerialLine(const char *Buffer, UINTN Length)
-{
-    UINTN Index;
-
-    if (Buffer == 0 || Length == 0U)
-    {
-        return 0U;
-    }
-
-    for (Index = 0U; Index + 3U < Length; ++Index)
-    {
-        if (Buffer[Index] == '[' && Buffer[Index + 1U] == 'O' && Buffer[Index + 2U] == 'K' && Buffer[Index + 3U] == ']')
-        {
-            return 1U;
-        }
-    }
-
-    for (Index = 0U; Index + 5U < Length; ++Index)
-    {
-        if (Buffer[Index] == '[' && Buffer[Index + 1U] == 'F' && Buffer[Index + 2U] == 'A' && Buffer[Index + 3U] == 'I' && Buffer[Index + 4U] == 'L' && Buffer[Index + 5U] == ']')
-        {
-            return 1U;
-        }
-    }
-
-    for (Index = 0U; Index + 10U < Length; ++Index)
-    {
-        if (Buffer[Index] == '[' && Buffer[Index + 1U] == 'H' && Buffer[Index + 2U] == 'A' && Buffer[Index + 3U] == 'R' && Buffer[Index + 4U] == 'D' && Buffer[Index + 5U] == '-' && Buffer[Index + 6U] == 'F' && Buffer[Index + 7U] == 'A' && Buffer[Index + 8U] == 'I' && Buffer[Index + 9U] == 'L' && Buffer[Index + 10U] == ']')
-        {
-            return 1U;
-        }
-    }
-
-    return 0U;
-}
-
-static void LosMemoryManagerFlushSerialLineBuffer(BOOLEAN AppendNewline)
-{
-    UINTN Index;
-
-    if (LosMemoryManagerShouldEmitSerialLine(LosMemoryManagerSerialLineBuffer, LosMemoryManagerSerialLineLength) == 0U)
-    {
-        LosMemoryManagerSerialLineLength = 0U;
-        return;
-    }
-
-    for (Index = 0U; Index < LosMemoryManagerSerialLineLength; ++Index)
-    {
-        LosMemoryManagerServiceSerialWriteRawChar(LosMemoryManagerSerialLineBuffer[Index]);
-    }
-
-    if (AppendNewline != 0U)
-    {
-        LosMemoryManagerServiceSerialWriteRawChar('\r');
-        LosMemoryManagerServiceSerialWriteRawChar('\n');
-    }
-
-    LosMemoryManagerSerialLineLength = 0U;
-}
-
 void LosMemoryManagerServiceSerialWriteChar(char Character)
 {
-    if (Character == '\r')
-    {
-        return;
-    }
-
-    if (Character == '\n')
-    {
-        LosMemoryManagerFlushSerialLineBuffer(1U);
-        return;
-    }
-
-    if (LosMemoryManagerSerialLineLength >= (sizeof(LosMemoryManagerSerialLineBuffer) - 1U))
-    {
-        LosMemoryManagerSerialLineLength = 0U;
-    }
-
-    LosMemoryManagerSerialLineBuffer[LosMemoryManagerSerialLineLength] = Character;
-    ++LosMemoryManagerSerialLineLength;
-    LosMemoryManagerSerialLineBuffer[LosMemoryManagerSerialLineLength] = '\0';
+    (void)Character;
 }
 
 void LosMemoryManagerServiceSerialWriteText(const char *Text)
 {
-    UINTN Index;
-
-    if (Text == 0)
-    {
-        return;
-    }
-
-    for (Index = 0U; Text[Index] != '\0'; ++Index)
-    {
-        LosMemoryManagerServiceSerialWriteChar(Text[Index]);
-    }
+    (void)Text;
 }
 
 void LosMemoryManagerServiceSerialWriteHex64(UINT64 Value)
 {
-    UINTN Shift;
-
-    LosMemoryManagerServiceSerialWriteText("0x");
-    for (Shift = 16U; Shift > 0U; --Shift)
-    {
-        UINT8 Nibble;
-
-        Nibble = (UINT8)((Value >> ((Shift - 1U) * 4U)) & 0xFULL);
-        LosMemoryManagerServiceSerialWriteChar((char)(Nibble < 10U ? ('0' + Nibble) : ('A' + (Nibble - 10U))));
-    }
+    (void)Value;
 }
 
 void LosMemoryManagerServiceSerialWriteLine(const char *Text)
 {
-    LosMemoryManagerServiceSerialWriteText(Text);
-    LosMemoryManagerServiceSerialWriteText("\n");
+    (void)Text;
 }
 
 void LosMemoryManagerServiceSerialWriteUnsigned(UINT64 Value)
 {
-    char Buffer[32];
-    UINTN Index;
-
-    if (Value == 0ULL)
-    {
-        LosMemoryManagerServiceSerialWriteChar('0');
-        return;
-    }
-
-    Index = 0U;
-    while (Value != 0ULL && Index < (sizeof(Buffer) / sizeof(Buffer[0])))
-    {
-        Buffer[Index] = (char)('0' + (Value % 10ULL));
-        Value /= 10ULL;
-        ++Index;
-    }
-
-    while (Index > 0U)
-    {
-        --Index;
-        LosMemoryManagerServiceSerialWriteChar(Buffer[Index]);
-    }
+    (void)Value;
 }
 
 void LosMemoryManagerServiceSerialWriteNamedHex(const char *Name, UINT64 Value)
 {
-    LosMemoryManagerServiceSerialWriteText("[MemManager] ");
-    LosMemoryManagerServiceSerialWriteText(Name);
-    LosMemoryManagerServiceSerialWriteText(": ");
-    LosMemoryManagerServiceSerialWriteHex64(Value);
-    LosMemoryManagerServiceSerialWriteText("\n");
+    (void)Name;
+    (void)Value;
 }
 
 void LosMemoryManagerServiceSerialWriteNamedUnsigned(const char *Name, UINT64 Value)
 {
-    LosMemoryManagerServiceSerialWriteText("[MemManager] ");
-    LosMemoryManagerServiceSerialWriteText(Name);
-    LosMemoryManagerServiceSerialWriteText(": ");
-    LosMemoryManagerServiceSerialWriteUnsigned(Value);
-    LosMemoryManagerServiceSerialWriteText("\n");
+    (void)Name;
+    (void)Value;
 }
 
 void LosMemoryManagerHardFail(const char *RuleName, UINT64 Value0, UINT64 Value1, UINT64 Value2)
 {
     LOS_MEMORY_MANAGER_SERVICE_STATE *State;
 
-    LosMemoryManagerServiceSerialWriteText("[MemManager][HARD-FAIL] ");
-    LosMemoryManagerServiceSerialWriteText(RuleName != 0 ? RuleName : "unknown");
-    LosMemoryManagerServiceSerialWriteText(" v0=");
-    LosMemoryManagerServiceSerialWriteHex64(Value0);
-    LosMemoryManagerServiceSerialWriteText(" v1=");
-    LosMemoryManagerServiceSerialWriteHex64(Value1);
-    LosMemoryManagerServiceSerialWriteText(" v2=");
-    LosMemoryManagerServiceSerialWriteHex64(Value2);
-    LosMemoryManagerServiceSerialWriteText("\n");
+    LosMemoryManagerHardFailWriteText("[MemManager][HARD-FAIL] ");
+    LosMemoryManagerHardFailWriteText(RuleName != 0 ? RuleName : "unknown");
+    LosMemoryManagerHardFailWriteText(" v0=");
+    LosMemoryManagerHardFailWriteHex64(Value0);
+    LosMemoryManagerHardFailWriteText(" v1=");
+    LosMemoryManagerHardFailWriteHex64(Value1);
+    LosMemoryManagerHardFailWriteText(" v2=");
+    LosMemoryManagerHardFailWriteHex64(Value2);
+    LosMemoryManagerServiceSerialWriteRawChar('\r');
+    LosMemoryManagerServiceSerialWriteRawChar('\n');
 
     State = LosMemoryManagerServiceState();
     if (State != 0 && State->TaskObject != 0)
