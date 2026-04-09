@@ -39,7 +39,7 @@ static BOOLEAN ReservePageTableFrame(
         LOS_X64_MEMORY_REGION_OWNER_CLAIMED);
 }
 
-static BOOLEAN ReserveActiveServiceLowerHalfPageTables(
+static BOOLEAN ReserveActiveServicePageTables(
     LOS_MEMORY_MANAGER_SERVICE_STATE *State,
     LOS_MEMORY_MANAGER_MEMORY_VIEW *View)
 {
@@ -57,7 +57,7 @@ static BOOLEAN ReserveActiveServiceLowerHalfPageTables(
         return 0;
     }
 
-    for (Pml4Index = 0U; Pml4Index < 256U; ++Pml4Index)
+    for (Pml4Index = 0U; Pml4Index < 512U; ++Pml4Index)
     {
         UINT64 Pml4Entry;
         UINT64 PdptPhysicalAddress;
@@ -340,7 +340,7 @@ BOOLEAN LosMemoryManagerServiceBuildMemoryView(LOS_MEMORY_MANAGER_SERVICE_STATE 
         !LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->ServiceAddressSpaceObjectPhysicalAddress, LOS_MEMORY_MANAGER_ADDRESS_SPACE_OBJECT_PAGE_COUNT * 4096ULL, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_ADDRESS_SPACE_OBJECT, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
         !LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->ServiceTaskObjectPhysicalAddress, LOS_MEMORY_MANAGER_TASK_OBJECT_PAGE_COUNT * 4096ULL, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_TASK_OBJECT, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
         !LosMemoryManagerReserveFrameDatabaseRange(View, State->LaunchBlock->ServicePageMapLevel4PhysicalAddress, 4096ULL, LOS_MEMORY_MANAGER_PAGE_FRAME_USAGE_PAGE_TABLE, LOS_X64_MEMORY_REGION_OWNER_CLAIMED) ||
-        !ReserveActiveServiceLowerHalfPageTables(State, View))
+        !ReserveActiveServicePageTables(State, View))
     {
         if (Detail != 0)
         {
