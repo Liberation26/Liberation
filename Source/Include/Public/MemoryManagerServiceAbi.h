@@ -1,8 +1,20 @@
+/*
+ * File Name: MemoryManagerServiceAbi.h
+ * File Version: 0.3.22
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-08T11:10:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Declares shared interfaces and data structures for Liberation OS.
+ */
+
 #ifndef LOS_MEMORY_MANAGER_SERVICE_ABI_H
 #define LOS_MEMORY_MANAGER_SERVICE_ABI_H
 
 #include "Efi.h"
 #include "VirtualMemory.h"
+#include "CapabilitiesServiceAbi.h"
 
 #define LOS_MEMORY_MANAGER_BOOTSTRAP_VERSION 12U
 #define LOS_MEMORY_MANAGER_SERVICE_PATH_CHARACTERS 128U
@@ -418,6 +430,10 @@ typedef struct
     UINT32 Operation;
     UINT32 Reserved0;
     UINT64 RequestId;
+    UINT32 CallerPrincipalType;
+    UINT32 Reserved1;
+    UINT64 CallerPrincipalId;
+    char CallerPrincipalName[LOS_CAPABILITIES_PRINCIPAL_NAME_LENGTH];
     union
     {
         LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_REQUEST BootstrapAttach;

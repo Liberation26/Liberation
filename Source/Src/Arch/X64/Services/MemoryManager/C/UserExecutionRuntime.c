@@ -201,9 +201,9 @@ UINT64 LosMemoryManagerCompleteUserAddressSpaceCall(const LOS_USER_IMAGE_ISOLATE
     }
     if (CompletionResult != 0)
     {
-        if (MappedCall->ResultCodeAddress != 0ULL)
+        if (MappedCall->ResultAddress != 0ULL)
         {
-            *CompletionResult = *(const UINT64 *)(UINTN)MappedCall->ResultCodeAddress;
+            *CompletionResult = *(const UINT64 *)(UINTN)MappedCall->ResultAddress;
         }
         else
         {

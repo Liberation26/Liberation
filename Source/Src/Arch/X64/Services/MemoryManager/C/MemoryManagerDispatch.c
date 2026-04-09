@@ -11,11 +11,13 @@
 
 #include "MemoryManagerMainInternal.h"
 
+__attribute__((weak)) UINT32 LosCapabilitiesServiceSubmitAccessRequest(const LOS_CAPABILITIES_ACCESS_REQUEST *Request,
+                                                                       LOS_CAPABILITIES_ACCESS_RESULT *Result);
+__attribute__((weak)) UINT32 LosCapabilitiesServiceCheckAccess(const LOS_CAPABILITIES_ACCESS_REQUEST *Request,
+                                                               LOS_CAPABILITIES_ACCESS_RESULT *Result);
+
 static UINT8 LosMemoryManagerReadyEventProofPosted = 0U;
 static UINT8 LosMemoryManagerFirstEndpointReplyProofPosted = 0U;
-static LOS_CAPABILITIES_TRANSPORT_BINDING LosMemoryManagerCapabilitiesBinding;
-static LOS_CAPABILITIES_TRANSPORT_CONNECT_RESULT LosMemoryManagerCapabilitiesConnection;
-static UINT8 LosMemoryManagerCapabilitiesBindingReady = 0U;
 
 static UINTN LosMemoryManagerStringLength(const char *Text)
 {
@@ -79,68 +81,21 @@ BOOLEAN LosMemoryManagerServiceAuthorizeRequest(const LOS_MEMORY_MANAGER_REQUEST
     LosMemoryManagerCopyBytes(AccessRequest.Namespace, Namespace, LosMemoryManagerStringLength(Namespace) + 1U);
     LosMemoryManagerCopyBytes(AccessRequest.Name, Name, LosMemoryManagerStringLength(Name) + 1U);
 
-    if (LosMemoryManagerCapabilitiesBindingReady == 0U)
+    if (LosCapabilitiesServiceSubmitAccessRequest != 0)
     {
-        LOS_CAPABILITIES_TRANSPORT_CONNECT_REQUEST ConnectRequest;
-        LosMemoryManagerZeroMemory(&ConnectRequest, sizeof(ConnectRequest));
-        LosMemoryManagerZeroMemory(&LosMemoryManagerCapabilitiesConnection, sizeof(LosMemoryManagerCapabilitiesConnection));
-        ConnectRequest.Version = LOS_CAPABILITIES_SERVICE_VERSION;
-        ConnectRequest.PrincipalType = LOS_CAPABILITIES_PRINCIPAL_TYPE_SERVICE;
-        ConnectRequest.RequiredEndpointRole = LOS_CAPABILITIES_ENDPOINT_ROLE_RECEIVE;
-        ConnectRequest.RequiredFlags = LOS_CAPABILITIES_ENDPOINT_FLAG_SERVICE_VISIBLE |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_ISOLATED_TRANSPORT |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_IDENTITY_BOUND |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_MESSAGE_AUTH |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_ANTI_REPLAY |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_POLICY_DRIVEN_SECURITY;
-        ConnectRequest.TargetEndpointClass = LOS_CAPABILITIES_ENDPOINT_CLASS_CONTROL;
-        ConnectRequest.DesiredSecurityMode = LOS_CAPABILITIES_SECURITY_MODE_CONFIDENTIAL;
-        ConnectRequest.PrincipalId = 0ULL;
-        ConnectRequest.ConnectNonce = 0x4d454d4d47520001ULL;
-        LosMemoryManagerCopyBytes(ConnectRequest.PrincipalName, "memmgr", sizeof("memmgr"));
-        LosMemoryManagerCopyBytes(ConnectRequest.SourceServiceName, "memmgr", sizeof("memmgr"));
-        LosMemoryManagerCopyBytes(ConnectRequest.SourceEndpointName, "access.client", sizeof("access.client"));
-        LosMemoryManagerCopyBytes(ConnectRequest.TargetServiceName, "capsmgr", sizeof("capsmgr"));
-        if (LosCapabilitiesServiceConnectTransport(&ConnectRequest, &LosMemoryManagerCapabilitiesConnection, &LosMemoryManagerCapabilitiesBinding) != LOS_CAPABILITIES_SERVICE_STATUS_SUCCESS)
-        {
-            return 0;
-        }
-        LosMemoryManagerCapabilitiesBindingReady = 1U;
+        AccessStatus = LosCapabilitiesServiceSubmitAccessRequest(&AccessRequest, &AccessResult);
     }
-
-    AccessStatus = LosCapabilitiesServiceSubmitBoundAccessRequest(&LosMemoryManagerCapabilitiesBinding, &AccessRequest, &AccessResult);
-    if (AccessStatus == LOS_CAPABILITIES_SERVICE_STATUS_TRANSPORT_STALE)
+    else if (LosCapabilitiesServiceCheckAccess != 0)
     {
-        LosMemoryManagerCapabilitiesBindingReady = 0U;
-        LOS_CAPABILITIES_TRANSPORT_CONNECT_REQUEST ConnectRequest;
-        LosMemoryManagerZeroMemory(&ConnectRequest, sizeof(ConnectRequest));
-        LosMemoryManagerZeroMemory(&LosMemoryManagerCapabilitiesConnection, sizeof(LosMemoryManagerCapabilitiesConnection));
-        ConnectRequest.Version = LOS_CAPABILITIES_SERVICE_VERSION;
-        ConnectRequest.PrincipalType = LOS_CAPABILITIES_PRINCIPAL_TYPE_SERVICE;
-        ConnectRequest.RequiredEndpointRole = LOS_CAPABILITIES_ENDPOINT_ROLE_RECEIVE;
-        ConnectRequest.RequiredFlags = LOS_CAPABILITIES_ENDPOINT_FLAG_SERVICE_VISIBLE |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_ISOLATED_TRANSPORT |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_IDENTITY_BOUND |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_MESSAGE_AUTH |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_ANTI_REPLAY |
-                                       LOS_CAPABILITIES_ENDPOINT_FLAG_POLICY_DRIVEN_SECURITY;
-        ConnectRequest.TargetEndpointClass = LOS_CAPABILITIES_ENDPOINT_CLASS_CONTROL;
-        ConnectRequest.DesiredSecurityMode = LOS_CAPABILITIES_SECURITY_MODE_CONFIDENTIAL;
-        ConnectRequest.PrincipalId = 0ULL;
-        ConnectRequest.ConnectNonce = 0x4d454d4d47520001ULL;
-        LosMemoryManagerCopyBytes(ConnectRequest.PrincipalName, "memmgr", sizeof("memmgr"));
-        LosMemoryManagerCopyBytes(ConnectRequest.SourceServiceName, "memmgr", sizeof("memmgr"));
-        LosMemoryManagerCopyBytes(ConnectRequest.SourceEndpointName, "access.client", sizeof("access.client"));
-        LosMemoryManagerCopyBytes(ConnectRequest.TargetServiceName, "capsmgr", sizeof("capsmgr"));
-        if (LosCapabilitiesServiceConnectTransport(&ConnectRequest, &LosMemoryManagerCapabilitiesConnection, &LosMemoryManagerCapabilitiesBinding) != LOS_CAPABILITIES_SERVICE_STATUS_SUCCESS)
-        {
-            return 0;
-        }
-        LosMemoryManagerCapabilitiesBindingReady = 1U;
-        AccessStatus = LosCapabilitiesServiceSubmitBoundAccessRequest(&LosMemoryManagerCapabilitiesBinding, &AccessRequest, &AccessResult);
+        AccessStatus = LosCapabilitiesServiceCheckAccess(&AccessRequest, &AccessResult);
+    }
+    else
+    {
+        return 0;
     }
 
     if (AccessStatus != LOS_CAPABILITIES_SERVICE_STATUS_SUCCESS ||
+        AccessResult.Status != LOS_CAPABILITIES_SERVICE_STATUS_SUCCESS ||
         AccessResult.Granted == 0U)
     {
         return 0;
