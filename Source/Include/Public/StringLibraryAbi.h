@@ -1,0 +1,59 @@
+/*
+ * File Name: StringLibraryAbi.h
+ * File Version: 0.4.12
+ * Author: OpenAI
+ * Creation Timestamp: 2026-04-08T19:45:00Z
+ * Last Update Timestamp: 2026-04-08T19:45:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Declares the external string-library ABI used by the shell.
+ */
+
+#ifndef LOS_PUBLIC_STRING_LIBRARY_ABI_H
+#define LOS_PUBLIC_STRING_LIBRARY_ABI_H
+
+#include "Efi.h"
+
+#define LOS_STRING_LIBRARY_VERSION 1U
+#define LOS_STRING_LIBRARY_TEXT_LENGTH 128U
+
+#define LOS_STRING_LIBRARY_REQUEST_SIGNATURE  0x535452515354524CUL
+#define LOS_STRING_LIBRARY_RESPONSE_SIGNATURE 0x535452525354524CUL
+
+#define LOS_STRING_LIBRARY_OPERATION_NONE      0U
+#define LOS_STRING_LIBRARY_OPERATION_UPPERCASE 1U
+
+#define LOS_STRING_LIBRARY_STATUS_SUCCESS            0U
+#define LOS_STRING_LIBRARY_STATUS_INVALID_PARAMETER  1U
+#define LOS_STRING_LIBRARY_STATUS_UNSUPPORTED        2U
+#define LOS_STRING_LIBRARY_STATUS_TRUNCATED          3U
+
+#define LOS_STRING_LIBRARY_FLAG_BOOTSTRAP_ADAPTER 0x00000001U
+#define LOS_STRING_LIBRARY_FLAG_TEXT_CHANGED      0x00000002U
+
+#define LOS_STRING_LIBRARY_RESULT_NONE      0U
+#define LOS_STRING_LIBRARY_RESULT_UNCHANGED 1U
+#define LOS_STRING_LIBRARY_RESULT_CHANGED   2U
+
+typedef struct
+{
+    UINT32 Version;
+    UINT32 Operation;
+    UINT32 Flags;
+    UINT32 Reserved0;
+    UINT64 Signature;
+    UINT64 RequestId;
+    char Input[LOS_STRING_LIBRARY_TEXT_LENGTH];
+} LOS_STRING_LIBRARY_REQUEST;
+
+typedef struct
+{
+    UINT32 Version;
+    UINT32 Status;
+    UINT32 Flags;
+    UINT32 Reserved0;
+    UINT64 Signature;
+    UINT64 Result;
+    char Output[LOS_STRING_LIBRARY_TEXT_LENGTH];
+} LOS_STRING_LIBRARY_RESPONSE;
+
+#endif
