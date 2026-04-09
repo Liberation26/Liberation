@@ -1,8 +1,20 @@
+/*
+ * File Name: MonitorInternal.h
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T10:54:19Z
+ * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements monitor-stage functionality for Liberation OS.
+ */
+
 #ifndef LOS_MONITOR_INTERNAL_H
 #define LOS_MONITOR_INTERNAL_H
 
 #include "Efi.h"
 #include "MonitorMain.h"
+#include "CapabilitiesServiceAbi.h"
 
 #define LOS_TEXT(TextLiteral) ((const CHAR16 *)L##TextLiteral)
 #define LOS_KERNEL_PATH_MAX_INFO_BUFFER 512
@@ -19,9 +31,11 @@
 #define LOS_ELF_TYPE_EXEC 2U
 #define LOS_ELF_PROGRAM_TYPE_LOAD 1U
 #define LOS_BOOT_CONTEXT_SIGNATURE 0x544F4F424F534F4CULL
-#define LOS_BOOT_CONTEXT_VERSION 6U
+#define LOS_BOOT_CONTEXT_VERSION 9U
+#define LOS_BOOT_CONTEXT_FLAG_MEMORY_MANAGER_IMAGE_VALID 0x0000000000000004ULL
 #define LOS_BOOT_CONTEXT_FLAG_MONITOR_HANDOFF_ONLY 0x0000000000000001ULL
 #define LOS_BOOT_CONTEXT_FLAG_KERNEL_SEGMENTS_VALID 0x0000000000000002ULL
+#define LOS_BOOT_CONTEXT_FLAG_CAPABILITIES_VALID 0x0000000000000008ULL
 #define LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS 8U
 #define LOS_ELF_PROGRAM_FLAG_EXECUTE 0x1U
 #define LOS_ELF_PROGRAM_FLAG_WRITE 0x2U
@@ -61,8 +75,11 @@ typedef struct
     UINT32 FrameBufferPixelFormat;
     UINT64 KernelFontPhysicalAddress;
     UINT64 KernelFontSize;
+    UINT64 MemoryManagerImagePhysicalAddress;
+    UINT64 MemoryManagerImageSize;
     UINT64 KernelLoadSegmentCount;
     LOS_BOOT_CONTEXT_LOAD_SEGMENT KernelLoadSegments[LOS_BOOT_CONTEXT_MAX_LOAD_SEGMENTS];
+    LOS_CAPABILITIES_BOOTSTRAP_CONTEXT Capabilities;
     CHAR16 BootSourceText[LOS_BOOT_CONTEXT_TEXT_CHARACTERS];
     CHAR16 KernelPartitionText[LOS_BOOT_CONTEXT_TEXT_CHARACTERS];
 } LOS_BOOT_CONTEXT;
@@ -132,6 +149,8 @@ EFI_STATUS LosMonitorLoadKernelFromSiblingFileSystemHandle(EFI_HANDLE DeviceHand
 EFI_STATUS LosMonitorReadTextFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL *Root, const CHAR16 *TextPath, CHAR16 **TextBuffer);
 EFI_STATUS LosMonitorReadBinaryFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL *Root, const CHAR16 *FilePath, UINT64 *FilePhysicalAddress, UINT64 *FileSize);
 EFI_STATUS LosMonitorReadBinaryFileFromSiblingFileSystemHandle(EFI_HANDLE DeviceHandle, EFI_SYSTEM_TABLE *SystemTable, const CHAR16 *FilePath, UINT64 *FilePhysicalAddress, UINT64 *FileSize);
+EFI_STATUS LosMonitorLoadCapabilitiesFromEsp(EFI_HANDLE DeviceHandle, EFI_SYSTEM_TABLE *SystemTable, LOS_BOOT_CONTEXT *BootContext);
+BOOLEAN LosMonitorElf64ValidateLoadedImage(const void *ImageBase, UINT64 ImageSize, UINT64 *EntryAddress);
 EFI_STATUS LosMonitorExitBootServicesWithMemoryMap(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable, LOS_BOOT_CONTEXT *BootContext);
 
 #endif

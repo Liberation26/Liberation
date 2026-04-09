@@ -1,3 +1,14 @@
+/*
+ * File Name: MonitorFile.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements monitor-stage functionality for Liberation OS.
+ */
+
 #include "MonitorInternal.h"
 
 EFI_STATUS LosMonitorOpenRootForHandle(EFI_SYSTEM_TABLE *SystemTable, EFI_HANDLE DeviceHandle, EFI_FILE_PROTOCOL **Root)
@@ -282,4 +293,51 @@ EFI_STATUS LosMonitorReadBinaryFileFromSiblingFileSystemHandle(EFI_HANDLE Device
 
     SystemTable->BootServices->FreePool(Handles);
     return EFI_NOT_FOUND;
+}
+
+BOOLEAN LosMonitorElf64ValidateLoadedImage(const void *ImageBase, UINT64 ImageSize, UINT64 *EntryAddress)
+{
+    const LOS_ELF64_HEADER *ElfHeader;
+
+    if (EntryAddress != 0)
+    {
+        *EntryAddress = 0ULL;
+    }
+
+    if (ImageBase == 0 || ImageSize < sizeof(LOS_ELF64_HEADER))
+    {
+        return 0;
+    }
+
+    ElfHeader = (const LOS_ELF64_HEADER *)ImageBase;
+    if (ElfHeader->Ident[0] != LOS_ELF_MAGIC_0 ||
+        ElfHeader->Ident[1] != LOS_ELF_MAGIC_1 ||
+        ElfHeader->Ident[2] != LOS_ELF_MAGIC_2 ||
+        ElfHeader->Ident[3] != LOS_ELF_MAGIC_3 ||
+        ElfHeader->Ident[4] != LOS_ELF_CLASS_64 ||
+        ElfHeader->Ident[5] != LOS_ELF_DATA_LITTLE_ENDIAN ||
+        ElfHeader->Machine != LOS_ELF_MACHINE_X86_64 ||
+        ElfHeader->Type != LOS_ELF_TYPE_EXEC ||
+        ElfHeader->ProgramHeaderEntrySize != sizeof(LOS_ELF64_PROGRAM_HEADER) ||
+        ElfHeader->ProgramHeaderCount == 0U)
+    {
+        return 0;
+    }
+
+    if (ElfHeader->ProgramHeaderOffset > ImageSize)
+    {
+        return 0;
+    }
+
+    if ((UINT64)ElfHeader->ProgramHeaderCount > (ImageSize - ElfHeader->ProgramHeaderOffset) / sizeof(LOS_ELF64_PROGRAM_HEADER))
+    {
+        return 0;
+    }
+
+    if (EntryAddress != 0)
+    {
+        *EntryAddress = ElfHeader->Entry;
+    }
+
+    return 1;
 }

@@ -1,3 +1,14 @@
+/*
+ * File Name: SchedulerUserImage.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 #include "SchedulerUserImage.h"
 const UINT8 LosKernelSchedulerUserImage[] = {
     0x7FU, 0x45U, 0x4CU, 0x46U, 0x02U, 0x01U, 0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,

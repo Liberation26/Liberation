@@ -1,3 +1,14 @@
+/*
+ * File Name: InstallerLayout.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements low-level functionality for Liberation OS.
+ */
+
 #include "InstallerInternal.h"
 
 const EFI_GUID LosGptPartitionTypeEfiSystem =
@@ -21,7 +32,7 @@ EFI_STATUS LosInstallerConfirmDestructiveInstall(EFI_SYSTEM_TABLE *SystemTable)
     EFI_INPUT_KEY Key;
     EFI_STATUS Status;
 
-    LosInstallerPrint(SystemTable, LOS_TEXT("This will erase the selected disk. Press Y to continue.\r\n"));
+    LosInstallerPrint(SystemTable, LOS_TEXT("This will erase the selected disk. Press Y to continue or N to answer again.\r\n"));
     for (;;)
     {
         Status = LosInstallerReadSingleKey(SystemTable, &Key);
@@ -42,9 +53,11 @@ EFI_STATUS LosInstallerConfirmDestructiveInstall(EFI_SYSTEM_TABLE *SystemTable)
         {
             LosInstallerPrint(SystemTable, LOS_TEXT("You pressed: "));
             LosInstallerPrintChar(SystemTable, Key.UnicodeChar);
-            LosInstallerPrint(SystemTable, LOS_TEXT("\r\nInstallation cancelled.\r\n"));
-            return EFI_ABORTED;
+            LosInstallerPrint(SystemTable, LOS_TEXT("\r\nPlease answer the confirmation again. Press Y to continue.\r\n"));
+            continue;
         }
+
+        LosInstallerPrint(SystemTable, LOS_TEXT("Please press Y to continue.\r\n"));
     }
 }
 

@@ -1,3 +1,14 @@
+/*
+ * File Name: MonitorMain.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T10:54:19Z
+ * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements monitor-stage functionality for Liberation OS.
+ */
+
 #include "MonitorInternal.h"
 
 static const CHAR16 *const KernelPathDataPartition = LOS_TEXT("\\LIBERATION\\KERNELX64.ELF");
@@ -220,6 +231,16 @@ EFI_STATUS EFIAPI LosRunKernelMonitor(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *
         KernelLoadSegmentCount,
         BootInfoText,
         KernelPartitionText);
+    BootContext->KernelFontPhysicalAddress = KernelFontPhysicalAddress;
+    Status = LosMonitorLoadCapabilitiesFromEsp(ParentDeviceHandle, SystemTable, BootContext);
+    if (!EFI_ERROR(Status))
+    {
+        LosMonitorTraceHex64(SystemTable, LOS_TEXT("Capabilities blocks loaded from ESP: "), (UINT64)BootContext->Capabilities.BlockCount);
+    }
+    else
+    {
+        LosMonitorTraceStatus(SystemTable, LOS_TEXT("Capabilities load status: "), Status);
+    }
     BootContext->KernelFontPhysicalAddress = KernelFontPhysicalAddress;
     BootContext->KernelFontSize = KernelFontSize;
     LosMonitorCaptureFramebufferInfo(SystemTable, BootContext);

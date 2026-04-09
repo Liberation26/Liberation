@@ -1,3 +1,14 @@
+/*
+ * File Name: MonitorKernel.c
+ * File Version: 0.3.11
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements monitor-stage functionality for Liberation OS.
+ */
+
 #include "MonitorInternal.h"
 
 EFI_STATUS LosMonitorLoadKernelFileFromRoot(EFI_SYSTEM_TABLE *SystemTable, EFI_FILE_PROTOCOL *Root, const CHAR16 *KernelPath, void **KernelEntryAddress, UINT64 *KernelImagePhysicalAddress, UINTN *KernelImageSize, LOS_BOOT_CONTEXT_LOAD_SEGMENT *KernelLoadSegments, UINT64 *KernelLoadSegmentCount)
