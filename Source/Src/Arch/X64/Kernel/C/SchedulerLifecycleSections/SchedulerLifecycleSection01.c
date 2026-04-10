@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection01.c
- * File Version: 0.0.3
+ * File Version: 0.0.4
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T22:45:00Z
+ * Last Update Timestamp: 2026-04-10T22:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -186,6 +186,68 @@ static UINT64 ReadStackReturnAddress(UINT64 StackAddress)
 
     Pointer = (const UINT64 *)(UINTN)StackAddress;
     return *Pointer;
+}
+
+static BOOLEAN IsHigherHalfKernelAddress(UINT64 Address)
+{
+    return Address >= 0xFFFFFFFF80000000ULL ? 1U : 0U;
+}
+
+static __attribute__((unused)) BOOLEAN IsCanonicalUserAddress(UINT64 Address)
+{
+    return (Address != 0ULL && Address < 0x0000800000000000ULL) ? 1U : 0U;
+}
+
+static BOOLEAN IsAddressRangeWithinTaskKernelStack(const LOS_KERNEL_SCHEDULER_TASK *Task, UINT64 Address, UINT64 Size)
+{
+    UINT64 EndExclusive;
+
+    if (Task == 0 ||
+        Address == 0ULL ||
+        Size == 0ULL ||
+        Task->StackBaseVirtualAddress == 0ULL ||
+        Task->StackTopVirtualAddress == 0ULL ||
+        Task->StackTopVirtualAddress <= Task->StackBaseVirtualAddress)
+    {
+        return 0U;
+    }
+
+    EndExclusive = Address + Size;
+    if (EndExclusive < Address)
+    {
+        return 0U;
+    }
+
+    return (Address >= Task->StackBaseVirtualAddress &&
+            EndExclusive <= Task->StackTopVirtualAddress)
+        ? 1U
+        : 0U;
+}
+
+static __attribute__((unused)) void TraceUserTransitionFrameValues(const char *Prefix, const LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *Frame;
+
+    if (Task == 0 ||
+        Task->UserTransitionFrameStackPointer == 0ULL ||
+        IsAddressRangeWithinTaskKernelStack(Task,
+                                            Task->UserTransitionFrameStackPointer,
+                                            sizeof(LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME)) == 0U)
+    {
+        return;
+    }
+
+    Frame = (const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *)(UINTN)Task->UserTransitionFrameStackPointer;
+    if (Prefix != 0)
+    {
+        LosKernelTrace(Prefix);
+    }
+    LosKernelTraceHex64("Scheduler first-user-task frame stack pointer: ", Task->UserTransitionFrameStackPointer);
+    LosKernelTraceHex64("Scheduler first-user-task frame rip: ", Frame->Rip);
+    LosKernelTraceHex64("Scheduler first-user-task frame cs: ", Frame->Cs);
+    LosKernelTraceHex64("Scheduler first-user-task frame rflags: ", Frame->Rflags);
+    LosKernelTraceHex64("Scheduler first-user-task frame rsp: ", Frame->Rsp);
+    LosKernelTraceHex64("Scheduler first-user-task frame ss: ", Frame->Ss);
 }
 
 static UINT64 GetUserTransitionFrameStackPointer(const LOS_KERNEL_SCHEDULER_TASK *Task)

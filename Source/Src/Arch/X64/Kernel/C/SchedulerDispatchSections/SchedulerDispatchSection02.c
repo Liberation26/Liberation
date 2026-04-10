@@ -1,16 +1,87 @@
 /*
  * File Name: SchedulerDispatchSection02.c
- * File Version: 0.0.3
+ * File Version: 0.0.4
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T20:05:00Z
+ * Last Update Timestamp: 2026-04-10T23:20:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerDispatch.c.
  */
 
 
 static volatile UINT64 LosKernelSchedulerDeferredLiveUserInterruptPreemptionLogged = 0ULL;
+static volatile UINT64 LosKernelSchedulerLiveUserDispatchTraceLogged = 0ULL;
+
+static BOOLEAN IsHigherHalfKernelAddress(UINT64 Address)
+{
+    return Address >= 0xFFFFFFFF80000000ULL ? 1U : 0U;
+}
+
+static UINT64 ReadStackReturnAddress(UINT64 StackAddress)
+{
+    const UINT64 *Pointer;
+
+    Pointer = (const UINT64 *)(UINTN)StackAddress;
+    return *Pointer;
+}
+
+static BOOLEAN IsCanonicalUserAddress(UINT64 Address)
+{
+    return (Address != 0ULL && Address < 0x0000800000000000ULL) ? 1U : 0U;
+}
+
+static BOOLEAN IsAddressRangeWithinTaskKernelStack(const LOS_KERNEL_SCHEDULER_TASK *Task, UINT64 Address, UINT64 Size)
+{
+    UINT64 EndExclusive;
+
+    if (Task == 0 ||
+        Address == 0ULL ||
+        Size == 0ULL ||
+        Task->StackBaseVirtualAddress == 0ULL ||
+        Task->StackTopVirtualAddress == 0ULL ||
+        Task->StackTopVirtualAddress <= Task->StackBaseVirtualAddress)
+    {
+        return 0U;
+    }
+
+    EndExclusive = Address + Size;
+    if (EndExclusive < Address)
+    {
+        return 0U;
+    }
+
+    return (Address >= Task->StackBaseVirtualAddress &&
+            EndExclusive <= Task->StackTopVirtualAddress)
+        ? 1U
+        : 0U;
+}
+
+static void TraceUserTransitionFrameValues(const char *Prefix, const LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *Frame;
+
+    if (Task == 0 ||
+        Task->UserTransitionFrameStackPointer == 0ULL ||
+        IsAddressRangeWithinTaskKernelStack(Task,
+                                            Task->UserTransitionFrameStackPointer,
+                                            sizeof(LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME)) == 0U)
+    {
+        return;
+    }
+
+    Frame = (const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *)(UINTN)Task->UserTransitionFrameStackPointer;
+    if (Prefix != 0)
+    {
+        LosKernelTrace(Prefix);
+    }
+    LosKernelTraceHex64("Scheduler first-user-task frame stack pointer: ", Task->UserTransitionFrameStackPointer);
+    LosKernelTraceHex64("Scheduler first-user-task frame rip: ", Frame->Rip);
+    LosKernelTraceHex64("Scheduler first-user-task frame cs: ", Frame->Cs);
+    LosKernelTraceHex64("Scheduler first-user-task frame rflags: ", Frame->Rflags);
+    LosKernelTraceHex64("Scheduler first-user-task frame rsp: ", Frame->Rsp);
+    LosKernelTraceHex64("Scheduler first-user-task frame ss: ", Frame->Ss);
+}
 
 static BOOLEAN ShouldDeferLiveUserTaskInterruptPreemption(const LOS_KERNEL_SCHEDULER_TASK *Task)
 {
@@ -163,24 +234,85 @@ void LosKernelSchedulerThreadTrampoline(void)
 UINT64 LosKernelSchedulerPrepareUserTransitionIret(void)
 {
     const LOS_KERNEL_SCHEDULER_TASK *Task;
+    const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *Frame;
+    UINT64 BridgeReturnSlot;
+    UINT64 KernelEntryReturnSlot;
 
     Task = LosKernelSchedulerGetCurrentTask();
     if (Task == 0 ||
         (Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) == 0U ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE ||
         Task->UserTransitionFrameStackPointer == 0ULL ||
+        Task->ExecutionContext.StackPointer == 0ULL ||
         Task->StackTopVirtualAddress == 0ULL)
     {
         LosKernelTraceFail("Kernel scheduler could not prepare a live first-user-task iret frame.");
         LosKernelHaltForever();
     }
 
+    if (IsAddressRangeWithinTaskKernelStack(Task,
+                                            Task->UserTransitionFrameStackPointer,
+                                            sizeof(LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME)) == 0U ||
+        IsAddressRangeWithinTaskKernelStack(Task, Task->ExecutionContext.StackPointer, 16ULL) == 0U)
+    {
+        LosKernelTraceFail("Kernel scheduler rejected the live first-user-task handoff because the prepared stack slots were outside the task kernel stack.");
+        LosKernelTraceHex64("Scheduler first-user-task stack base: ", Task->StackBaseVirtualAddress);
+        LosKernelTraceHex64("Scheduler first-user-task stack top: ", Task->StackTopVirtualAddress);
+        LosKernelTraceHex64("Scheduler first-user-task handoff stack pointer: ", Task->ExecutionContext.StackPointer);
+        LosKernelTraceHex64("Scheduler first-user-task frame stack pointer: ", Task->UserTransitionFrameStackPointer);
+        LosKernelHaltForever();
+    }
+
+    if (IsHigherHalfKernelAddress(Task->UserTransitionBridgeVirtualAddress) == 0U ||
+        IsHigherHalfKernelAddress(Task->UserTransitionKernelEntryVirtualAddress) == 0U ||
+        IsCanonicalUserAddress(Task->UserInstructionPointer) == 0U ||
+        IsCanonicalUserAddress(Task->UserStackPointer) == 0U)
+    {
+        LosKernelTraceFail("Kernel scheduler rejected the live first-user-task handoff because one of the prepared transition addresses was invalid.");
+        LosKernelTraceHex64("Scheduler first-user-task user rip: ", Task->UserInstructionPointer);
+        LosKernelTraceHex64("Scheduler first-user-task user rsp: ", Task->UserStackPointer);
+        LosKernelTraceHex64("Scheduler first-user-task bridge address: ", Task->UserTransitionBridgeVirtualAddress);
+        LosKernelTraceHex64("Scheduler first-user-task kernel-entry address: ", Task->UserTransitionKernelEntryVirtualAddress);
+        LosKernelHaltForever();
+    }
+
+    BridgeReturnSlot = ReadStackReturnAddress(Task->ExecutionContext.StackPointer);
+    KernelEntryReturnSlot = ReadStackReturnAddress(Task->ExecutionContext.StackPointer + 8ULL);
+    if (BridgeReturnSlot != Task->UserTransitionBridgeVirtualAddress ||
+        KernelEntryReturnSlot != Task->UserTransitionKernelEntryVirtualAddress)
+    {
+        LosKernelTraceFail("Kernel scheduler rejected the live first-user-task handoff because the chain stack did not contain the expected bridge contract.");
+        LosKernelTraceHex64("Scheduler first-user-task handoff stack pointer: ", Task->ExecutionContext.StackPointer);
+        LosKernelTraceHex64("Scheduler first-user-task observed bridge return slot: ", BridgeReturnSlot);
+        LosKernelTraceHex64("Scheduler first-user-task observed kernel-entry return slot: ", KernelEntryReturnSlot);
+        LosKernelTraceHex64("Scheduler first-user-task expected bridge address: ", Task->UserTransitionBridgeVirtualAddress);
+        LosKernelTraceHex64("Scheduler first-user-task expected kernel-entry address: ", Task->UserTransitionKernelEntryVirtualAddress);
+        LosKernelHaltForever();
+    }
+
+    Frame = (const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *)(UINTN)Task->UserTransitionFrameStackPointer;
+    if (Frame == 0 ||
+        Frame->Rip != Task->UserInstructionPointer ||
+        Frame->Cs != Task->UserCodeSegmentSelector ||
+        Frame->Rflags != Task->UserRflags ||
+        Frame->Rsp != Task->UserStackPointer ||
+        Frame->Ss != Task->UserStackSegmentSelector)
+    {
+        LosKernelTraceFail("Kernel scheduler rejected the live first-user-task handoff because the iret frame contents did not match the recorded transition state.");
+        TraceUserTransitionFrameValues("Scheduler first-user-task frame mismatch diagnostics follow.", Task);
+        LosKernelSchedulerTraceTask("Rejected scheduler first-user-task task", Task);
+        LosKernelHaltForever();
+    }
+
     LosKernelTraceOk("Kernel scheduler prepared the first live CPL3 iretq dispatch.");
-    LosKernelTraceHex64("Scheduler first-user-task iret frame rsp: ", Task->UserTransitionFrameStackPointer);
+    LosKernelTraceHex64("Scheduler first-user-task handoff stack pointer: ", Task->ExecutionContext.StackPointer);
+    LosKernelTraceHex64("Scheduler first-user-task bridge return slot: ", BridgeReturnSlot);
+    LosKernelTraceHex64("Scheduler first-user-task kernel-entry return slot: ", KernelEntryReturnSlot);
     LosKernelTraceHex64("Scheduler first-user-task user rip: ", Task->UserInstructionPointer);
     LosKernelTraceHex64("Scheduler first-user-task user rsp: ", Task->UserStackPointer);
     LosKernelTraceHex64("Scheduler first-user-task user cs: ", Task->UserCodeSegmentSelector);
     LosKernelTraceHex64("Scheduler first-user-task user ss: ", Task->UserStackSegmentSelector);
+    TraceUserTransitionFrameValues("Scheduler first-user-task prepared frame diagnostics follow.", Task);
     LosKernelSetInterruptStackTop(Task->StackTopVirtualAddress);
     return Task->UserTransitionFrameStackPointer;
 }
@@ -378,6 +510,19 @@ void LosKernelSchedulerEnter(void)
             State->WakeResumeWindowDispatchCount += 1ULL;
         }
         Task->LastWakeTick = 0ULL;
+        if ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) != 0U &&
+            Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE &&
+            LosKernelSchedulerLiveUserDispatchTraceLogged == 0ULL)
+        {
+            LosKernelSchedulerLiveUserDispatchTraceLogged = 1ULL;
+            LosKernelTraceOk("Kernel scheduler is dispatching the first live user task through the real bridge path.");
+            LosKernelTraceHex64("Scheduler live user dispatch stack pointer: ", Task->ExecutionContext.StackPointer);
+            LosKernelTraceHex64("Scheduler live user dispatch bridge return slot: ",
+                                ReadStackReturnAddress(Task->ExecutionContext.StackPointer));
+            LosKernelTraceHex64("Scheduler live user dispatch kernel-entry return slot: ",
+                                ReadStackReturnAddress(Task->ExecutionContext.StackPointer + 8ULL));
+            TraceUserTransitionFrameValues("Scheduler live user dispatch frame diagnostics follow.", Task);
+        }
         State->InScheduler = 0U;
         LosKernelSchedulerSwitchContext(&State->SchedulerContext, &Task->ExecutionContext);
 

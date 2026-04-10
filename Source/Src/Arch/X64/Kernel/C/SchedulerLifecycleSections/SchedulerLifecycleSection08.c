@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection08.c
- * File Version: 0.0.5
+ * File Version: 0.0.6
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T19:20:00Z
+ * Last Update Timestamp: 2026-04-10T23:05:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -48,7 +48,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldTrampolineReady(void)
         return 1;
     }
 
-    KernelEntryAddress = LosKernelSchedulerGetUserTransitionKernelEntryRuntimeAddress();
+    KernelEntryAddress = (UINT64)(UINTN)&LosKernelSchedulerUserTransitionKernelEntry;
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
@@ -56,7 +56,8 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldTrampolineReady(void)
         Task->ExecutionContext.StackPointer == 0ULL ||
         Process->UserTransitionFrameStackPointer == 0ULL ||
         Task->UserTransitionFrameStackPointer == 0ULL ||
-        KernelEntryAddress == 0ULL)
+        KernelEntryAddress == 0ULL ||
+        IsHigherHalfKernelAddress(KernelEntryAddress) == 0U)
     {
         return 0;
     }
@@ -74,7 +75,8 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldTrampolineReady(void)
         Task->ExecutionContext.StackPointer != 0ULL &&
         Process->UserTransitionFrameStackPointer != 0ULL &&
         Task->UserTransitionFrameStackPointer != 0ULL &&
-        KernelEntryAddress != 0ULL)
+        KernelEntryAddress != 0ULL &&
+        IsHigherHalfKernelAddress(KernelEntryAddress) != 0U)
     {
         WriteStackReturnAddress(Task->ExecutionContext.StackPointer, KernelEntryAddress);
         if (ReadStackReturnAddress(Task->ExecutionContext.StackPointer) == KernelEntryAddress)
@@ -92,6 +94,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldTrampolineReady(void)
     if (Ready != 0U)
     {
         LosKernelTraceOk("Scheduler first user task trampoline-ready.");
+        LosKernelTraceHex64("Scheduler first user task kernel-entry runtime address: ", KernelEntryAddress);
         LosKernelSchedulerTraceProcess("Trampoline-ready scheduler first user task process", Process);
         LosKernelSchedulerTraceTask("Trampoline-ready scheduler first user task task", Task);
         return 1;
@@ -140,14 +143,15 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
         return 1;
     }
 
-    BridgeAddress = LosKernelSchedulerGetUserTransitionDispatchBridgeRuntimeAddress();
+    BridgeAddress = (UINT64)(UINTN)&LosKernelSchedulerUserTransitionDispatchBridge;
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_TRAMPOLINE_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_TRAMPOLINE_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
         Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
         Process->UserTransitionKernelEntryVirtualAddress == 0ULL ||
         Task->UserTransitionKernelEntryVirtualAddress == 0ULL ||
-        BridgeAddress == 0ULL)
+        BridgeAddress == 0ULL ||
+        IsHigherHalfKernelAddress(BridgeAddress) == 0U)
     {
         return 0;
     }
@@ -164,7 +168,8 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
         Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
         Process->UserTransitionKernelEntryVirtualAddress != 0ULL &&
         Task->UserTransitionKernelEntryVirtualAddress != 0ULL &&
-        BridgeAddress != 0ULL)
+        BridgeAddress != 0ULL &&
+        IsHigherHalfKernelAddress(BridgeAddress) != 0U)
     {
         ChainStackPointer = GetUserTransitionChainStackPointer(Task);
         if (ChainStackPointer != 0ULL)
@@ -189,6 +194,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
     if (Ready != 0U)
     {
         LosKernelTraceOk("Scheduler first user task bridge-ready.");
+        LosKernelTraceHex64("Scheduler first user task bridge runtime address: ", BridgeAddress);
         LosKernelTraceHex64("Scheduler first user task bridge stack pointer: ", Task->ExecutionContext.StackPointer);
         LosKernelTraceHex64("Scheduler first user task bridge return slot: ",
                             ReadStackReturnAddress(Task->ExecutionContext.StackPointer));
