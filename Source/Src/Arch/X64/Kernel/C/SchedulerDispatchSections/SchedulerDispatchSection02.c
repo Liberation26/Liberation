@@ -1,13 +1,30 @@
 /*
  * File Name: SchedulerDispatchSection02.c
- * File Version: 0.0.2
+ * File Version: 0.0.3
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T22:20:00Z
+ * Last Update Timestamp: 2026-04-10T20:05:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerDispatch.c.
  */
+
+
+static volatile UINT64 LosKernelSchedulerDeferredLiveUserInterruptPreemptionLogged = 0ULL;
+
+static BOOLEAN ShouldDeferLiveUserTaskInterruptPreemption(const LOS_KERNEL_SCHEDULER_TASK *Task)
+{
+    if (Task == 0)
+    {
+        return 0U;
+    }
+
+    return ((Task->Flags & LOS_KERNEL_SCHEDULER_TASK_FLAG_USER_MODE) != 0U &&
+            Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_LIVE &&
+            Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_RUNNING)
+        ? 1U
+        : 0U;
+}
 
 void LosKernelSchedulerPreemptIfNeededFromInterrupt(void)
 {
@@ -23,6 +40,16 @@ void LosKernelSchedulerPreemptIfNeededFromInterrupt(void)
     Task = GetCurrentTaskMutable();
     if (Task == 0)
     {
+        return;
+    }
+
+    if (ShouldDeferLiveUserTaskInterruptPreemption(Task) != 0U)
+    {
+        if (LosKernelSchedulerDeferredLiveUserInterruptPreemptionLogged == 0ULL)
+        {
+            LosKernelSchedulerDeferredLiveUserInterruptPreemptionLogged = 1ULL;
+            LosKernelTraceOk("Kernel scheduler deferred timer-driven preemption for the first live user task to preserve the iret frame.");
+        }
         return;
     }
 
