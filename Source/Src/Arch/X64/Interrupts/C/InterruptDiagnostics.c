@@ -1,10 +1,10 @@
 /*
  * File Name: InterruptDiagnostics.c
- * File Version: 0.3.12
+ * File Version: 0.3.13
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-10T17:20:00Z
+ * Last Update Timestamp: 2026-04-10T18:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
@@ -21,7 +21,6 @@
 
 static UINT64 ReadCr2(void)
 {
-    LOS_KERNEL_ENTER();
     UINT64 Value;
     __asm__ __volatile__("mov %%cr2, %0" : "=r"(Value));
     return Value;
@@ -29,7 +28,6 @@ static UINT64 ReadCr2(void)
 
 static UINT64 ReadCr3(void)
 {
-    LOS_KERNEL_ENTER();
     UINT64 Value;
     __asm__ __volatile__("mov %%cr3, %0" : "=r"(Value));
     return Value;
@@ -57,7 +55,6 @@ static UINTN QueryPtIndex(UINT64 VirtualAddress)
 
 static UINT64 *TranslatePageTable(UINT64 PhysicalAddress)
 {
-    LOS_KERNEL_ENTER();
     return (UINT64 *)LosX64GetDirectMapVirtualAddress(PhysicalAddress, 0x1000ULL);
 }
 
@@ -70,7 +67,6 @@ static BOOLEAN ResolveCurrentVirtualToPhysical(UINT64 VirtualAddress, UINT64 *Ph
     UINT64 *PageDirectory;
     UINT64 *PageTable;
 
-    LOS_KERNEL_ENTER();
     if (PhysicalAddress != 0)
     {
         *PhysicalAddress = 0ULL;
@@ -153,7 +149,6 @@ static void WriteHexByte(UINT8 Value)
 {
     char Buffer[3];
 
-    LOS_KERNEL_ENTER();
     Buffer[0] = HexDigit((UINT8)((Value >> 4U) & 0x0FU));
     Buffer[1] = HexDigit((UINT8)(Value & 0x0FU));
     Buffer[2] = '\0';
@@ -162,7 +157,6 @@ static void WriteHexByte(UINT8 Value)
 
 static UINT64 ResolveInterruptedStackPointer(const LOS_X64_INTERRUPT_FRAME *Frame)
 {
-    LOS_KERNEL_ENTER();
     if (Frame == 0)
     {
         return 0ULL;
@@ -183,13 +177,19 @@ static void WriteInstructionBytesAtRip(const LOS_X64_INTERRUPT_FRAME *Frame)
     UINT64 PhysicalAddress;
     const volatile UINT8 *BytePointer;
 
-    LOS_KERNEL_ENTER();
-    if (Frame == 0 || Frame->Rip == 0ULL)
+    if (Frame == 0)
     {
+        LosKernelSerialWriteText("[Kernel] RIP bytes unavailable: no interrupt frame.\n");
         return;
     }
 
-    LosKernelSerialWriteText("[Kernel] RIP bytes:");
+    if (Frame->Rip == 0ULL)
+    {
+        LosKernelSerialWriteText("[Kernel] RIP bytes unavailable: RIP is zero.\n");
+        return;
+    }
+
+    LosKernelSerialWriteText("[Kernel] RIP bytes (32):");
     for (ByteIndex = 0U; ByteIndex < LOS_X64_RIP_DUMP_BYTE_COUNT; ++ByteIndex)
     {
         if ((ByteIndex % 16U) == 0U)
@@ -224,7 +224,6 @@ static void WriteInstructionBytesAtRip(const LOS_X64_INTERRUPT_FRAME *Frame)
 
 const char *LosX64GetExceptionName(UINT64 Vector)
 {
-    LOS_KERNEL_ENTER();
     static const char *const Names[LOS_X64_EXCEPTION_VECTOR_COUNT] =
     {
         "#DE Divide Error",
@@ -271,7 +270,6 @@ const char *LosX64GetExceptionName(UINT64 Vector)
 
 static void WritePageFaultDecode(UINT64 ErrorCode)
 {
-    LOS_KERNEL_ENTER();
     LosKernelSerialWriteText("[Kernel] Page-fault decode:");
     LosKernelSerialWriteText((ErrorCode & 0x001ULL) != 0ULL ? " present-violation" : " non-present");
     LosKernelSerialWriteText((ErrorCode & 0x002ULL) != 0ULL ? " write" : " read");
@@ -304,7 +302,6 @@ static void WritePageFaultDecode(UINT64 ErrorCode)
 
 void LosX64DescribeFault(UINT64 Vector, UINT64 ErrorCode)
 {
-    LOS_KERNEL_ENTER();
     LosKernelSerialWriteText("[Kernel] Fault decode: ");
     LosKernelSerialWriteText(LosX64GetExceptionName(Vector));
     LosKernelSerialWriteText("\n");
@@ -332,7 +329,6 @@ void LosX64DescribeFault(UINT64 Vector, UINT64 ErrorCode)
 
 static void WriteRegisterLine(const char *Name, UINT64 ValueA, const char *NameB, UINT64 ValueB)
 {
-    LOS_KERNEL_ENTER();
     LosKernelSerialWriteText("[Kernel] ");
     LosKernelSerialWriteText(Name);
     LosKernelSerialWriteText("=");
@@ -348,7 +344,6 @@ void LosX64WriteRegisterDump(const LOS_X64_REGISTER_STATE *Registers, const LOS_
 {
     UINT64 InterruptedStackPointer;
 
-    LOS_KERNEL_ENTER();
     if (Registers == 0 || Frame == 0)
     {
         return;
