@@ -1,10 +1,10 @@
 /*
  * File Name: KernelMain.h
- * File Version: 0.3.17
+ * File Version: 0.3.18
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T11:02:18Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-10T19:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -97,13 +97,14 @@ void LosKernelHaltForever(void);
 void LosKernelEnableInterrupts(void);
 void LosKernelIdleLoop(void);
 void LosKernelAnnounceFunction(const char *FunctionName);
+void LosDiagnosticsInitialize(void);
 void LosKernelSetInterruptStackTop(UINT64 StackTop);
 
 extern UINT64 LosGdt[LOS_X64_GDT_ENTRY_COUNT];
 const void *LosKernelGetGdtBase(void);
 UINT64 LosKernelGetGdtSize(void);
 extern volatile UINT64 LosKernelRuntimeTracingEnabled;
-#define LOS_KERNEL_ENTER() do { if (LosKernelRuntimeTracingEnabled != 0ULL) { LosKernelAnnounceFunction(__func__); } } while (0)
+#define LOS_KERNEL_ENTER() do { } while (0)
 
 void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext);
 const LOS_BOOT_CONTEXT *LosKernelGetBootContext(void);

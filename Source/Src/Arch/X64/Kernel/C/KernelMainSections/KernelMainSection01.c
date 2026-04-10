@@ -1,10 +1,10 @@
 /*
  * File Name: KernelMainSection01.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-10T19:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from KernelMain.c.
  */
@@ -39,21 +39,23 @@ static LOS_X64_TASK_STATE_SEGMENT LosKernelTss __attribute__((aligned(16)));
 static LOS_DESCRIPTOR_POINTER LosGdtPointer;
 static const LOS_BOOT_CONTEXT *LosKernelBootContext;
 
+#define LOS_KERNEL_NOINSTRUMENT __attribute__((no_instrument_function))
+
 volatile UINT64 LosKernelRuntimeTracingEnabled __attribute__((section(".bootstrap.data"))) = 0ULL;
 
-static inline void Out8(UINT16 Port, UINT8 Value)
+static inline void LOS_KERNEL_NOINSTRUMENT Out8(UINT16 Port, UINT8 Value)
 {
     __asm__ __volatile__("outb %0, %1" : : "a"(Value), "Nd"(Port));
 }
 
-static inline UINT8 In8(UINT16 Port)
+static inline UINT8 LOS_KERNEL_NOINSTRUMENT In8(UINT16 Port)
 {
     UINT8 Value;
     __asm__ __volatile__("inb %1, %0" : "=a"(Value) : "Nd"(Port));
     return Value;
 }
 
-void LosKernelSerialInit(void)
+void LOS_KERNEL_NOINSTRUMENT LosKernelSerialInit(void)
 {
     Out8(LOS_SERIAL_COM1_BASE + 1U, 0x00U);
     Out8(LOS_SERIAL_COM1_BASE + 3U, 0x80U);
@@ -67,7 +69,7 @@ void LosKernelSerialInit(void)
 static char LosKernelTraceLineBuffer[1024];
 static UINTN LosKernelTraceLineLength;
 
-static void SerialWriteRawChar(char Character)
+static void LOS_KERNEL_NOINSTRUMENT SerialWriteRawChar(char Character)
 {
     while ((In8(LOS_SERIAL_COM1_BASE + 5U) & 0x20U) == 0U)
     {
@@ -76,7 +78,7 @@ static void SerialWriteRawChar(char Character)
     Out8(LOS_SERIAL_COM1_BASE + 0U, (UINT8)Character);
 }
 
-static BOOLEAN LosKernelShouldEmitSerialLine(const char *Buffer, UINTN Length)
+static BOOLEAN LOS_KERNEL_NOINSTRUMENT LosKernelShouldEmitSerialLine(const char *Buffer, UINTN Length)
 {
     UINTN Index;
 
@@ -112,7 +114,7 @@ static BOOLEAN LosKernelShouldEmitSerialLine(const char *Buffer, UINTN Length)
     return 0U;
 }
 
-static void LosKernelFlushSerialLineBuffer(BOOLEAN AppendNewline)
+static void LOS_KERNEL_NOINSTRUMENT LosKernelFlushSerialLineBuffer(BOOLEAN AppendNewline)
 {
     UINTN Index;
 
@@ -136,7 +138,7 @@ static void LosKernelFlushSerialLineBuffer(BOOLEAN AppendNewline)
     LosKernelTraceLineLength = 0U;
 }
 
-static void SerialWriteChar(char Character)
+static void LOS_KERNEL_NOINSTRUMENT SerialWriteChar(char Character)
 {
     if (Character == '\r')
     {
@@ -159,7 +161,7 @@ static void SerialWriteChar(char Character)
     LosKernelTraceLineBuffer[LosKernelTraceLineLength] = '\0';
 }
 
-void LosKernelSerialWriteText(const char *Text)
+void LOS_KERNEL_NOINSTRUMENT LosKernelSerialWriteText(const char *Text)
 {
     UINTN Index;
 
@@ -174,7 +176,7 @@ void LosKernelSerialWriteText(const char *Text)
     }
 }
 
-void LosKernelSerialWriteUnsigned(UINT64 Value)
+void LOS_KERNEL_NOINSTRUMENT LosKernelSerialWriteUnsigned(UINT64 Value)
 {
     char Buffer[32];
     UINTN Index;
@@ -200,7 +202,7 @@ void LosKernelSerialWriteUnsigned(UINT64 Value)
     }
 }
 
-void LosKernelSerialWriteHex64(UINT64 Value)
+void LOS_KERNEL_NOINSTRUMENT LosKernelSerialWriteHex64(UINT64 Value)
 {
     UINTN Shift;
 
@@ -213,7 +215,7 @@ void LosKernelSerialWriteHex64(UINT64 Value)
     }
 }
 
-void LosKernelSerialWriteUtf16(const CHAR16 *Text)
+void LOS_KERNEL_NOINSTRUMENT LosKernelSerialWriteUtf16(const CHAR16 *Text)
 {
     UINTN Index;
 
@@ -320,7 +322,7 @@ void LosKernelAnnounceFunction(const char *FunctionName)
     LosKernelSerialWriteText("\n");
 }
 
-void LosKernelHaltForever(void)
+void LOS_KERNEL_NOINSTRUMENT LosKernelHaltForever(void)
 {
     for (;;)
     {
@@ -328,7 +330,7 @@ void LosKernelHaltForever(void)
     }
 }
 
-void LosKernelEnableInterrupts(void)
+void LOS_KERNEL_NOINSTRUMENT LosKernelEnableInterrupts(void)
 {
     __asm__ __volatile__("sti" : : : "memory");
 }

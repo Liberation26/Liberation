@@ -1,10 +1,10 @@
 /*
  * File Name: InterruptDiagnostics.c
- * File Version: 0.3.13
+ * File Version: 0.3.14
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-10T18:10:00Z
+ * Last Update Timestamp: 2026-04-10T19:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
@@ -18,6 +18,7 @@
 #define LOS_X64_PAGE_2MB_ADDRESS_MASK 0x000FFFFFFFE00000ULL
 #define LOS_X64_PAGE_1GB_ADDRESS_MASK 0x000FFFFFC0000000ULL
 #define LOS_X64_RIP_DUMP_BYTE_COUNT 32U
+#define LOS_X64_DIAGNOSTIC_PREFIX "[FAIL] [Kernel] "
 
 static UINT64 ReadCr2(void)
 {
@@ -30,6 +31,13 @@ static UINT64 ReadCr3(void)
 {
     UINT64 Value;
     __asm__ __volatile__("mov %%cr3, %0" : "=r"(Value));
+    return Value;
+}
+
+static UINT64 ReadCr4(void)
+{
+    UINT64 Value;
+    __asm__ __volatile__("mov %%cr4, %0" : "=r"(Value));
     return Value;
 }
 
@@ -179,22 +187,22 @@ static void WriteInstructionBytesAtRip(const LOS_X64_INTERRUPT_FRAME *Frame)
 
     if (Frame == 0)
     {
-        LosKernelSerialWriteText("[Kernel] RIP bytes unavailable: no interrupt frame.\n");
+        LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "RIP bytes unavailable: no interrupt frame.\n");
         return;
     }
 
     if (Frame->Rip == 0ULL)
     {
-        LosKernelSerialWriteText("[Kernel] RIP bytes unavailable: RIP is zero.\n");
+        LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "RIP bytes unavailable: RIP is zero.\n");
         return;
     }
 
-    LosKernelSerialWriteText("[Kernel] RIP bytes (32):");
+    LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "RIP bytes (32):");
     for (ByteIndex = 0U; ByteIndex < LOS_X64_RIP_DUMP_BYTE_COUNT; ++ByteIndex)
     {
         if ((ByteIndex % 16U) == 0U)
         {
-            LosKernelSerialWriteText("\n[Kernel]   ");
+            LosKernelSerialWriteText("\n" LOS_X64_DIAGNOSTIC_PREFIX "  ");
             LosKernelSerialWriteHex64(Frame->Rip + (UINT64)ByteIndex);
             LosKernelSerialWriteText(": ");
         }
@@ -270,7 +278,7 @@ const char *LosX64GetExceptionName(UINT64 Vector)
 
 static void WritePageFaultDecode(UINT64 ErrorCode)
 {
-    LosKernelSerialWriteText("[Kernel] Page-fault decode:");
+    LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "Page-fault decode:");
     LosKernelSerialWriteText((ErrorCode & 0x001ULL) != 0ULL ? " present-violation" : " non-present");
     LosKernelSerialWriteText((ErrorCode & 0x002ULL) != 0ULL ? " write" : " read");
     LosKernelSerialWriteText((ErrorCode & 0x004ULL) != 0ULL ? " user" : " supervisor");
@@ -295,23 +303,23 @@ static void WritePageFaultDecode(UINT64 ErrorCode)
         LosKernelSerialWriteText(" software-guard-extension");
     }
     LosKernelSerialWriteText("\n");
-    LosKernelSerialWriteText("[Kernel] CR2: ");
+    LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "CR2: ");
     LosKernelSerialWriteHex64(ReadCr2());
     LosKernelSerialWriteText("\n");
 }
 
 void LosX64DescribeFault(UINT64 Vector, UINT64 ErrorCode)
 {
-    LosKernelSerialWriteText("[Kernel] Fault decode: ");
+    LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "Fault decode: ");
     LosKernelSerialWriteText(LosX64GetExceptionName(Vector));
     LosKernelSerialWriteText("\n");
-    LosKernelSerialWriteText("[Kernel] CR2: ");
+    LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "CR2: ");
     LosKernelSerialWriteHex64(ReadCr2());
     LosKernelSerialWriteText("\n");
 
     if (Vector == 13ULL)
     {
-        LosKernelSerialWriteText("[Kernel] General-protection selector/index bits: ");
+        LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "General-protection selector/index bits: ");
         LosKernelSerialWriteHex64(ErrorCode);
         LosKernelSerialWriteText("\n");
     }
@@ -321,7 +329,7 @@ void LosX64DescribeFault(UINT64 Vector, UINT64 ErrorCode)
     }
     else if (ErrorCode != 0ULL)
     {
-        LosKernelSerialWriteText("[Kernel] Raw error code: ");
+        LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX "Raw error code: ");
         LosKernelSerialWriteHex64(ErrorCode);
         LosKernelSerialWriteText("\n");
     }
@@ -329,7 +337,7 @@ void LosX64DescribeFault(UINT64 Vector, UINT64 ErrorCode)
 
 static void WriteRegisterLine(const char *Name, UINT64 ValueA, const char *NameB, UINT64 ValueB)
 {
-    LosKernelSerialWriteText("[Kernel] ");
+    LosKernelSerialWriteText(LOS_X64_DIAGNOSTIC_PREFIX);
     LosKernelSerialWriteText(Name);
     LosKernelSerialWriteText("=");
     LosKernelSerialWriteHex64(ValueA);
@@ -353,6 +361,7 @@ void LosX64WriteRegisterDump(const LOS_X64_REGISTER_STATE *Registers, const LOS_
     WriteRegisterLine("RIP", Frame->Rip, "CS", Frame->Cs);
     WriteRegisterLine("RFLAGS", Frame->Rflags, "RSP", InterruptedStackPointer);
     WriteRegisterLine("RBP", Registers->Rbp, "CR2", ReadCr2());
+    WriteRegisterLine("CR3", ReadCr3(), "CR4", ReadCr4());
     WriteRegisterLine("RAX", Registers->Rax, "RBX", Registers->Rbx);
     WriteRegisterLine("RCX", Registers->Rcx, "RDX", Registers->Rdx);
     WriteRegisterLine("RSI", Registers->Rsi, "RDI", Registers->Rdi);

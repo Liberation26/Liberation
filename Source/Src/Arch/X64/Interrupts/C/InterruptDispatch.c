@@ -1,16 +1,17 @@
 /*
  * File Name: InterruptDispatch.c
- * File Version: 0.3.14
+ * File Version: 0.3.15
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-10T18:10:00Z
+ * Last Update Timestamp: 2026-04-10T19:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
 
 #include "Scheduler.h"
 #include "InterruptsInternal.h"
+#include "Diagnostics.h"
 
 #define LOS_X64_PIC1_COMMAND_PORT 0x20U
 #define LOS_X64_PIC1_DATA_PORT 0x21U
@@ -139,7 +140,7 @@ void LosX64InitializeTimer(void)
     LosKernelScreenUpdateTimer(0ULL, LOS_X64_TIMER_TARGET_HZ, 0U);
 }
 
-UINT64 LosX64GetTimerTickCount(void)
+UINT64 __attribute__((no_instrument_function)) LosX64GetTimerTickCount(void)
 {
     return LosX64TimerTickCount;
 }
@@ -213,15 +214,6 @@ void LosX64HandleInterrupt(
     }
 
     LosKernelRuntimeTracingEnabled = 0ULL;
-    LosKernelSerialWriteText("[FAIL] [Kernel] Exception vector ");
-    LosKernelSerialWriteUnsigned(Vector);
-    LosKernelSerialWriteText(": ");
-    LosKernelSerialWriteText(LosX64GetExceptionName(Vector));
-    LosKernelSerialWriteText("\n");
-    LosKernelSerialWriteText("[FAIL] [Kernel] Error code: ");
-    LosKernelSerialWriteHex64(ErrorCode);
-    LosKernelSerialWriteText("\n");
-    LosX64DescribeFault(Vector, ErrorCode);
-    LosX64WriteRegisterDump(Registers, Frame);
+    LosDiagnosticsWriteInterruptCrashReport(Registers, Vector, ErrorCode, Frame);
     LosKernelHaltForever();
 }
