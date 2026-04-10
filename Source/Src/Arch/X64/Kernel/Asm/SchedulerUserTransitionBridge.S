@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerUserTransitionBridge.S
- * File Version: 0.3.13
+ * File Version: 0.3.14
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-10T19:20:00Z
+ * Last Update Timestamp: 2026-04-10T21:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -22,6 +22,7 @@
 .extern LosKernelSchedulerPrepareUserTransitionIret
 
 LosKernelSchedulerUserTransitionDispatchBridge:
+    cli
     mov rbx, rsp
     and rsp, -16
     call LosKernelSchedulerPrepareUserTransitionIret

@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection09.c
- * File Version: 0.0.3
+ * File Version: 0.0.4
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T18:15:00Z
+ * Last Update Timestamp: 2026-04-10T21:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -339,6 +339,12 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
         Task->ResumeBoostTicks = 4U;
         Task->NextWakeTick = 0ULL;
         Task->RemainingQuantumTicks = Task->QuantumTicks;
+        /*
+         * Enter the bridge with IF clear so no timer IRQ can land between
+         * the context-switch ret and the bridge's cli/iretq sequence.
+         * The user IF state still comes from the prepared iret frame.
+         */
+        Task->ExecutionContext.Rflags = 0x0000000000000002ULL;
         State->UserTransitionLiveCount += 1ULL;
         State->UserTransitionLiveGateClosed = 0U;
         State->UserTransitionCompleteCount = 0ULL;
@@ -350,6 +356,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
     {
         LosKernelTraceOk("Scheduler first user task marked live for real iretq dispatch.");
         LosKernelTraceHex64("Scheduler first user task live stack pointer: ", Task->ExecutionContext.StackPointer);
+        LosKernelTraceHex64("Scheduler first user task bridge kernel rflags: ", Task->ExecutionContext.Rflags);
         LosKernelTraceHex64("Scheduler first user task live return slot: ",
                             ReadStackReturnAddress(Task->ExecutionContext.StackPointer));
         LosKernelTraceHex64("Scheduler first user task live next return slot: ",
