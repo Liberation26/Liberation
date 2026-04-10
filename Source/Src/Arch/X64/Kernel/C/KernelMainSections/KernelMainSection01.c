@@ -1,10 +1,10 @@
 /*
  * File Name: KernelMainSection01.c
- * File Version: 0.0.2
+ * File Version: 0.0.3
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T19:10:00Z
+ * Last Update Timestamp: 2026-04-10T20:25:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from KernelMain.c.
  */
@@ -41,7 +41,7 @@ static const LOS_BOOT_CONTEXT *LosKernelBootContext;
 
 #define LOS_KERNEL_NOINSTRUMENT __attribute__((no_instrument_function))
 
-volatile UINT64 LosKernelRuntimeTracingEnabled __attribute__((section(".bootstrap.data"))) = 0ULL;
+volatile UINT64 LosKernelRuntimeTracingEnabled = 0ULL;
 
 static inline void LOS_KERNEL_NOINSTRUMENT Out8(UINT16 Port, UINT8 Value)
 {

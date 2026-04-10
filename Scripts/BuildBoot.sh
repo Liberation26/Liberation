@@ -357,11 +357,7 @@ echo "[Liberation] Building ELF X64 kernel image..."
 KernelObjects=()
 for SourceFile in "${KernelSourceDir}"/*.c "${InterruptSourceDir}"/*.c "${MemorySourceDir}"/*.c; do
     BaseName="$(basename "${SourceFile}" .c)-Kernel"
-    KernelInstrumentationFlags=()
-    if [ "$(basename "${SourceFile}")" != "Diagnostics.c" ]; then
-        KernelInstrumentationFlags=( -finstrument-functions -fno-omit-frame-pointer )
-    fi
-    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         "${KernelInstrumentationFlags[@]}"         -DLIBERATION_VERSION_STRING="${OsVersion}"         -I"${BootHeaderDir}"         -I"${KernelHeaderDir}"         -I"${InterruptHeaderDir}"         -I"${MemoryHeaderDir}"         -I"${PublicIncludeDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
+    clang         --target=x86_64-unknown-none-elf         -ffreestanding         -fno-stack-protector         -fno-builtin         -fno-pic         -fno-pie         -fshort-wchar         -mno-red-zone         -mgeneral-regs-only         -mcmodel=large         -fno-jump-tables         -Wall -Wextra -Wpedantic         -O0 -g0         -DLIBERATION_VERSION_STRING="${OsVersion}"         -I"${BootHeaderDir}"         -I"${KernelHeaderDir}"         -I"${InterruptHeaderDir}"         -I"${MemoryHeaderDir}"         -I"${PublicIncludeDir}"         -c "${SourceFile}"         -o "${BuildDir}/${BaseName}.o"
     KernelObjects+=("${BuildDir}/${BaseName}.o")
 done
 

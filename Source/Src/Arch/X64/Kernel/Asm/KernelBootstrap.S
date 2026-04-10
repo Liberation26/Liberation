@@ -1,3 +1,14 @@
+/*
+ * File Name: KernelBootstrap.S
+ * File Version: 0.3.12
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-10T20:25:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements kernel functionality for Liberation OS.
+ */
+
 .intel_syntax noprefix
 .section .bootstrap.text, "ax"
 
@@ -6,7 +17,6 @@
 .extern LosX64GetKernelStackTop
 .extern LosX64ValidateKernelStackMappingOrHalt
 .extern LosKernelHigherHalfMain
-.extern LosX64InstallBootstrapTrapReporter
 .extern LosX64GetBootstrapTransitionStackTop
 .extern LosX64ReportHigherHalfEntryJump
 
@@ -21,7 +31,6 @@ LosKernelBootstrapEntry:
     call LosX64GetBootstrapTransitionStackTop
     mov rsp, rax
     xor rbp, rbp
-    call LosX64InstallBootstrapTrapReporter
     mov rdi, r12
     call LosX64InitializeVirtualMemory
     call LosX64ValidateKernelStackMappingOrHalt

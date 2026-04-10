@@ -1,3 +1,14 @@
+<!--
+File Name: BootstrapTrapReporter.md
+File Version: 0.3.11
+Author: OpenAI
+Email: dave66samaa@gmail.com
+Creation Timestamp: 2026-04-07T07:24:34Z
+Last Update Timestamp: 2026-04-07T12:35:00Z
+Operating System Name: Liberation OS
+Purpose: Documents Liberation OS design, behavior, usage, or integration details.
+-->
+
 # Bootstrap Trap Reporter
 
 ## 0.0.62 update
@@ -39,3 +50,7 @@ The bootstrap trap reporter and trap-IDT installation path no longer rely on ord
 This specifically fixes the case where `LosX64PopulateBootstrapTrapEntries()` faulted while reading its local static stub table from `0xFFFFFFFF8000...` before the higher-half text/rodata mapping was active.
 
 The fix moves the trap stub table, exception-name table, and bootstrap diagnostic strings into `.bootstrap.rodata`, and removes the hex-writer lookup table so early bootstrap diagnostics stay reachable through the identity-mapped bootstrap footprint.
+
+## 0.4.104 note
+
+As of 0.4.104 the bootstrap trap reporter is no longer installed on the default x64 handoff path. Early bootstrap is kept as small as possible while runtime exception reporting continues through the higher-half kernel interrupt path.

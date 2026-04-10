@@ -4,7 +4,7 @@
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T19:10:00Z
+ * Last Update Timestamp: 2026-04-10T20:25:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from KernelMain.c.
  */
@@ -149,7 +149,6 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
     LosKernelSerialInit();
     LosKernelInitializeScreen(BootContext);
     LosDiagnosticsInitialize();
-    LosKernelRuntimeTracingEnabled = 1ULL;
     LOS_KERNEL_ENTER();
     LosKernelSerialWriteText("Liberation Kernel\n");
     LosKernelTraceOk("Higher-half kernel entry active.");
