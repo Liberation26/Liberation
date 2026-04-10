@@ -1,10 +1,10 @@
 /*
  * File Name: VirtualMemory.h
- * File Version: 0.3.22
+ * File Version: 0.3.23
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-10T18:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
@@ -235,6 +235,7 @@ typedef struct
 void LosX64InitializeVirtualMemory(const LOS_BOOT_CONTEXT *BootContext);
 void LosX64ReportHigherHalfEntryJump(void);
 void LosX64DescribeVirtualMemoryLayout(void);
+void LosX64DescribeBootMemoryMap(const LOS_BOOT_CONTEXT *BootContext);
 void LosX64DescribePhysicalMemoryState(void);
 void LosX64DescribeMemoryManagerHandoff(void);
 void LosX64QueryMemoryRegions(LOS_X64_MEMORY_REGION *Buffer, UINTN BufferRegionCapacity, LOS_X64_QUERY_MEMORY_REGIONS_RESULT *Result);

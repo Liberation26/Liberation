@@ -1,10 +1,10 @@
 /*
  * File Name: KernelMainSection02.c
- * File Version: 0.0.3
+ * File Version: 0.0.4
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T20:25:00Z
+ * Last Update Timestamp: 2026-04-10T18:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from KernelMain.c.
  */
@@ -161,6 +161,7 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
 
     LosX64InitializeTimer();
     LosKernelTraceOk("Programmable interval timer started at 100 Hz.");
+    LosKernelTraceOk("Interrupt controller path: legacy 8259 PIC plus PIT is active; LAPIC and IOAPIC are not yet enabled.");
 
     LosKernelTraceOk("ExitBootServices complete. Kernel owns firmware memory map.");
     LosKernelSerialWriteText("[Kernel] The EFI monitor was handoff-only and does not remain a live UEFI application.\n");
@@ -204,7 +205,10 @@ void LosKernelHigherHalfMain(const LOS_BOOT_CONTEXT *BootContext)
         LosKernelTraceOk("Any continuing monitoring now belongs to kernel-owned code or services.");
     }
 
+    LosX64DescribeBootMemoryMap(BootContext);
     LosX64DescribeVirtualMemoryLayout();
+    LosX64DescribePhysicalMemoryState();
+    LosX64DescribeMemoryManagerHandoff();
     LosKernelTraceOk("Kernel now owns deliberate paging structures.");
     LosKernelTraceOk("Dedicated kernel stack mapping is active.");
     LosInitializeMemoryManagerBootstrap(BootContext);

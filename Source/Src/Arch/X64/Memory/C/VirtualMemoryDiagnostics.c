@@ -1,17 +1,94 @@
 /*
  * File Name: VirtualMemoryDiagnostics.c
- * File Version: 0.3.11
+ * File Version: 0.3.12
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-10T18:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
 
 #include "VirtualMemoryInternal.h"
 
-#define LOS_X64_VERBOSE_PHYSICAL_MEMORY_DUMP 0U
+static const char *LosX64GetEfiMemoryTypeName(UINT32 Type)
+{
+    switch (Type)
+    {
+        case 0U:
+            return "Reserved";
+        case 1U:
+            return "LoaderCode";
+        case 2U:
+            return "LoaderData";
+        case 3U:
+            return "BootServicesCode";
+        case 4U:
+            return "BootServicesData";
+        case 5U:
+            return "RuntimeCode";
+        case 6U:
+            return "RuntimeData";
+        case 7U:
+            return "Conventional";
+        case 8U:
+            return "Unusable";
+        case 9U:
+            return "AcpiReclaim";
+        case 10U:
+            return "AcpiNvs";
+        case 11U:
+            return "Mmio";
+        case 12U:
+            return "MmioPort";
+        case 13U:
+            return "PalCode";
+        case 14U:
+            return "Persistent";
+        default:
+            return "Unknown";
+    }
+}
+
+static const char *LosX64GetMemoryRegionTypeName(UINT32 Type)
+{
+    switch (Type)
+    {
+        case LOS_X64_MEMORY_REGION_TYPE_USABLE:
+            return "Usable";
+        case LOS_X64_MEMORY_REGION_TYPE_BOOT_RESERVED:
+            return "BootReserved";
+        case LOS_X64_MEMORY_REGION_TYPE_RUNTIME:
+            return "Runtime";
+        case LOS_X64_MEMORY_REGION_TYPE_MMIO:
+            return "Mmio";
+        case LOS_X64_MEMORY_REGION_TYPE_ACPI_NVS:
+            return "AcpiNvs";
+        case LOS_X64_MEMORY_REGION_TYPE_FIRMWARE_RESERVED:
+            return "FirmwareReserved";
+        case LOS_X64_MEMORY_REGION_TYPE_UNUSABLE:
+            return "Unusable";
+        default:
+            return "Unknown";
+    }
+}
+
+static const char *LosX64GetMemoryRegionSourceName(UINT32 Source)
+{
+    switch (Source)
+    {
+        case LOS_X64_MEMORY_REGION_SOURCE_EFI:
+            return "Efi";
+        case LOS_X64_MEMORY_REGION_SOURCE_BOOTSTRAP:
+            return "Bootstrap";
+        case LOS_X64_MEMORY_REGION_SOURCE_KERNEL:
+            return "Kernel";
+        case LOS_X64_MEMORY_REGION_SOURCE_RUNTIME:
+            return "Runtime";
+        default:
+            return "Unknown";
+    }
+}
 
 void LosX64DescribeVirtualMemoryLayout(void)
 {
@@ -66,10 +143,70 @@ void LosX64DescribeVirtualMemoryLayout(void)
     LosKernelSerialWriteText("\n");
 }
 
+void LosX64DescribeBootMemoryMap(const LOS_BOOT_CONTEXT *BootContext)
+{
+    const void *MappedBuffer;
+    const UINT8 *DescriptorBytes;
+    UINT64 DescriptorCount;
+    UINT64 Index;
+
+    LOS_KERNEL_ENTER();
+    if (BootContext == 0 || BootContext->MemoryMapAddress == 0ULL || BootContext->MemoryMapSize == 0ULL || BootContext->MemoryMapDescriptorSize == 0ULL)
+    {
+        LosKernelSerialWriteText("[Kernel] EFI memory map unavailable.\n");
+        return;
+    }
+
+    MappedBuffer = LosX64GetDirectMapVirtualAddress(BootContext->MemoryMapAddress, BootContext->MemoryMapSize);
+    if (MappedBuffer == 0)
+    {
+        LosKernelSerialWriteText("[Kernel] EFI memory map could not be direct-mapped for reporting.\n");
+        return;
+    }
+
+    DescriptorBytes = (const UINT8 *)MappedBuffer;
+    DescriptorCount = BootContext->MemoryMapSize / BootContext->MemoryMapDescriptorSize;
+    LosKernelSerialWriteText("[Kernel] EFI memory map begin. descriptors=");
+    LosKernelSerialWriteUnsigned(DescriptorCount);
+    LosKernelSerialWriteText(" descriptor-bytes=");
+    LosKernelSerialWriteUnsigned(BootContext->MemoryMapDescriptorSize);
+    LosKernelSerialWriteText(" version=");
+    LosKernelSerialWriteUnsigned(BootContext->MemoryMapDescriptorVersion);
+    LosKernelSerialWriteText("\n");
+
+    for (Index = 0ULL; Index < DescriptorCount; ++Index)
+    {
+        const EFI_MEMORY_DESCRIPTOR *Descriptor;
+        UINT64 ByteLength;
+
+        Descriptor = (const EFI_MEMORY_DESCRIPTOR *)(const void *)(DescriptorBytes + (Index * BootContext->MemoryMapDescriptorSize));
+        ByteLength = Descriptor->NumberOfPages * 4096ULL;
+
+        LosKernelSerialWriteText("[Kernel] EFI[");
+        LosKernelSerialWriteUnsigned(Index);
+        LosKernelSerialWriteText("] type=");
+        LosKernelSerialWriteText(LosX64GetEfiMemoryTypeName(Descriptor->Type));
+        LosKernelSerialWriteText("(");
+        LosKernelSerialWriteUnsigned((UINT64)Descriptor->Type);
+        LosKernelSerialWriteText(") base=");
+        LosKernelSerialWriteHex64(Descriptor->PhysicalStart);
+        LosKernelSerialWriteText(" pages=");
+        LosKernelSerialWriteUnsigned(Descriptor->NumberOfPages);
+        LosKernelSerialWriteText(" bytes=");
+        LosKernelSerialWriteHex64(ByteLength);
+        LosKernelSerialWriteText(" attr=");
+        LosKernelSerialWriteHex64(Descriptor->Attribute);
+        LosKernelSerialWriteText("\n");
+    }
+
+    LosKernelSerialWriteText("[Kernel] EFI memory map end.\n");
+}
+
 void LosX64DescribePhysicalMemoryState(void)
 {
     LOS_KERNEL_ENTER();
     const LOS_X64_MEMORY_MANAGER_HANDOFF *Handoff;
+    UINTN Index;
 
     Handoff = LosX64GetMemoryManagerHandoff();
     LosKernelSerialWriteText("[Kernel] Total usable memory: ");
@@ -108,59 +245,42 @@ void LosX64DescribePhysicalMemoryState(void)
     LosKernelSerialWriteHex64(Handoff->HighestUsablePhysicalAddress);
     LosKernelSerialWriteText("\n");
 
-#if LOS_X64_VERBOSE_PHYSICAL_MEMORY_DUMP
+    LosKernelSerialWriteText("[Kernel] Normalized memory map begin. regions=");
+    LosKernelSerialWriteUnsigned(LosX64GetMemoryRegionCount());
+    LosKernelSerialWriteText("\n");
+
+    for (Index = 0U; Index < LosX64GetMemoryRegionCount(); ++Index)
     {
-        UINTN Index;
+        const LOS_X64_MEMORY_REGION *Region;
 
-        for (Index = 0U; Index < LosX64GetPhysicalMemoryDescriptorCount(); ++Index)
+        Region = LosX64GetMemoryRegion(Index);
+        if (Region == 0)
         {
-            const LOS_X64_PHYSICAL_MEMORY_DESCRIPTOR *Descriptor;
-
-            Descriptor = LosX64GetPhysicalMemoryDescriptor(Index);
-            if (Descriptor == 0)
-            {
-                continue;
-            }
-
-            LosKernelSerialWriteText("[Kernel] EFI descriptor ");
-            LosKernelSerialWriteUnsigned(Index);
-            LosKernelSerialWriteText(": base=");
-            LosKernelSerialWriteHex64(Descriptor->BaseAddress);
-            LosKernelSerialWriteText(" length=");
-            LosKernelSerialWriteHex64(Descriptor->Length);
-            LosKernelSerialWriteText(" type=");
-            LosKernelSerialWriteUnsigned(Descriptor->Type);
-            LosKernelSerialWriteText("\n");
+            continue;
         }
 
-        for (Index = 0U; Index < LosX64GetMemoryRegionCount(); ++Index)
-        {
-            const LOS_X64_MEMORY_REGION *Region;
-
-            Region = LosX64GetMemoryRegion(Index);
-            if (Region == 0)
-            {
-                continue;
-            }
-
-            LosKernelSerialWriteText("[Kernel] Memory region ");
-            LosKernelSerialWriteUnsigned(Index);
-            LosKernelSerialWriteText(": base=");
-            LosKernelSerialWriteHex64(Region->Base);
-            LosKernelSerialWriteText(" length=");
-            LosKernelSerialWriteHex64(Region->Length);
-            LosKernelSerialWriteText(" type=");
-            LosKernelSerialWriteUnsigned(Region->Type);
-            LosKernelSerialWriteText(" flags=");
-            LosKernelSerialWriteUnsigned(Region->Flags);
-            LosKernelSerialWriteText(" owner=");
-            LosKernelSerialWriteUnsigned(Region->Owner);
-            LosKernelSerialWriteText(" source=");
-            LosKernelSerialWriteUnsigned(Region->Source);
-            LosKernelSerialWriteText("\n");
-        }
+        LosKernelSerialWriteText("[Kernel] Region[");
+        LosKernelSerialWriteUnsigned(Index);
+        LosKernelSerialWriteText("] type=");
+        LosKernelSerialWriteText(LosX64GetMemoryRegionTypeName(Region->Type));
+        LosKernelSerialWriteText("(");
+        LosKernelSerialWriteUnsigned((UINT64)Region->Type);
+        LosKernelSerialWriteText(") base=");
+        LosKernelSerialWriteHex64(Region->Base);
+        LosKernelSerialWriteText(" bytes=");
+        LosKernelSerialWriteHex64(Region->Length);
+        LosKernelSerialWriteText(" flags=");
+        LosKernelSerialWriteHex64((UINT64)Region->Flags);
+        LosKernelSerialWriteText(" owner=");
+        LosKernelSerialWriteUnsigned((UINT64)Region->Owner);
+        LosKernelSerialWriteText(" source=");
+        LosKernelSerialWriteText(LosX64GetMemoryRegionSourceName(Region->Source));
+        LosKernelSerialWriteText("(");
+        LosKernelSerialWriteUnsigned((UINT64)Region->Source);
+        LosKernelSerialWriteText(")\n");
     }
-#endif
+
+    LosKernelSerialWriteText("[Kernel] Normalized memory map end.\n");
 }
 
 void LosX64DescribeMemoryManagerHandoff(void)

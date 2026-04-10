@@ -1,10 +1,10 @@
 /*
  * File Name: MemoryManagerBootstrapDiagnosticsSection02.c
- * File Version: 0.0.1
+ * File Version: 0.0.2
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-10T18:55:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from MemoryManagerBootstrapDiagnostics.c.
  */
@@ -93,6 +93,103 @@ static void ReportBootstrapAddressSpaceCreated(void)
     BuildBootstrapAddressSpaceLine(ScreenLine, sizeof(ScreenLine), State);
 }
 
+static const char *GetMemoryManagerBootstrapRegionTypeName(UINT32 Type)
+{
+    switch (Type)
+    {
+        case LOS_X64_MEMORY_REGION_TYPE_USABLE:
+            return "Usable";
+        case LOS_X64_MEMORY_REGION_TYPE_BOOT_RESERVED:
+            return "BootReserved";
+        case LOS_X64_MEMORY_REGION_TYPE_RUNTIME:
+            return "Runtime";
+        case LOS_X64_MEMORY_REGION_TYPE_MMIO:
+            return "Mmio";
+        case LOS_X64_MEMORY_REGION_TYPE_ACPI_NVS:
+            return "AcpiNvs";
+        case LOS_X64_MEMORY_REGION_TYPE_FIRMWARE_RESERVED:
+            return "FirmwareReserved";
+        case LOS_X64_MEMORY_REGION_TYPE_UNUSABLE:
+            return "Unusable";
+        default:
+            return "Unknown";
+    }
+}
+
+static const char *GetMemoryManagerBootstrapRegionSourceName(UINT32 Source)
+{
+    switch (Source)
+    {
+        case LOS_X64_MEMORY_REGION_SOURCE_EFI:
+            return "Efi";
+        case LOS_X64_MEMORY_REGION_SOURCE_BOOTSTRAP:
+            return "Bootstrap";
+        case LOS_X64_MEMORY_REGION_SOURCE_KERNEL:
+            return "Kernel";
+        case LOS_X64_MEMORY_REGION_SOURCE_RUNTIME:
+            return "Runtime";
+        default:
+            return "Unknown";
+    }
+}
+
+static void ReportMemoryManagerRegionTable(const LOS_MEMORY_MANAGER_LAUNCH_BLOCK *LaunchBlock)
+{
+    const LOS_X64_MEMORY_REGION *Regions;
+    UINT64 TableBytes;
+    UINT64 Index;
+
+    if (LaunchBlock == 0 ||
+        LaunchBlock->MemoryRegionTablePhysicalAddress == 0ULL ||
+        LaunchBlock->MemoryRegionCount == 0ULL ||
+        LaunchBlock->MemoryRegionEntrySize != (UINT64)sizeof(LOS_X64_MEMORY_REGION))
+    {
+        return;
+    }
+
+    TableBytes = LaunchBlock->MemoryRegionCount * LaunchBlock->MemoryRegionEntrySize;
+    Regions = (const LOS_X64_MEMORY_REGION *)LosX64GetDirectMapVirtualAddress(LaunchBlock->MemoryRegionTablePhysicalAddress, TableBytes);
+    if (Regions == 0)
+    {
+        LosKernelTraceFail("Memory-manager region table could not be mapped for reporting.");
+        return;
+    }
+
+    LosKernelSerialWriteText("[MemManager] Memory map begin. regions=");
+    LosKernelSerialWriteUnsigned(LaunchBlock->MemoryRegionCount);
+    LosKernelSerialWriteText(" table=");
+    LosKernelSerialWriteHex64(LaunchBlock->MemoryRegionTablePhysicalAddress);
+    LosKernelSerialWriteText("\n");
+
+    for (Index = 0ULL; Index < LaunchBlock->MemoryRegionCount; ++Index)
+    {
+        const LOS_X64_MEMORY_REGION *Region;
+
+        Region = &Regions[Index];
+        LosKernelSerialWriteText("[MemManager] Region[");
+        LosKernelSerialWriteUnsigned(Index);
+        LosKernelSerialWriteText("] type=");
+        LosKernelSerialWriteText(GetMemoryManagerBootstrapRegionTypeName(Region->Type));
+        LosKernelSerialWriteText("(");
+        LosKernelSerialWriteUnsigned((UINT64)Region->Type);
+        LosKernelSerialWriteText(") base=");
+        LosKernelSerialWriteHex64(Region->Base);
+        LosKernelSerialWriteText(" bytes=");
+        LosKernelSerialWriteHex64(Region->Length);
+        LosKernelSerialWriteText(" flags=");
+        LosKernelSerialWriteHex64((UINT64)Region->Flags);
+        LosKernelSerialWriteText(" owner=");
+        LosKernelSerialWriteUnsigned((UINT64)Region->Owner);
+        LosKernelSerialWriteText(" source=");
+        LosKernelSerialWriteText(GetMemoryManagerBootstrapRegionSourceName(Region->Source));
+        LosKernelSerialWriteText("(");
+        LosKernelSerialWriteUnsigned((UINT64)Region->Source);
+        LosKernelSerialWriteText(")\n");
+    }
+
+    LosKernelSerialWriteText("[MemManager] Memory map end.\n");
+}
+
 static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTACH_RESULT *Result)
 {
     char ScreenLine[96];
@@ -137,6 +234,7 @@ static void ReportMemoryManagerKnowledge(const LOS_MEMORY_MANAGER_BOOTSTRAP_ATTA
     LosKernelStatusScreenWriteOk(ScreenLine);
     BuildMemoryManagerKnowledgeLine4(ScreenLine, sizeof(ScreenLine), Result);
     LosKernelStatusScreenWriteOk(ScreenLine);
+    ReportMemoryManagerRegionTable(LosGetMemoryManagerLaunchBlock());
 }
 
 void LosMemoryManagerBootstrapDescribeState(void)
