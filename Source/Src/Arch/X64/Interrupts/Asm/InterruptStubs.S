@@ -1,3 +1,14 @@
+/*
+ * File Name: InterruptStubs.S
+ * File Version: 0.3.12
+ * Author: OpenAI
+ * Email: dave66samaa@gmail.com
+ * Creation Timestamp: 2026-04-07T07:24:34Z
+ * Last Update Timestamp: 2026-04-10T18:45:00Z
+ * Operating System Name: Liberation OS
+ * Purpose: Implements low-level functionality for Liberation OS.
+ */
+
 .intel_syntax noprefix
 .section .text
 
@@ -47,7 +58,10 @@ LosCommonInterruptEntry:
     mov rsi, [rsp + 120]
     mov rdx, [rsp + 128]
     lea rcx, [rsp + 136]
+    mov rbx, rsp
+    and rsp, -16
     call LosX64HandleInterrupt
+    mov rsp, rbx
     POP_REGS
     add rsp, 16
     iretq
