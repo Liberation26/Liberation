@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection08.c
- * File Version: 0.0.4
+ * File Version: 0.0.5
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T18:15:00Z
+ * Last Update Timestamp: 2026-04-10T19:20:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -48,7 +48,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldTrampolineReady(void)
         return 1;
     }
 
-    KernelEntryAddress = (UINT64)(UINTN)LosKernelSchedulerUserTransitionKernelEntry;
+    KernelEntryAddress = LosKernelSchedulerGetUserTransitionKernelEntryRuntimeAddress();
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_FRAME_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
@@ -106,7 +106,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
     LOS_KERNEL_SCHEDULER_PROCESS *Process;
     LOS_KERNEL_SCHEDULER_TASK *Task;
     UINT64 BridgeAddress;
-    UINT64 BridgeStackPointer;
+    UINT64 ChainStackPointer;
     UINT64 CriticalSectionFlags;
     BOOLEAN Ready;
 
@@ -140,12 +140,11 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
         return 1;
     }
 
-    BridgeAddress = (UINT64)(UINTN)LosKernelSchedulerUserTransitionDispatchBridge;
+    BridgeAddress = LosKernelSchedulerGetUserTransitionDispatchBridgeRuntimeAddress();
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_TRAMPOLINE_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_TRAMPOLINE_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
         Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
-        Task->ExecutionContext.StackPointer == 0ULL ||
         Process->UserTransitionKernelEntryVirtualAddress == 0ULL ||
         Task->UserTransitionKernelEntryVirtualAddress == 0ULL ||
         BridgeAddress == 0ULL)
@@ -163,18 +162,19 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
         Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_TRAMPOLINE_READY &&
         Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
         Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
-        Task->ExecutionContext.StackPointer != 0ULL &&
         Process->UserTransitionKernelEntryVirtualAddress != 0ULL &&
         Task->UserTransitionKernelEntryVirtualAddress != 0ULL &&
         BridgeAddress != 0ULL)
     {
-        if (Task->ExecutionContext.StackPointer >= 8ULL)
+        ChainStackPointer = GetUserTransitionChainStackPointer(Task);
+        if (ChainStackPointer != 0ULL)
         {
-            BridgeStackPointer = Task->ExecutionContext.StackPointer - 8ULL;
-            WriteStackReturnAddress(BridgeStackPointer, BridgeAddress);
-            if (ReadStackReturnAddress(BridgeStackPointer) == BridgeAddress)
+            WriteStackReturnAddress(ChainStackPointer, BridgeAddress);
+            WriteStackReturnAddress(ChainStackPointer + 8ULL, Task->UserTransitionKernelEntryVirtualAddress);
+            if (ReadStackReturnAddress(ChainStackPointer) == BridgeAddress &&
+                ReadStackReturnAddress(ChainStackPointer + 8ULL) == Task->UserTransitionKernelEntryVirtualAddress)
             {
-                Task->ExecutionContext.StackPointer = BridgeStackPointer;
+                Task->ExecutionContext.StackPointer = ChainStackPointer;
                 Process->UserTransitionBridgeVirtualAddress = BridgeAddress;
                 Task->UserTransitionBridgeVirtualAddress = BridgeAddress;
                 Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY;
@@ -208,7 +208,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
     LOS_KERNEL_SCHEDULER_STATE *State;
     LOS_KERNEL_SCHEDULER_PROCESS *Process;
     LOS_KERNEL_SCHEDULER_TASK *Task;
-    UINT64 BridgeStackPointer;
+    UINT64 ChainStackPointer;
     UINT64 CriticalSectionFlags;
     BOOLEAN Ready;
 
@@ -242,7 +242,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
         return 1;
     }
 
-    BridgeStackPointer = Task->ExecutionContext.StackPointer;
+    ChainStackPointer = Task->ExecutionContext.StackPointer;
     if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY ||
         Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
@@ -253,7 +253,9 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
         Task->UserTransitionKernelEntryVirtualAddress == 0ULL ||
         Process->UserTransitionBridgeVirtualAddress == 0ULL ||
         Task->UserTransitionBridgeVirtualAddress == 0ULL ||
-        BridgeStackPointer == 0ULL)
+        ChainStackPointer == 0ULL ||
+        ReadStackReturnAddress(ChainStackPointer) != Task->UserTransitionBridgeVirtualAddress ||
+        ReadStackReturnAddress(ChainStackPointer + 8ULL) != Task->UserTransitionKernelEntryVirtualAddress)
     {
         return 0;
     }
@@ -269,11 +271,13 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldChainReady(void)
         Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
         Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION)
     {
-        BridgeStackPointer = Task->ExecutionContext.StackPointer;
-        if (BridgeStackPointer != 0ULL)
+        ChainStackPointer = Task->ExecutionContext.StackPointer;
+        if (ChainStackPointer != 0ULL &&
+            ReadStackReturnAddress(ChainStackPointer) == Task->UserTransitionBridgeVirtualAddress &&
+            ReadStackReturnAddress(ChainStackPointer + 8ULL) == Task->UserTransitionKernelEntryVirtualAddress)
         {
-            Process->UserTransitionChainStackPointer = BridgeStackPointer;
-            Task->UserTransitionChainStackPointer = BridgeStackPointer;
+            Process->UserTransitionChainStackPointer = ChainStackPointer;
+            Task->UserTransitionChainStackPointer = ChainStackPointer;
             Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY;
             Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_CHAIN_READY;
             State->UserTransitionChainReadyCount += 1ULL;
@@ -356,8 +360,26 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldContractReady(void)
         Task->UserStackPointer != 0ULL &&
         Task->UserCodeSegmentSelector != 0ULL &&
         Task->UserStackSegmentSelector != 0ULL &&
-        Task->UserRflags != 0ULL)
+        Task->UserRflags != 0ULL &&
+        Task->UserTransitionFrameStackPointer != 0ULL &&
+        ReadStackReturnAddress(Task->ExecutionContext.StackPointer) == Task->UserTransitionBridgeVirtualAddress &&
+        ReadStackReturnAddress(Task->ExecutionContext.StackPointer + 8ULL) == Task->UserTransitionKernelEntryVirtualAddress)
     {
+        const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *Frame;
+
+        Frame = (const LOS_KERNEL_SCHEDULER_USER_TRANSITION_FRAME *)(UINTN)Task->UserTransitionFrameStackPointer;
+        if (Frame == 0 ||
+            Frame->Rip != Task->UserInstructionPointer ||
+            Frame->Cs != Task->UserCodeSegmentSelector ||
+            Frame->Rflags != Task->UserRflags ||
+            Frame->Rsp != Task->UserStackPointer ||
+            Frame->Ss != Task->UserStackSegmentSelector)
+        {
+            LeaveSchedulerCriticalSection(CriticalSectionFlags);
+            LosKernelTraceFail("Scheduler first user-task contract validation rejected the prepared iret frame.");
+            return 0;
+        }
+
         ContractSignature = 0x555452414E534954ULL;
         ContractSignature ^= Process->ProcessId;
         ContractSignature ^= (Task->TaskId << 17U);

@@ -69,3 +69,5 @@ This directory contains per-version notes extracted from the project README and 
 - [`0.4.102.md`](0.4.102.md)
 - [`0.4.103.md`](0.4.103.md)
 - [`0.4.104.md`](0.4.104.md)
+
+- [0.4.105](0.4.105.md)

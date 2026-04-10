@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerInternal.h
- * File Version: 0.3.13
+ * File Version: 0.3.14
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-09T19:40:00Z
+ * Last Update Timestamp: 2026-04-10T19:20:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements kernel functionality for Liberation OS.
  */
@@ -122,6 +122,8 @@ void LosKernelSchedulerThreadTrampoline(void);
 void LosKernelSchedulerUserTransitionKernelEntry(void);
 UINT64 LosKernelSchedulerPrepareUserTransitionIret(void);
 void LosKernelSchedulerUserTransitionDispatchBridge(void);
+UINT64 LosKernelSchedulerGetUserTransitionDispatchBridgeRuntimeAddress(void);
+UINT64 LosKernelSchedulerGetUserTransitionKernelEntryRuntimeAddress(void);
 void LosKernelSchedulerUserTransitionBridgeTrap(UINT64 KernelStackPointer);
 void LosKernelSchedulerYieldCurrent(void);
 void LosKernelSchedulerSleepCurrent(UINT64 TickCount);
