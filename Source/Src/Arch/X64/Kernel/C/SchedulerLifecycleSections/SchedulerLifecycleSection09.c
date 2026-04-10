@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection09.c
- * File Version: 0.0.2
+ * File Version: 0.0.3
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T23:15:00Z
+ * Last Update Timestamp: 2026-04-10T18:15:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -205,6 +205,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldComplete(void)
      * path. Promote the handoff-ready scaffold to LIVE instead.
      */
     if (State->UserTransitionLiveCount == 0ULL &&
+        State->UserTransitionCompleteCount == 0ULL &&
         State->UserTransitionHandoffReadyCount != 0ULL)
     {
         if (State->UserTransitionLiveGateClosed != 0U)
@@ -232,7 +233,8 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
         return 0;
     }
 
-    if (State->UserTransitionHandoffReadyCount == 0ULL)
+    if (State->UserTransitionHandoffReadyCount == 0ULL ||
+        State->UserTransitionCompleteCount != 0ULL)
     {
         return 0;
     }
@@ -256,10 +258,8 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
         return 1;
     }
 
-    if (!((Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY ||
-           Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE)) ||
-        !((Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY ||
-           Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE)) ||
+    if (Process->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY ||
+        Task->UserTransitionState != LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY ||
         Task->State != LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED ||
         Task->LastBlockReason != LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION ||
         Task->UserInstructionPointer == 0ULL ||
@@ -298,10 +298,8 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
     Task = FindTaskByIdMutable(State->UserTransitionScaffoldTaskId);
     Live = 0U;
     if (Process != 0 && Task != 0 &&
-        (Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY ||
-         Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE) &&
-        (Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY ||
-         Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_COMPLETE) &&
+        Process->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY &&
+        Task->UserTransitionState == LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_HANDOFF_READY &&
         Task->State == LOS_KERNEL_SCHEDULER_TASK_STATE_BLOCKED &&
         Task->LastBlockReason == LOS_KERNEL_SCHEDULER_BLOCK_REASON_USER_TRANSITION &&
         Task->UserInstructionPointer != 0ULL &&
@@ -351,6 +349,11 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldLive(void)
     if (Live != 0U)
     {
         LosKernelTraceOk("Scheduler first user task marked live for real iretq dispatch.");
+        LosKernelTraceHex64("Scheduler first user task live stack pointer: ", Task->ExecutionContext.StackPointer);
+        LosKernelTraceHex64("Scheduler first user task live return slot: ",
+                            ReadStackReturnAddress(Task->ExecutionContext.StackPointer));
+        LosKernelTraceHex64("Scheduler first user task live next return slot: ",
+                            ReadStackReturnAddress(Task->ExecutionContext.StackPointer + 8ULL));
         LosKernelSchedulerTraceProcess("Live scheduler first user task process", Process);
         LosKernelSchedulerTraceTask("Live scheduler first user task task", Task);
         return 1;

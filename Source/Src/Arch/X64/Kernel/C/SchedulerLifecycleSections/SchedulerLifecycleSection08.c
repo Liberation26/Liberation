@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection08.c
- * File Version: 0.0.3
+ * File Version: 0.0.4
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-10T17:45:00Z
+ * Last Update Timestamp: 2026-04-10T18:15:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -189,6 +189,11 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
     if (Ready != 0U)
     {
         LosKernelTraceOk("Scheduler first user task bridge-ready.");
+        LosKernelTraceHex64("Scheduler first user task bridge stack pointer: ", Task->ExecutionContext.StackPointer);
+        LosKernelTraceHex64("Scheduler first user task bridge return slot: ",
+                            ReadStackReturnAddress(Task->ExecutionContext.StackPointer));
+        LosKernelTraceHex64("Scheduler first user task kernel-entry return slot: ",
+                            ReadStackReturnAddress(Task->ExecutionContext.StackPointer + 8ULL));
         LosKernelSchedulerTraceProcess("Bridge-ready scheduler first user task process", Process);
         LosKernelSchedulerTraceTask("Bridge-ready scheduler first user task task", Task);
         return 1;
