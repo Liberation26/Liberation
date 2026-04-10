@@ -1,10 +1,10 @@
 /*
  * File Name: SchedulerLifecycleSection08.c
- * File Version: 0.0.2
+ * File Version: 0.0.3
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-09T19:40:00Z
- * Last Update Timestamp: 2026-04-09T23:15:00Z
+ * Last Update Timestamp: 2026-04-10T17:45:00Z
  * Operating System Name: Liberation OS
  * Purpose: Contains a split section extracted from SchedulerLifecycle.c.
  */
@@ -106,6 +106,7 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
     LOS_KERNEL_SCHEDULER_PROCESS *Process;
     LOS_KERNEL_SCHEDULER_TASK *Task;
     UINT64 BridgeAddress;
+    UINT64 BridgeStackPointer;
     UINT64 CriticalSectionFlags;
     BOOLEAN Ready;
 
@@ -167,15 +168,20 @@ BOOLEAN LosKernelSchedulerMarkUserTransitionScaffoldBridgeReady(void)
         Task->UserTransitionKernelEntryVirtualAddress != 0ULL &&
         BridgeAddress != 0ULL)
     {
-        WriteStackReturnAddress(Task->ExecutionContext.StackPointer, BridgeAddress);
-        if (ReadStackReturnAddress(Task->ExecutionContext.StackPointer) == BridgeAddress)
+        if (Task->ExecutionContext.StackPointer >= 8ULL)
         {
-            Process->UserTransitionBridgeVirtualAddress = BridgeAddress;
-            Task->UserTransitionBridgeVirtualAddress = BridgeAddress;
-            Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY;
-            Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY;
-            State->UserTransitionBridgeReadyCount += 1ULL;
-            Ready = 1U;
+            BridgeStackPointer = Task->ExecutionContext.StackPointer - 8ULL;
+            WriteStackReturnAddress(BridgeStackPointer, BridgeAddress);
+            if (ReadStackReturnAddress(BridgeStackPointer) == BridgeAddress)
+            {
+                Task->ExecutionContext.StackPointer = BridgeStackPointer;
+                Process->UserTransitionBridgeVirtualAddress = BridgeAddress;
+                Task->UserTransitionBridgeVirtualAddress = BridgeAddress;
+                Process->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY;
+                Task->UserTransitionState = LOS_KERNEL_SCHEDULER_USER_TRANSITION_STATE_BRIDGE_READY;
+                State->UserTransitionBridgeReadyCount += 1ULL;
+                Ready = 1U;
+            }
         }
     }
     LeaveSchedulerCriticalSection(CriticalSectionFlags);
