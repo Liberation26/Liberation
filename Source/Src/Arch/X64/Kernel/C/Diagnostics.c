@@ -4,7 +4,7 @@
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-10T18:55:00Z
- * Last Update Timestamp: 2026-04-10T19:05:00Z
+ * Last Update Timestamp: 2026-04-10T20:10:00Z
  * Operating System Name: Liberation OS
  * Purpose: Centralises function-entry tracing and crash diagnostics for the x64 kernel.
  */
@@ -13,14 +13,16 @@
 #include "InterruptsInternal.h"
 
 #define LOS_DIAGNOSTICS_NOINSTRUMENT __attribute__((no_instrument_function))
+#define LOS_DIAGNOSTICS_BOOTSTRAP_TEXT __attribute__((section(".bootstrap.text")))
+#define LOS_DIAGNOSTICS_BOOTSTRAP_DATA __attribute__((section(".bootstrap.data")))
 
-static volatile UINT64 LosDiagnosticsTraceSequence = 0ULL;
-static volatile UINT64 LosDiagnosticsTraceEntryCount = 0ULL;
-static volatile UINT64 LosDiagnosticsTraceWriteIndex = 0ULL;
-static volatile UINT64 LosDiagnosticsBusy = 0ULL;
-static LOS_DIAGNOSTICS_TRACE_ENTRY LosDiagnosticsTraceEntries[LOS_DIAGNOSTICS_TRACE_ENTRY_COUNT];
+static volatile UINT64 LosDiagnosticsTraceSequence LOS_DIAGNOSTICS_BOOTSTRAP_DATA = 0ULL;
+static volatile UINT64 LosDiagnosticsTraceEntryCount LOS_DIAGNOSTICS_BOOTSTRAP_DATA = 0ULL;
+static volatile UINT64 LosDiagnosticsTraceWriteIndex LOS_DIAGNOSTICS_BOOTSTRAP_DATA = 0ULL;
+static volatile UINT64 LosDiagnosticsBusy LOS_DIAGNOSTICS_BOOTSTRAP_DATA = 0ULL;
+static LOS_DIAGNOSTICS_TRACE_ENTRY LosDiagnosticsTraceEntries[LOS_DIAGNOSTICS_TRACE_ENTRY_COUNT] LOS_DIAGNOSTICS_BOOTSTRAP_DATA;
 
-static void LOS_DIAGNOSTICS_NOINSTRUMENT DiagnosticsWriteTraceLine(
+static void LOS_DIAGNOSTICS_NOINSTRUMENT LOS_DIAGNOSTICS_BOOTSTRAP_TEXT DiagnosticsWriteTraceLine(
     const char *Prefix,
     UINT64 Sequence,
     UINT64 Tick,
@@ -39,7 +41,7 @@ static void LOS_DIAGNOSTICS_NOINSTRUMENT DiagnosticsWriteTraceLine(
     LosKernelSerialWriteText("\n");
 }
 
-static void LOS_DIAGNOSTICS_NOINSTRUMENT DiagnosticsRecordFunctionEntry(void *FunctionAddress, void *CallerAddress)
+static void LOS_DIAGNOSTICS_NOINSTRUMENT LOS_DIAGNOSTICS_BOOTSTRAP_TEXT DiagnosticsRecordFunctionEntry(void *FunctionAddress, void *CallerAddress)
 {
     UINT64 WriteIndex;
     UINT64 Sequence;
@@ -78,7 +80,7 @@ static void LOS_DIAGNOSTICS_NOINSTRUMENT DiagnosticsRecordFunctionEntry(void *Fu
     LosDiagnosticsBusy = 0ULL;
 }
 
-static void LOS_DIAGNOSTICS_NOINSTRUMENT DiagnosticsWriteRecentTrace(void)
+static void LOS_DIAGNOSTICS_NOINSTRUMENT LOS_DIAGNOSTICS_BOOTSTRAP_TEXT DiagnosticsWriteRecentTrace(void)
 {
     UINT64 EntryCount;
     UINT64 WriteIndex;
@@ -123,7 +125,7 @@ static void LOS_DIAGNOSTICS_NOINSTRUMENT DiagnosticsWriteRecentTrace(void)
     }
 }
 
-void LOS_DIAGNOSTICS_NOINSTRUMENT LosDiagnosticsInitialize(void)
+void LOS_DIAGNOSTICS_NOINSTRUMENT LOS_DIAGNOSTICS_BOOTSTRAP_TEXT LosDiagnosticsInitialize(void)
 {
     UINT64 Index;
 
@@ -141,18 +143,18 @@ void LOS_DIAGNOSTICS_NOINSTRUMENT LosDiagnosticsInitialize(void)
     }
 }
 
-void LOS_DIAGNOSTICS_NOINSTRUMENT __cyg_profile_func_enter(void *FunctionAddress, void *CallerAddress)
+void LOS_DIAGNOSTICS_NOINSTRUMENT LOS_DIAGNOSTICS_BOOTSTRAP_TEXT __cyg_profile_func_enter(void *FunctionAddress, void *CallerAddress)
 {
     DiagnosticsRecordFunctionEntry(FunctionAddress, CallerAddress);
 }
 
-void LOS_DIAGNOSTICS_NOINSTRUMENT __cyg_profile_func_exit(void *FunctionAddress, void *CallerAddress)
+void LOS_DIAGNOSTICS_NOINSTRUMENT LOS_DIAGNOSTICS_BOOTSTRAP_TEXT __cyg_profile_func_exit(void *FunctionAddress, void *CallerAddress)
 {
     LOS_UNUSED_PARAMETER(FunctionAddress);
     LOS_UNUSED_PARAMETER(CallerAddress);
 }
 
-void LOS_DIAGNOSTICS_NOINSTRUMENT LosDiagnosticsWriteInterruptCrashReport(
+void LOS_DIAGNOSTICS_NOINSTRUMENT LOS_DIAGNOSTICS_BOOTSTRAP_TEXT LosDiagnosticsWriteInterruptCrashReport(
     const LOS_X64_REGISTER_STATE *Registers,
     UINT64 Vector,
     UINT64 ErrorCode,
