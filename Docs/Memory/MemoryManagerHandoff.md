@@ -1,3 +1,27 @@
+<!--
+File Name: MemoryManagerHandoff.md
+File Version: 0.3.11
+Author: OpenAI
+Email: dave66samaa@gmail.com
+Creation Timestamp: 2026-04-07T07:24:34Z
+Last Update Timestamp: 2026-04-07T12:35:00Z
+Operating System Name: Liberation OS
+Purpose: Documents Liberation OS design, behavior, usage, or integration details.
+-->
+
+## Version 0.1.83
+
+This delivery tightens the kernel/MM architectural boundary and applies the project file-splitting standard to the live memory-manager service code.
+
+Concretely:
+
+- the kernel remains the mechanism layer for low-level frame claims, page-table map/unmap primitives, translation helpers, and interrupt/fault entry paths
+- the memory-manager service remains the policy owner for frame-allocation decisions, address-space lifecycle, region accounting, and virtual-layout choices
+- the former `MemoryManagerMain.c` monolith is now split into dedicated diagnostics, dispatch, and lifecycle files with a shared internal header
+- the former `MemoryManagerMemory.c` monolith is now split into dedicated dispatch, lifecycle, policy, and state files with a shared internal header
+
+That means the source tree now reflects the intended architecture more honestly: the kernel side stays as the narrow execution substrate, while the service side owns the higher-level memory-management policy and bookkeeping in files that are separated by role rather than mixed together.
+
 ## Version 0.1.61
 
 The X64 memory-manager bootstrap now has a real service-side frame allocator instead of only a service-authored memory inventory.
@@ -175,6 +199,12 @@ The intended split is now explicit:
 ## 0.0.75 update
 
 The X64 memory handoff has moved from descriptive bootstrap reporting to concrete kernel-side operations that the future userland memory-manager service can actually use.
+
+## 0.4.108 update
+
+The `LOS_X64_MEMORY_MANAGER_HANDOFF` structure remains at version `3`, but the `Flags` field is now appended at the end of the structure rather than inserted ahead of the existing region-table fields.
+
+This keeps the version-3 extension ABI-safe for memory-manager service binaries that still expect the earlier field order up to `HighestUsablePhysicalAddress`.
 
 The exported handoff region table is now rebuilt as a normalized view rather than an EFI list plus appended overlays. That means the published table always describes the effective ownership of each span with these fields:
 

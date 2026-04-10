@@ -1,10 +1,10 @@
 /*
  * File Name: VirtualMemory.h
- * File Version: 0.3.23
+ * File Version: 0.3.24
  * Author: OpenAI
  * Email: dave66samaa@gmail.com
  * Creation Timestamp: 2026-04-07T07:24:34Z
- * Last Update Timestamp: 2026-04-10T18:55:00Z
+ * Last Update Timestamp: 2026-04-10T19:20:00Z
  * Operating System Name: Liberation OS
  * Purpose: Implements low-level functionality for Liberation OS.
  */
@@ -15,7 +15,7 @@
 #include "KernelMain.h"
 
 #define LOS_X64_MEMORY_MANAGER_HANDOFF_SIGNATURE 0x4D4D444E41484F4CULL
-#define LOS_X64_MEMORY_MANAGER_HANDOFF_VERSION 3U
+#define LOS_X64_MEMORY_MANAGER_HANDOFF_VERSION 3U /* Version 3 appends Flags at the end for ABI-safe extension. */
 #define LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_QUERY_MEMORY_REGIONS 0x0000000000000001ULL
 #define LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_RESERVE_FRAMES 0x0000000000000002ULL
 #define LOS_X64_MEMORY_MANAGER_HANDOFF_FLAG_CLAIM_FRAMES 0x0000000000000004ULL
@@ -120,7 +120,6 @@ typedef struct
     UINT64 Signature;
     UINT32 Version;
     UINT32 Reserved;
-    UINT64 Flags;
     UINT64 RegionDatabaseAddress;
     UINT64 RegionCount;
     UINT64 RegionEntrySize;
@@ -133,6 +132,7 @@ typedef struct
     UINT64 TotalUnusableBytes;
     UINT64 TotalAddressSpaceGapBytes;
     UINT64 HighestUsablePhysicalAddress;
+    UINT64 Flags;
 } LOS_X64_MEMORY_MANAGER_HANDOFF;
 
 typedef struct
